@@ -571,22 +571,23 @@
             cityCtx.clearRect(0, 0, screenW, screenH);
             const dist = camera.position.length();
 
-            // Stadtumrisse sanft einblenden erst bei deutlichem Nah-Zoom
+            // Stadtumrisse sehr dezent einblenden erst bei deutlichem Nah-Zoom
             if (urbanMesh) {
-                const urbanAlpha = Math.max(0, Math.min((155 - dist) / 35, 0.4));
+                const urbanAlpha = Math.max(0, Math.min((150 - dist) / 35, 0.22));
                 urbanMesh.material.opacity = urbanAlpha;
                 urbanMesh.visible = urbanAlpha > 0.01;
             }
 
-            // Städte-Namen erst bei näherem Zoom einblenden (erst ab dist < 160)
-            if (dist > 160 || citiesData.length === 0) return;
+            // Städte-Namen erst bei näherem Zoom einblenden (erst ab dist < 150)
+            if (dist > 150 || citiesData.length === 0) return;
 
-            const fadeAlpha = Math.min((160 - dist) / 25, 1.0);
+            // Maximale Deckkraft auf sanfte 0.70 begrenzen, damit die Städte nicht den Globus dominieren
+            const fadeAlpha = Math.min((150 - dist) / 25, 0.70);
 
-            // Je näher man heranzoomt, desto mehr Städte werden detailliert sichtbar (sehr selektiv)
-            let maxRank = 0; // Erst nur Hauptstädte / Megacities
-            if (dist <= 140) maxRank = 2; // Wichtige Großstädte
-            if (dist <= 125) maxRank = 4; // Regionale Zentren
+            // Sehr selektive Auswahl: Keine Überladung mit Kleinstädten
+            let maxRank = 0; // Erst nur Megacities & Hauptstädte
+            if (dist <= 130) maxRank = 1; // Große Metropolen
+            if (dist <= 118) maxRank = 2; // Ausgewählte Großstädte
 
             const cx = camera.position.x;
             const cy = camera.position.y;
@@ -595,7 +596,7 @@
 
             cityCtx.save();
             cityCtx.globalAlpha = fadeAlpha;
-            cityCtx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+            cityCtx.font = '500 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
             cityCtx.textBaseline = 'middle';
 
             for (let i = 0; i < citiesData.length; i++) {
@@ -617,20 +618,20 @@
                 // Ausreichend Abstand zum Bildschirmrand
                 if (sx < 35 || sx > screenW - 35 || sy < 35 || sy > screenH - 35) continue;
 
-                // Kleiner dezenter Stadt-Punkt in Schwarz mit weißem Rand
+                // Feiner, dezenter Stadt-Punkt (1.8px)
                 cityCtx.beginPath();
-                cityCtx.arc(sx, sy, 2.5, 0, Math.PI * 2);
-                cityCtx.fillStyle = '#111111';
+                cityCtx.arc(sx, sy, 1.8, 0, Math.PI * 2);
+                cityCtx.fillStyle = '#222222';
                 cityCtx.fill();
-                cityCtx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-                cityCtx.lineWidth = 1.0;
+                cityCtx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+                cityCtx.lineWidth = 0.8;
                 cityCtx.stroke();
 
-                // SCHWARZER STADTNAME MIT DEZENTEM WEISSEM HALO FÜR PERFEKTE LESBARKEIT
-                cityCtx.shadowColor = 'rgba(255, 255, 255, 0.9)';
-                cityCtx.shadowBlur = 3;
-                cityCtx.fillStyle = '#000000';
-                cityCtx.fillText(city.name, sx + 6, sy);
+                // Edler, dezenter Stadtname in Anthrazit mit sanftem weißem Halo
+                cityCtx.shadowColor = 'rgba(255, 255, 255, 0.85)';
+                cityCtx.shadowBlur = 2.5;
+                cityCtx.fillStyle = '#1c1c1c';
+                cityCtx.fillText(city.name, sx + 5, sy);
                 cityCtx.shadowColor = 'transparent';
             }
             cityCtx.restore();
