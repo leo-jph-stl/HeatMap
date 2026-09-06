@@ -230,23 +230,201 @@
         earthMesh.renderOrder = 0;
         scene.add(earthMesh);
 
-        // DATA SPHERE (CANVAS)
-        const canvas = document.createElement('canvas');
-        canvas.width = 2048;
-        canvas.height = 1024;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        const imgData = ctx.createImageData(canvas.width, canvas.height);
+        // GPU WEBGL SHADER ENGINE (60 FPS BILINEAR WEATHER TEXTURES)
+        const isWebGL2 = !!renderer.capabilities.isWebGL2;
+        const useFloat = isWebGL2 && renderer.extensions.has('OES_texture_float_linear');
 
-        const canvasTexture = new THREE.CanvasTexture(canvas);
-        canvasTexture.minFilter = THREE.LinearFilter;
-        canvasTexture.magFilter = THREE.LinearFilter;
-        canvasTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        // Farb-Rampen als 1024x1 1D Texturen vorbereiten
+        function createColorRampTexture(scaleFunc, minVal, maxVal, width = 1024) {
+            const data = new Uint8Array(width * 4);
+            for (let i = 0; i < width; i++) {
+                const val = minVal + (i / (width - 1)) * (maxVal - minVal);
+                const col = d3.rgb(scaleFunc(val));
+                data[i * 4 + 0] = col ? col.r : 0;
+                data[i * 4 + 1] = col ? col.g : 0;
+                data[i * 4 + 2] = col ? col.b : 0;
+                data[i * 4 + 3] = 255;
+            }
+            const tex = new THREE.DataTexture(data, width, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+            tex.generateMipmaps = false;
+            tex.minFilter = THREE.LinearFilter;
+            tex.magFilter = THREE.LinearFilter;
+            tex.wrapS = THREE.ClampToEdgeWrapping;
+            tex.wrapT = THREE.ClampToEdgeWrapping;
+            tex.needsUpdate = true;
+            return tex;
+        }
+
+        const minTempRange = -60.0;
+        const maxTempRange = 55.0;
+        const maxWindKmh = 115.0;
+
+        const colorRampTempTex = createColorRampTexture(colorScaleTemp, minTempRange, maxTempRange, 1024);
+        const colorRampWindTex = createColorRampTexture(kmh => colorScaleWind(kmh / 3.6), 0.0, maxWindKmh, 1024);
+
+        // Pre-baking der Wetterdaten in GPU-DataTextures (dauert einmalig <150ms beim Start)
+        function buildTempDataTexture(step) {
+            const raw = step.data;
+            const width = 721;
+            const height = 361;
+            const span = maxTempRange - minTempRange;
+            
+            if (useFloat) {
+                const buf = new Float32Array(width * height);
+                let ptr = 0;
+                for (let r = 0; r < height; r++) {
+                    const gfsRow = 360 - r;
+                    const rowOffset = gfsRow * 720;
+                    for (let x = 0; x < width; x++) {
+                        const lng = -180 + x * 0.5;
+                        const lon360 = lng < 0 ? lng + 360 : lng;
+                        const gfsCol = Math.round(lon360 / 0.5) % 720;
+                        buf[ptr++] = raw[rowOffset + gfsCol];
+                    }
+                }
+                const tex = new THREE.DataTexture(buf, width, height, THREE.RedFormat, THREE.FloatType);
+                tex.generateMipmaps = false;
+                tex.minFilter = THREE.LinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+                tex.wrapS = THREE.ClampToEdgeWrapping;
+                tex.wrapT = THREE.ClampToEdgeWrapping;
+                tex.needsUpdate = true;
+                return tex;
+            } else {
+                const buf = new Uint8Array(width * height * 4);
+                let ptr = 0;
+                for (let r = 0; r < height; r++) {
+                    const gfsRow = 360 - r;
+                    const rowOffset = gfsRow * 720;
+                    for (let x = 0; x < width; x++) {
+                        const lng = -180 + x * 0.5;
+                        const lon360 = lng < 0 ? lng + 360 : lng;
+                        const gfsCol = Math.round(lon360 / 0.5) % 720;
+                        const val = raw[rowOffset + gfsCol];
+                        const norm = Math.max(0, Math.min(255, Math.round(((val - minTempRange) / span) * 255)));
+                        buf[ptr] = norm;
+                        buf[ptr + 1] = norm;
+                        buf[ptr + 2] = norm;
+                        buf[ptr + 3] = 255;
+                        ptr += 4;
+                    }
+                }
+                const tex = new THREE.DataTexture(buf, width, height, THREE.RGBAFormat, THREE.UnsignedByteType);
+                tex.generateMipmaps = false;
+                tex.minFilter = THREE.LinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+                tex.wrapS = THREE.ClampToEdgeWrapping;
+                tex.wrapT = THREE.ClampToEdgeWrapping;
+                tex.needsUpdate = true;
+                return tex;
+            }
+        }
+
+        function buildWindDataTexture(step) {
+            const uData = step.u.data;
+            const vData = step.v.data;
+            const width = 361;
+            const height = 181;
+            
+            if (useFloat) {
+                const buf = new Float32Array(width * height);
+                let ptr = 0;
+                for (let r = 0; r < height; r++) {
+                    const gfsRow = 180 - r;
+                    const rowOffset = gfsRow * 360;
+                    for (let x = 0; x < width; x++) {
+                        const lng = -180 + x * 1.0;
+                        const lon360 = lng < 0 ? lng + 360 : lng;
+                        const gfsCol = Math.round(lon360 / 1.0) % 360;
+                        const idx = rowOffset + gfsCol;
+                        const u = uData[idx] || 0;
+                        const v = vData[idx] || 0;
+                        buf[ptr++] = Math.sqrt(u * u + v * v) * 3.6;
+                    }
+                }
+                const tex = new THREE.DataTexture(buf, width, height, THREE.RedFormat, THREE.FloatType);
+                tex.generateMipmaps = false;
+                tex.minFilter = THREE.LinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+                tex.wrapS = THREE.ClampToEdgeWrapping;
+                tex.wrapT = THREE.ClampToEdgeWrapping;
+                tex.needsUpdate = true;
+                return tex;
+            } else {
+                const buf = new Uint8Array(width * height * 4);
+                let ptr = 0;
+                for (let r = 0; r < height; r++) {
+                    const gfsRow = 180 - r;
+                    const rowOffset = gfsRow * 360;
+                    for (let x = 0; x < width; x++) {
+                        const lng = -180 + x * 1.0;
+                        const lon360 = lng < 0 ? lng + 360 : lng;
+                        const gfsCol = Math.round(lon360 / 1.0) % 360;
+                        const idx = rowOffset + gfsCol;
+                        const u = uData[idx] || 0;
+                        const v = vData[idx] || 0;
+                        const speedKmh = Math.sqrt(u * u + v * v) * 3.6;
+                        const norm = Math.max(0, Math.min(255, Math.round((speedKmh / maxWindKmh) * 255)));
+                        buf[ptr] = norm;
+                        buf[ptr + 1] = norm;
+                        buf[ptr + 2] = norm;
+                        buf[ptr + 3] = 255;
+                        ptr += 4;
+                    }
+                }
+                const tex = new THREE.DataTexture(buf, width, height, THREE.RGBAFormat, THREE.UnsignedByteType);
+                tex.generateMipmaps = false;
+                tex.minFilter = THREE.LinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+                tex.wrapS = THREE.ClampToEdgeWrapping;
+                tex.wrapT = THREE.ClampToEdgeWrapping;
+                tex.needsUpdate = true;
+                return tex;
+            }
+        }
+
+        const tempTextures = (typeof tempData !== 'undefined') ? tempData.map(buildTempDataTexture) : [];
+        const windTextures = (typeof windData !== 'undefined') ? windData.map(buildWindDataTexture) : [];
 
         const dataGeometry = new THREE.SphereGeometry(earthRadius + 0.3, 128, 128);
-        const dataMaterial = new THREE.MeshBasicMaterial({ 
-            map: canvasTexture, 
-            transparent: true, 
-            opacity: 0.90,
+        const dataMaterial = new THREE.ShaderMaterial({
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                precision highp float;
+                uniform sampler2D u_dataA;
+                uniform sampler2D u_dataB;
+                uniform sampler2D u_colorRamp;
+                uniform float u_blend;
+                uniform float u_minVal;
+                uniform float u_maxVal;
+                uniform float u_opacity;
+                varying vec2 vUv;
+
+                void main() {
+                    float valA = texture2D(u_dataA, vUv).r;
+                    float valB = texture2D(u_dataB, vUv).r;
+                    float val = mix(valA, valB, u_blend);
+                    float norm = clamp((val - u_minVal) / (u_maxVal - u_minVal), 0.0, 1.0);
+                    vec4 col = texture2D(u_colorRamp, vec2(norm, 0.5));
+                    gl_FragColor = vec4(col.rgb, u_opacity);
+                }
+            `,
+            uniforms: {
+                u_dataA: { value: tempTextures[0] || null },
+                u_dataB: { value: tempTextures[0] || null },
+                u_colorRamp: { value: colorRampTempTex },
+                u_blend: { value: 0.0 },
+                u_minVal: { value: useFloat ? minTempRange : 0.0 },
+                u_maxVal: { value: useFloat ? maxTempRange : 1.0 },
+                u_opacity: { value: 0.90 }
+            },
+            transparent: true,
             depthWrite: false
         });
         const dataMesh = new THREE.Mesh(dataGeometry, dataMaterial);
@@ -637,34 +815,6 @@
             cityCtx.restore();
         }
 
-        function generateHeatmapTexture() {
-            const data = imgData.data;
-            for (let y = 0; y < canvas.height; y++) {
-                let lat = 90 - (y / canvas.height) * 180;
-                for (let x = 0; x < canvas.width; x++) {
-                    let lng = (x / canvas.width) * 360 - 180;
-                    
-                    let real = getInterpolatedData(lat, lng);
-                    let color;
-
-                    if (currentMode === 'temp') {
-                        color = d3.rgb(colorScaleTemp(real.t));
-                    } else {
-                        const speed = Math.sqrt(real.u * real.u + real.v * real.v) * 3.6;
-                        color = d3.rgb(colorScaleWind(speed));
-                    }
-                    
-                    let index = (y * canvas.width + x) * 4;
-                    data[index] = color ? color.r : 0;
-                    data[index + 1] = color ? color.g : 0;
-                    data[index + 2] = color ? color.b : 0;
-                    data[index + 3] = 255; // 100% reine, leuchtende Farben wie bei Windy!
-                }
-            }
-            ctx.putImageData(imgData, 0, 0);
-            canvasTexture.needsUpdate = true;
-        }
-
 
         // UI & EVENT HANDLERS
         let clickedPopupPoint = null;
@@ -779,13 +929,14 @@
             const liveIdx = getLiveStepIndex();
             const stepOffset = Math.round(currentHourOffset / 3);
             
+            let targetIdx = 0;
             if (typeof tempData !== 'undefined' && tempData.length > 0) {
-                const targetIdx = Math.max(0, Math.min(tempData.length - 1, liveIdx + stepOffset));
+                targetIdx = Math.max(0, Math.min(tempData.length - 1, liveIdx + stepOffset));
                 activeTemp = tempData[targetIdx];
             }
             if (typeof windData !== 'undefined' && windData.length > 0) {
-                const targetIdx = Math.max(0, Math.min(windData.length - 1, liveIdx + stepOffset));
-                activeWind = windData[targetIdx];
+                const windIdx = Math.max(0, Math.min(windData.length - 1, liveIdx + stepOffset));
+                activeWind = windData[windIdx];
             }
             
             const titleEl = document.getElementById('timeDisplayTitle');
@@ -793,7 +944,13 @@
                 titleEl.innerText = formatDisplayTime(activeTemp, currentHourOffset);
             }
 
-            if (currentMode === 'temp') generateHeatmapTexture();
+            const textures = currentMode === 'temp' ? tempTextures : windTextures;
+            if (textures.length > 0 && textures[targetIdx]) {
+                dataMaterial.uniforms.u_dataA.value = textures[targetIdx];
+                dataMaterial.uniforms.u_dataB.value = textures[targetIdx];
+                dataMaterial.uniforms.u_blend.value = 0.0;
+            }
+
             updatePopupContent();
         }
 
@@ -815,14 +972,19 @@
                 document.getElementById('legend-max').innerText = '+50°C';
                 document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #8c52ff, #a473b6, #b388ff, #88ccee, #3399cc, #1d5cae, #1b7a42, #32962a, #55ad26, #84c424, #b2d820, #d8e61e, #f7e318, #f8be17, #f69519, #eb6814, #e03e16, #dc2626, #b71c1c, #800808, #480202, #200000)'; 
                 document.getElementById('timeLabel').innerText = 'Live Oberflächentemperatur (3D Globus)';
-                generateHeatmapTexture();
+                dataMaterial.uniforms.u_colorRamp.value = colorRampTempTex;
+                dataMaterial.uniforms.u_minVal.value = useFloat ? minTempRange : 0.0;
+                dataMaterial.uniforms.u_maxVal.value = useFloat ? maxTempRange : 1.0;
             } else {
                 document.getElementById('legend-min').innerText = '0 km/h';
                 document.getElementById('legend-max').innerText = '100+ km/h';
                 document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #1a1a3a, #0033cc, #00ccff, #00ff00, #ffff00, #ff6600, #cc00ff)';
                 document.getElementById('timeLabel').innerText = 'Live Wind-Geschwindigkeit (3D Globus)';
-                generateHeatmapTexture();
+                dataMaterial.uniforms.u_colorRamp.value = colorRampWindTex;
+                dataMaterial.uniforms.u_minVal.value = 0.0;
+                dataMaterial.uniforms.u_maxVal.value = useFloat ? maxWindKmh : 1.0;
             }
+            updateActiveData();
         }
         window.switchLayer = switchLayer;
 
