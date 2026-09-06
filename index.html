@@ -267,7 +267,7 @@
         cityLabelsCanvas.height = screenH;
         const cityCtx = cityLabelsCanvas.getContext('2d');
 
-        const particleCount = 4000; // Perfektes Mittelmaß (nicht zu voll, nicht zu leer)
+        const particleCount = 5500; // Ausgewogene Dichte für den gesamten Bildschirm
         const particles = [];
         for (let i = 0; i < particleCount; i++) {
             particles.push({ 
@@ -327,9 +327,9 @@
                 const disc = cDotD * cDotD - (cLenSq - rSq);
 
                 if (disc < 0) {
-                    // Außerhalb des Globus im Weltall: Neu auf dem sichtbaren Bildschirmbereich platzieren
-                    p.x = screenW * 0.5 + (Math.random() - 0.5) * screenW * 0.75;
-                    p.y = screenH * 0.5 + (Math.random() - 0.5) * screenH * 0.75;
+                    // Außerhalb des Globus im Weltall: Neu auf dem gesamten sichtbaren Bildschirm platzieren
+                    p.x = Math.random() * screenW;
+                    p.y = Math.random() * screenH;
                     p.age = 0;
                     continue;
                 }
@@ -358,8 +358,8 @@
                 if (isNaN(u) || isNaN(v) || (u === 0 && v === 0)) {
                     p.age += timeScale;
                     if (p.age > p.lifespan) {
-                        p.x = screenW * 0.5 + (Math.random() - 0.5) * screenW * 0.75;
-                        p.y = screenH * 0.5 + (Math.random() - 0.5) * screenH * 0.75;
+                        p.x = Math.random() * screenW;
+                        p.y = Math.random() * screenH;
                         p.age = 0;
                     }
                     continue;
@@ -405,9 +405,9 @@
                 const nextScreenX = p.x + dirX * screenStep;
                 const nextScreenY = p.y + dirY * screenStep;
 
-                if (p.age > p.lifespan || tempNextVec.z > 1.0) {
-                    p.x = screenW * 0.5 + (Math.random() - 0.5) * screenW * 0.75;
-                    p.y = screenH * 0.5 + (Math.random() - 0.5) * screenH * 0.75;
+                if (p.age > p.lifespan || tempNextVec.z > 1.0 || nextScreenX < 0 || nextScreenX > screenW || nextScreenY < 0 || nextScreenY > screenH) {
+                    p.x = Math.random() * screenW;
+                    p.y = Math.random() * screenH;
                     p.age = 0;
                 } else {
                     screenWindCtx.moveTo(p.x, p.y);
