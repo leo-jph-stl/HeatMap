@@ -106,7 +106,7 @@
 
         <div id="legend">
             <span id="legend-min">-30°C</span>
-            <div id="legend-bar" class="color-bar" style="background: linear-gradient(to right, #8c52ff, #a473b6, #b388ff, #88ccee, #3399cc, #1d5cae, #237a6b, #3c8242, #5d852a, #86941e, #b8ab17, #dfbe1a, #f0c21e, #f59818, #eb6c14, #e24812, #d92e16, #dc2626, #b71c1c, #800808, #480202, #200000);"></div>
+            <div id="legend-bar" class="color-bar" style="background: linear-gradient(to right, #8c52ff, #a473b6, #b388ff, #88ccee, #3399cc, #1d5cae, #1b7a42, #32962a, #55ad26, #84c424, #b2d820, #d8e61e, #f7e318, #f8be17, #f69519, #eb6814, #e03e16, #dc2626, #b71c1c, #800808, #480202, #200000);"></div>
             <span id="legend-max">+50°C</span>
         </div>
     </div>
@@ -138,11 +138,11 @@
             .clamp(true);
 
         const colorScaleTemp = d3.scaleLinear()
-            .domain([-60, -40, -30, -20, -15, -10, -5, 0, 4, 8, 11, 13, 15, 17, 19, 22, 25, 28, 31, 35, 40, 45, 50, 55])
+            .domain([-60, -40, -30, -20, -15, -10, -5, 0, 3, 7, 11, 15, 17, 19, 20, 22, 24, 27, 30, 34, 39, 44, 49, 54])
             .range([
                 '#ffffff', '#6010a0', '#8c52ff', '#a473b6', '#b388ff', '#88ccee', '#3399cc', '#1d5cae', 
-                '#237a6b', '#3c8242', '#5d852a', '#86941e', '#b8ab17', '#dfbe1a', '#f0c21e', '#f59818', 
-                '#eb6c14', '#e24812', '#d92e16', '#dc2626', '#b71c1c', '#800808', '#480202', '#200000'
+                '#1b7a42', '#32962a', '#55ad26', '#84c424', '#b2d820', '#d8e61e', '#f7e318', '#f8be17', 
+                '#f69519', '#eb6814', '#e03e16', '#dc2626', '#b71c1c', '#800808', '#480202', '#200000'
             ])
             .clamp(true);
 
@@ -812,7 +812,7 @@
             if (mode === 'temp') {
                 document.getElementById('legend-min').innerText = '-30°C';
                 document.getElementById('legend-max').innerText = '+50°C';
-                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #8c52ff, #a473b6, #b388ff, #88ccee, #3399cc, #1d5cae, #237a6b, #3c8242, #5d852a, #86941e, #b8ab17, #dfbe1a, #f0c21e, #f59818, #eb6c14, #e24812, #d92e16, #dc2626, #b71c1c, #800808, #480202, #200000)'; 
+                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #8c52ff, #a473b6, #b388ff, #88ccee, #3399cc, #1d5cae, #1b7a42, #32962a, #55ad26, #84c424, #b2d820, #d8e61e, #f7e318, #f8be17, #f69519, #eb6814, #e03e16, #dc2626, #b71c1c, #800808, #480202, #200000)'; 
                 document.getElementById('timeLabel').innerText = 'Live Oberflächentemperatur (3D Globus)';
                 generateHeatmapTexture();
             } else {
