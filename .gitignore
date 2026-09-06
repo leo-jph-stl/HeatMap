@@ -1,0 +1,23 @@
+# Scratch & exploratory files
+earth_repo/
+*.xml
+*.zip
+*.txt
+test*.png
+test.png
+fetch_live_temp.js
+fetch_opendap_temp.js
+fetch_opendap_wind.js
+fetch_summer_temp.js
+fetch_temp.js
+fetch_temp_15.js
+fetch_weather.js
+maplibre*.js
+met.json
+wind.json
+wind_raw.json
+
+# Dependencies & OS
+node_modules/
+.DS_Store
+Thumbs.db
