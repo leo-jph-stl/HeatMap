@@ -938,23 +938,53 @@
                 uniform float u_opacity;
                 varying vec2 vUv;
 
-                // C2-stetige Quintic-Spline Glättung (Ken Perlin Polynomial: 6f^5 - 15f^4 + 10f^3)
-                // Eliminiert selbst winzigste 2. Ableitungs-Gitterkanten für absolut makellose, flüssige Vektor-Farbverläufe
+                // 16-PUNKT BICUBIC CATMULL-ROM SPLINE FILTER (Windy.com / GIS Professional Interpolation)
+                // Garantiert C1-Stetigkeit und stufenlose Gradienten über alle Zellgrenzen ohne künstliche Plateaus
+                float catmullRom(float p0, float p1, float p2, float p3, float t) {
+                    float v0 = (p2 - p0) * 0.5;
+                    float v1 = (p3 - p1) * 0.5;
+                    float t2 = t * t;
+                    float t3 = t2 * t;
+                    return (2.0 * p1 - 2.0 * p2 + v0 + v1) * t3 + (-3.0 * p1 + 3.0 * p2 - 2.0 * v0 - v1) * t2 + v0 * t + p1;
+                }
+
                 float sampleSmooth(sampler2D tex, vec2 uv) {
                     vec2 pos = uv * u_texSize - 0.5;
                     vec2 f = fract(pos);
-                    vec2 i = (floor(pos) + 0.5) / u_texSize;
+                    vec2 i = floor(pos) + 0.5;
                     vec2 d = 1.0 / u_texSize;
 
-                    // Quintic C2 Glättungskurve
-                    vec2 w = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+                    // 16 Messpunkte (4x4 Nachbarschaft) für exakte räumliche Ableitungen
+                    float col0 = catmullRom(
+                        texture2D(tex, clamp((i + vec2(-1.0, -1.0)) * d, vec2(0.0), vec2(1.0))).r,
+                        texture2D(tex, clamp((i + vec2( 0.0, -1.0)) * d, vec2(0.0), vec2(1.0))).r,
+                        texture2D(tex, clamp((i + vec2( 1.0, -1.0)) * d, vec2(0.0), vec2(1.0))).r,
+                        texture2D(tex, clamp((i + vec2( 2.0, -1.0)) * d, vec2(0.0), vec2(1.0))).r,
+                        f.x
+                    );
+                    float col1 = catmullRom(
+                        texture2D(tex, clamp((i + vec2(-1.0,  0.0)) * d, vec2(0.0), vec2(1.0))).r,
+                        texture2D(tex, clamp((i + vec2( 0.0,  0.0)) * d, vec2(0.0), vec2(1.0))).r,
+                        texture2D(tex, clamp((i + vec2( 1.0,  0.0)) * d, vec2(0.0), vec2(1.0))).r,
+                        texture2D(tex, clamp((i + vec2( 2.0,  0.0)) * d, vec2(0.0), vec2(1.0))).r,
+                        f.x
+                    );
+                    float col2 = catmullRom(
+                        texture2D(tex, clamp((i + vec2(-1.0,  1.0)) * d, vec2(0.0), vec2(1.0))).r,
+                        texture2D(tex, clamp((i + vec2( 0.0,  1.0)) * d, vec2(0.0), vec2(1.0))).r,
+                        texture2D(tex, clamp((i + vec2( 1.0,  1.0)) * d, vec2(0.0), vec2(1.0))).r,
+                        texture2D(tex, clamp((i + vec2( 2.0,  1.0)) * d, vec2(0.0), vec2(1.0))).r,
+                        f.x
+                    );
+                    float col3 = catmullRom(
+                        texture2D(tex, clamp((i + vec2(-1.0,  2.0)) * d, vec2(0.0), vec2(1.0))).r,
+                        texture2D(tex, clamp((i + vec2( 0.0,  2.0)) * d, vec2(0.0), vec2(1.0))).r,
+                        texture2D(tex, clamp((i + vec2( 1.0,  2.0)) * d, vec2(0.0), vec2(1.0))).r,
+                        texture2D(tex, clamp((i + vec2( 2.0,  2.0)) * d, vec2(0.0), vec2(1.0))).r,
+                        f.x
+                    );
 
-                    float p00 = texture2D(tex, clamp(i, vec2(0.0), vec2(1.0))).r;
-                    float p10 = texture2D(tex, clamp(i + vec2(d.x, 0.0), vec2(0.0), vec2(1.0))).r;
-                    float p01 = texture2D(tex, clamp(i + vec2(0.0, d.y), vec2(0.0), vec2(1.0))).r;
-                    float p11 = texture2D(tex, clamp(i + d, vec2(0.0), vec2(1.0))).r;
-
-                    return mix(mix(p00, p10, w.x), mix(p01, p11, w.x), w.y);
+                    return catmullRom(col0, col1, col2, col3, f.y);
                 }
 
                 void main() {
