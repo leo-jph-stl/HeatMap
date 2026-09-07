@@ -21,31 +21,90 @@
         body { margin: 0; padding: 0; background-color: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; overflow: hidden; }
         #canvas-container { position: absolute; top: 0; bottom: 0; width: 100%; }
 
-        #ui-container {
-            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
-            background: rgba(20, 20, 20, 0.9); padding: 20px 40px; border-radius: 12px;
-            text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.8); width: 80%;
-            max-width: 700px; border: 1px solid rgba(255, 255, 255, 0.2); z-index: 10;
-        }
-        #timeLabel { font-size: 1.4em; font-weight: bold; margin-bottom: 5px; color: #ffffff; }
-        
-        #layer-toggles { margin-top: 15px; display: flex; justify-content: center; gap: 10px; }
-        .toggle-btn { background: #333; color: #fff; border: 1px solid #555; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-        .toggle-btn:hover { background: #444; }
-        .toggle-btn.active { background: #00ccff; color: #000; border-color: #00ccff; box-shadow: 0 0 10px rgba(0, 204, 255, 0.5); }
-
-        #legend { margin-top: 15px; display: flex; align-items: center; justify-content: space-between; font-size: 0.9em; font-weight: bold; }
-        .color-bar { flex-grow: 1; height: 12px; margin: 0 15px; border-radius: 6px; box-shadow: 0 0 5px rgba(0,0,0,0.5) inset; }
-        
+        /* VEREINTES MODERNES BOTTOM-DOCK (Zeitleiste & Farblegende) */
         #timeline-container {
-            position: absolute; bottom: 30px; right: 30px;
-            background: rgba(255, 255, 255, 0.9); padding: 15px; border-radius: 8px;
-            font-family: sans-serif; box-shadow: 0 0 15px rgba(0,0,0,0.5); z-index: 10;
-            width: 350px; text-align: center; color: black;
+            position: absolute;
+            bottom: 24px;
+            right: 24px;
+            background: rgba(18, 18, 22, 0.90);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            padding: 12px 16px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.75);
+            z-index: 40;
+            width: 360px;
+            max-width: calc(100vw - 48px);
+            color: #ffffff;
+            user-select: none;
+            transition: all 0.25s ease;
         }
-        #timeSlider { width: 100%; margin: 10px 0; cursor: pointer; }
-        #timeDisplayTitle { font-weight: bold; font-size: 14px; min-width: 120px; }
-        .time-labels { display: flex; justify-content: space-between; font-size: 12px; }
+        .timeline-top-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+        #playBtn {
+            background: rgba(0, 204, 255, 0.16);
+            border: 1px solid rgba(0, 204, 255, 0.45);
+            color: #00ccff;
+            padding: 4px 12px;
+            font-size: 12.5px;
+            font-weight: 700;
+            border-radius: 14px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            flex-shrink: 0;
+        }
+        #playBtn:hover {
+            background: rgba(0, 204, 255, 0.35);
+            color: #ffffff;
+            box-shadow: 0 0 10px rgba(0, 204, 255, 0.4);
+        }
+        #timeDisplayTitle {
+            font-weight: 600;
+            font-size: 12.5px;
+            color: #ffffff;
+            text-align: right;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #timeSlider {
+            width: 100%;
+            margin: 6px 0;
+            cursor: pointer;
+            accent-color: #00ccff;
+        }
+        .time-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #8e8e93;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+        #legend {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11px;
+            font-weight: 600;
+            color: #bbb;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .color-bar {
+            flex-grow: 1;
+            height: 7px;
+            margin: 0 10px;
+            border-radius: 4px;
+            box-shadow: 0 0 4px rgba(0, 0, 0, 0.5) inset;
+        }
 
         #popup {
             position: absolute;
@@ -265,13 +324,20 @@
             color: #8e8e93;
             margin-top: 1px;
         }
-        .forecast-close {
+        .forecast-btn-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: 8px;
+            flex-shrink: 0;
+        }
+        .forecast-action-btn {
             background: rgba(255, 255, 255, 0.12);
             border: none;
-            color: #aaa;
+            color: #ccc;
             border-radius: 50%;
-            width: 22px;
-            height: 22px;
+            width: 24px;
+            height: 24px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -279,11 +345,35 @@
             cursor: pointer;
             transition: 0.15s;
             flex-shrink: 0;
-            margin-left: 8px;
         }
-        .forecast-close:hover {
+        .forecast-action-btn:hover {
             background: rgba(255, 255, 255, 0.25);
             color: #fff;
+        }
+        #forecastMiniSummary {
+            display: none;
+            align-items: center;
+            gap: 5px;
+            font-weight: 700;
+            font-size: 14px;
+            color: #00ccff;
+            margin-left: auto;
+            margin-right: 6px;
+            white-space: nowrap;
+        }
+        #forecast-container.minimized {
+            padding: 9px 14px;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+        #forecast-container.minimized .forecast-header {
+            margin-bottom: 0;
+        }
+        #forecast-container.minimized #forecastBody {
+            display: none;
+        }
+        #forecast-container.minimized #forecastMiniSummary {
+            display: flex;
         }
         .forecast-current {
             display: flex;
@@ -388,6 +478,65 @@
             font-weight: 700;
             color: #fff;
         }
+
+        /* RESPONSIVE MOBILE OPTIMIERUNG (< 768px) */
+        @media (max-width: 768px) {
+            #search-container {
+                top: 12px;
+                left: 12px;
+                right: 12px;
+                width: auto;
+                max-width: none;
+            }
+            #search-box {
+                padding: 7px 12px;
+            }
+            #forecast-container {
+                top: 60px;
+                left: 12px;
+                right: 12px;
+                width: auto;
+                max-width: none;
+                padding: 10px 12px;
+                border-radius: 14px;
+            }
+            #forecast-container.minimized {
+                padding: 7px 12px;
+                border-radius: 18px;
+            }
+            .forecast-place {
+                font-size: 14px;
+            }
+            .forecast-sub {
+                font-size: 10.5px;
+            }
+            .forecast-big-temp {
+                font-size: 26px;
+            }
+            .forecast-weather-icon {
+                font-size: 20px;
+            }
+            .forecast-hour-card {
+                padding: 5px 7px;
+                min-width: 40px;
+            }
+            #timeline-container {
+                bottom: 12px;
+                left: 12px;
+                right: 12px;
+                width: auto;
+                max-width: none;
+                padding: 9px 12px;
+                border-radius: 14px;
+            }
+            #timeDisplayTitle {
+                font-size: 11.5px;
+            }
+            #legend {
+                padding-top: 6px;
+                font-size: 10px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -411,55 +560,49 @@
 
     <!-- Kompakte Wetter-Prognosekarte -->
     <div id="forecast-container">
-        <div class="forecast-header">
+        <div class="forecast-header" id="forecastHeader">
             <div class="forecast-title-box">
                 <div id="forecastPlaceName" class="forecast-place">München</div>
                 <div id="forecastCountry" class="forecast-sub">Deutschland</div>
             </div>
-            <button id="forecastCloseBtn" class="forecast-close" title="Schließen">✕</button>
-        </div>
-        
-        <div class="forecast-current">
-            <div class="forecast-temp-group">
-                <span id="forecastCurrentIcon" class="forecast-weather-icon">☀️</span>
-                <span id="forecastCurrentTemp" class="forecast-big-temp">16°</span>
-                <span class="forecast-unit">C</span>
+            <div id="forecastMiniSummary">
+                <span id="forecastMiniIcon">☀️</span>
+                <span id="forecastMiniTemp">16°</span>
             </div>
-            <div class="forecast-stats">
-                <div class="forecast-stat-item">
-                    <span class="forecast-stat-label">Wind</span>
-                    <span id="forecastCurrentWind" class="forecast-stat-val">14 km/h</span>
-                </div>
-                <div class="forecast-stat-item">
-                    <span class="forecast-stat-label">Min / Max</span>
-                    <span id="forecastMinMax" class="forecast-stat-val">9° / 19°</span>
-                </div>
+            <div class="forecast-btn-group">
+                <button id="forecastToggleBtn" class="forecast-action-btn" title="Minimieren / Ausklappen">▼</button>
+                <button id="forecastCloseBtn" class="forecast-action-btn" title="Schließen">✕</button>
             </div>
         </div>
         
-        <div class="forecast-timeline-title">24h / 48h Wettertrend (GFS Modell)</div>
-        <div id="forecastTimeline" class="forecast-timeline-scroll"></div>
+        <div id="forecastBody">
+            <div class="forecast-current">
+                <div class="forecast-temp-group">
+                    <span id="forecastCurrentIcon" class="forecast-weather-icon">☀️</span>
+                    <span id="forecastCurrentTemp" class="forecast-big-temp">16°</span>
+                    <span class="forecast-unit">C</span>
+                </div>
+                <div class="forecast-stats">
+                    <div class="forecast-stat-item">
+                        <span class="forecast-stat-label">Wind</span>
+                        <span id="forecastCurrentWind" class="forecast-stat-val">14 km/h</span>
+                    </div>
+                    <div class="forecast-stat-item">
+                        <span class="forecast-stat-label">Min / Max</span>
+                        <span id="forecastMinMax" class="forecast-stat-val">9° / 19°</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="forecast-timeline-title">24h / 48h Wettertrend (GFS Modell)</div>
+            <div id="forecastTimeline" class="forecast-timeline-scroll"></div>
+        </div>
     </div>
     
-    <div id="ui-container">
-        <div id="timeLabel">Live Oberflächentemperatur (0.25° HD)</div>
-        <div style="font-size: 0.85em; color: #aaa; margin-top: 5px;">Reale Wetterdaten & Windströmungen (GFS 25 km)</div>
-        
-        <div id="layer-toggles" style="display: none;">
-            <button id="btn-temp" class="toggle-btn active" onclick="switchLayer('temp')">Temperatur</button>
-            <button id="btn-wind" class="toggle-btn" onclick="switchLayer('wind')">Windgeschwindigkeit</button>
-        </div>
-
-        <div id="legend">
-            <span id="legend-min">-30°C</span>
-            <div id="legend-bar" class="color-bar" style="background: linear-gradient(to right, #8c52ff 0.0%, #a473b6 12.5%, #b388ff 18.8%, #88ccee 25.0%, #3399cc 31.3%, #1d5cae 37.5%, #1b7a42 41.3%, #32962a 46.3%, #55ad26 51.2%, #84c424 56.3%, #b2d820 58.8%, #d8e61e 61.3%, #f7e318 62.5%, #ffdb00 67.5%, #ffa600 71.3%, #ff6200 75.0%, #ee3a14 78.1%, #dc2222 81.3%, #a80e14 84.4%, #700408 87.5%, #521a10 91.3%, #38140c 95.0%, #1e0c08 97.5%, #000000 100.0%);"></div>
-            <span id="legend-max">+50°C</span>
-        </div>
-    </div>
-    
+    <!-- Schlankes, vereintes Bottom-Dock (Zeitleiste + Farblegende) -->
     <div id="timeline-container">
-        <div style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 5px;">
-            <button id="playBtn" style="padding: 2px 10px; font-size: 14px; border-radius: 4px;">▶ Play</button>
+        <div class="timeline-top-row">
+            <button id="playBtn">▶ Play</button>
             <div id="timeDisplayTitle">Live (Jetzt)</div>
         </div>
         <input type="range" id="timeSlider" min="-24" max="48" step="3" value="0">
@@ -467,6 +610,18 @@
             <span>-24h</span>
             <span>Live</span>
             <span>+48h</span>
+        </div>
+        <div id="legend">
+            <span id="legend-min">-30°C</span>
+            <div id="legend-bar" class="color-bar" style="background: linear-gradient(to right, #8c52ff 0.0%, #a473b6 12.5%, #b388ff 18.8%, #88ccee 25.0%, #3399cc 31.3%, #1d5cae 37.5%, #1b7a42 41.3%, #32962a 46.3%, #55ad26 51.2%, #84c424 56.3%, #b2d820 58.8%, #d8e61e 61.3%, #f7e318 62.5%, #ffdb00 67.5%, #ffa600 71.3%, #ff6200 75.0%, #ee3a14 78.1%, #dc2222 81.3%, #a80e14 84.4%, #700408 87.5%, #521a10 91.3%, #38140c 95.0%, #1e0c08 97.5%, #000000 100.0%);"></div>
+            <span id="legend-max">+50°C</span>
+        </div>
+        <!-- Versteckte Elemente für JS-Kompatibilität -->
+        <span id="timeLabel" style="display: none;"></span>
+        <div id="ui-container" style="display: none;"></div>
+        <div id="layer-toggles" style="display: none;">
+            <button id="btn-temp"></button>
+            <button id="btn-wind"></button>
         </div>
     </div>
 
@@ -1951,6 +2106,32 @@
 
         const forecastContainer = document.getElementById('forecast-container');
         const forecastCloseBtn = document.getElementById('forecastCloseBtn');
+        const forecastToggleBtn = document.getElementById('forecastToggleBtn');
+        const forecastHeader = document.getElementById('forecastHeader');
+
+        function toggleForecastMinimize(e) {
+            if (e) e.stopPropagation();
+            if (!forecastContainer) return;
+            forecastContainer.classList.toggle('minimized');
+            const isMin = forecastContainer.classList.contains('minimized');
+            if (forecastToggleBtn) {
+                forecastToggleBtn.innerText = isMin ? '▲' : '▼';
+                forecastToggleBtn.title = isMin ? 'Ausklappen' : 'Minimieren';
+            }
+        }
+
+        if (forecastToggleBtn) {
+            forecastToggleBtn.addEventListener('click', toggleForecastMinimize);
+        }
+
+        if (forecastHeader) {
+            forecastHeader.addEventListener('click', (e) => {
+                if (e.target.closest('#forecastCloseBtn') || e.target.closest('#forecastToggleBtn')) return;
+                if (forecastContainer.classList.contains('minimized')) {
+                    toggleForecastMinimize();
+                }
+            });
+        }
 
         if (forecastCloseBtn) {
             forecastCloseBtn.addEventListener('click', (e) => {
@@ -2080,6 +2261,11 @@
             if (tempEl) tempEl.innerText = Math.round(liveTemp) + '°';
             if (windEl) windEl.innerText = windSpeedKmh + ' km/h';
 
+            const miniIconEl = document.getElementById('forecastMiniIcon');
+            const miniTempEl = document.getElementById('forecastMiniTemp');
+            if (miniIconEl) miniIconEl.innerText = getWeatherIcon(liveTemp, windSpeedKmh);
+            if (miniTempEl) miniTempEl.innerText = Math.round(liveTemp) + '°C';
+
             // Min/Max und 48h Zeitstreifen
             const futureSteps = [];
             let minT = Infinity;
@@ -2153,10 +2339,42 @@
             popupEl.innerText = html;
         }
 
-        // Handle Click for popup & forecast
+        // Wisch- / Drag-Erkennung (Unterscheidung zwischen echtem Tippen und Globus-Verschieben)
+        let pointerStartX = 0;
+        let pointerStartY = 0;
+        let isPointerDragging = false;
+
+        window.addEventListener('pointerdown', (e) => {
+            pointerStartX = e.clientX;
+            pointerStartY = e.clientY;
+            isPointerDragging = false;
+        }, { passive: true });
+
+        window.addEventListener('pointermove', (e) => {
+            const dx = e.clientX - pointerStartX;
+            const dy = e.clientY - pointerStartY;
+            if (dx * dx + dy * dy > 36) { // Mehr als 6 Pixel Verschiebung = Wisch-/Drag-Geste
+                isPointerDragging = true;
+            }
+        }, { passive: true });
+
+        // Sobald der User den Globus rotiert, scrollt oder verschiebt: Temperatur-Popup sofort schließen!
+        controls.addEventListener('start', () => {
+            if (clickedPopupPoint) {
+                clickedPopupPoint = null;
+                popupEl.style.display = 'none';
+            }
+        });
+
+        // Handle Click for popup & forecast (NUR bei echtem Tippen/Klicken)
         window.addEventListener('click', (event) => {
-            // Nicht durch UI-Container, Prognose oder Suchleiste durchklicken
-            if (event.clientY > window.innerHeight - 100 || event.target.closest('#search-container') || event.target.closest('#forecast-container')) return;
+            // Wisch- oder Drehgesten ignorieren (KEIN unbeabsichtigtes Popup beim Scrollen!)
+            if (isPointerDragging) return;
+
+            // Klicks auf Suchleiste, Prognose-Card oder Bottom-Dock ignorieren
+            if (event.target.closest('#search-container') || 
+                event.target.closest('#forecast-container') || 
+                event.target.closest('#timeline-container')) return;
             
             // Bei Klick außerhalb der Suche Dropdown schließen
             if (!event.target.closest('#search-container')) {
