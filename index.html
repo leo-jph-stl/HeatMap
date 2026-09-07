@@ -742,9 +742,9 @@
         earthMesh.renderOrder = 0;
         scene.add(earthMesh);
 
-        // GPU WEBGL SHADER ENGINE (60 FPS BILINEAR WEATHER TEXTURES)
+        // GPU WEBGL SHADER ENGINE (60 FPS STUFENLOSE WETTER-TEXTURGLÄTTUNG)
         const isWebGL2 = !!renderer.capabilities.isWebGL2;
-        const useFloat = isWebGL2 && renderer.extensions.has('OES_texture_float_linear');
+        const useFloat = isWebGL2 || renderer.extensions.has('OES_texture_float');
 
         // Farb-Rampen als 1024x1 1D Texturen vorbereiten
         function createColorRampTexture(scaleFunc, minVal, maxVal, width = 1024) {
@@ -803,8 +803,8 @@
                 }
                 const tex = new THREE.DataTexture(buf, width, height, THREE.RedFormat, THREE.FloatType);
                 tex.generateMipmaps = false;
-                tex.minFilter = THREE.LinearFilter;
-                tex.magFilter = THREE.LinearFilter;
+                tex.minFilter = THREE.NearestFilter;
+                tex.magFilter = THREE.NearestFilter;
                 tex.wrapS = THREE.ClampToEdgeWrapping;
                 tex.wrapT = THREE.ClampToEdgeWrapping;
                 tex.needsUpdate = true;
@@ -826,8 +826,8 @@
                 }
                 const tex = new THREE.DataTexture(buf, width, height, THREE.RGBAFormat, THREE.UnsignedByteType);
                 tex.generateMipmaps = false;
-                tex.minFilter = THREE.LinearFilter;
-                tex.magFilter = THREE.LinearFilter;
+                tex.minFilter = THREE.NearestFilter;
+                tex.magFilter = THREE.NearestFilter;
                 tex.wrapS = THREE.ClampToEdgeWrapping;
                 tex.wrapT = THREE.ClampToEdgeWrapping;
                 tex.needsUpdate = true;
@@ -859,8 +859,8 @@
                 }
                 const tex = new THREE.DataTexture(buf, width, height, THREE.RedFormat, THREE.FloatType);
                 tex.generateMipmaps = false;
-                tex.minFilter = THREE.LinearFilter;
-                tex.magFilter = THREE.LinearFilter;
+                tex.minFilter = THREE.NearestFilter;
+                tex.magFilter = THREE.NearestFilter;
                 tex.wrapS = THREE.ClampToEdgeWrapping;
                 tex.wrapT = THREE.ClampToEdgeWrapping;
                 tex.needsUpdate = true;
@@ -889,8 +889,8 @@
                 }
                 const tex = new THREE.DataTexture(buf, width, height, THREE.RGBAFormat, THREE.UnsignedByteType);
                 tex.generateMipmaps = false;
-                tex.minFilter = THREE.LinearFilter;
-                tex.magFilter = THREE.LinearFilter;
+                tex.minFilter = THREE.NearestFilter;
+                tex.magFilter = THREE.NearestFilter;
                 tex.wrapS = THREE.ClampToEdgeWrapping;
                 tex.wrapT = THREE.ClampToEdgeWrapping;
                 tex.needsUpdate = true;
@@ -910,7 +910,7 @@
             }
         }
 
-        // REINIGUNG DES TEMPERATUR-SHADERS: GLATTE, PERFEKTE FARBEN OHNE MATSCHIGE SOBEL-FLECKEN
+        // REINIGUNG DES TEMPERATUR-SHADERS: STUFENLOSES CUBIC-SMOOTHING AUF ALLEN GERÄTEN
         const dataGeometry = new THREE.SphereGeometry(earthRadius + 0.3, 128, 128);
         const dataMaterial = new THREE.ShaderMaterial({
             vertexShader: `
@@ -925,15 +925,35 @@
                 uniform sampler2D u_dataA;
                 uniform sampler2D u_dataB;
                 uniform sampler2D u_colorRamp;
+                uniform vec2 u_texSize;
                 uniform float u_blend;
                 uniform float u_minVal;
                 uniform float u_maxVal;
                 uniform float u_opacity;
                 varying vec2 vUv;
 
+                // Hardware-unabhängige, stufenlose Glättung (Bilinear + Hermite-Cubic S-Kurve)
+                // Garantiert selbst auf mobilen GPUs ohne OES_texture_float_linear perfekte, seidenglatte Farbverläufe ohne Kacheleffekte
+                float sampleSmooth(sampler2D tex, vec2 uv) {
+                    vec2 pos = uv * u_texSize - 0.5;
+                    vec2 f = fract(pos);
+                    vec2 i = (floor(pos) + 0.5) / u_texSize;
+                    vec2 d = 1.0 / u_texSize;
+
+                    // Hermite-Cubic Spline (Smoothstep) für organische, stufenlose Übergänge ohne harte Kanten
+                    vec2 w = f * f * (3.0 - 2.0 * f);
+
+                    float p00 = texture2D(tex, clamp(i, vec2(0.0), vec2(1.0))).r;
+                    float p10 = texture2D(tex, clamp(i + vec2(d.x, 0.0), vec2(0.0), vec2(1.0))).r;
+                    float p01 = texture2D(tex, clamp(i + vec2(0.0, d.y), vec2(0.0), vec2(1.0))).r;
+                    float p11 = texture2D(tex, clamp(i + d, vec2(0.0), vec2(1.0))).r;
+
+                    return mix(mix(p00, p10, w.x), mix(p01, p11, w.x), w.y);
+                }
+
                 void main() {
-                    float valA = texture2D(u_dataA, vUv).r;
-                    float valB = texture2D(u_dataB, vUv).r;
+                    float valA = sampleSmooth(u_dataA, vUv);
+                    float valB = sampleSmooth(u_dataB, vUv);
                     float val = mix(valA, valB, u_blend);
                     float norm = clamp((val - u_minVal) / (u_maxVal - u_minVal), 0.0, 1.0);
                     vec4 col = texture2D(u_colorRamp, vec2(norm, 0.5));
@@ -944,6 +964,7 @@
                 u_dataA: { value: tempTextures[0] || null },
                 u_dataB: { value: tempTextures[0] || null },
                 u_colorRamp: { value: colorRampTempTex },
+                u_texSize: { value: new THREE.Vector2(1441.0, 721.0) },
                 u_blend: { value: 0.0 },
                 u_minVal: { value: useFloat ? minTempRange : 0.0 },
                 u_maxVal: { value: useFloat ? maxTempRange : 1.0 },
@@ -2565,6 +2586,7 @@
                 dataMaterial.uniforms.u_colorRamp.value = colorRampTempTex;
                 dataMaterial.uniforms.u_minVal.value = useFloat ? minTempRange : 0.0;
                 dataMaterial.uniforms.u_maxVal.value = useFloat ? maxTempRange : 1.0;
+                if (dataMaterial.uniforms.u_texSize) dataMaterial.uniforms.u_texSize.value.set(1441.0, 721.0);
             } else {
                 document.getElementById('legend-min').innerText = '0 km/h';
                 document.getElementById('legend-max').innerText = '100+ km/h';
@@ -2573,6 +2595,7 @@
                 dataMaterial.uniforms.u_colorRamp.value = colorRampWindTex;
                 dataMaterial.uniforms.u_minVal.value = 0.0;
                 dataMaterial.uniforms.u_maxVal.value = useFloat ? maxWindKmh : 1.0;
+                if (dataMaterial.uniforms.u_texSize) dataMaterial.uniforms.u_texSize.value.set(361.0, 181.0);
             }
             updateActiveData();
         }
