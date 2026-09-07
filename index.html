@@ -11,6 +11,11 @@
     
     <script src="wind_data.js"></script>
     <script src="temp_data.js"></script>
+    <script src="lakes_data.js"></script>
+    <script src="rivers_data.js"></script>
+    <script src="roads_data.js"></script>
+    <script src="urban_data.js"></script>
+    <script src="cities_data.js"></script>
     
     <style>
         body { margin: 0; padding: 0; background-color: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; overflow: hidden; }
@@ -87,6 +92,302 @@
             pointer-events: none;
             z-index: 3;
         }
+
+        /* SUCHE / SEARCH BAR */
+        #search-container {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            width: 330px;
+            max-width: calc(100vw - 48px);
+            z-index: 50;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+        }
+        #search-box {
+            display: flex;
+            align-items: center;
+            background: rgba(20, 20, 24, 0.88);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 28px;
+            padding: 8px 14px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+            transition: all 0.25s ease;
+        }
+        #search-box:focus-within {
+            border-color: #00ccff;
+            box-shadow: 0 4px 25px rgba(0, 204, 255, 0.35);
+            background: rgba(24, 24, 30, 0.96);
+        }
+        .search-icon {
+            color: #aaa;
+            margin-right: 10px;
+            flex-shrink: 0;
+        }
+        #searchInput {
+            flex-grow: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #fff;
+            font-size: 14.5px;
+            font-weight: 500;
+        }
+        #searchInput::placeholder {
+            color: #888;
+            font-weight: 400;
+        }
+        #searchClearBtn {
+            background: rgba(255, 255, 255, 0.15);
+            border: none;
+            color: #ccc;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            cursor: pointer;
+            padding: 0;
+            margin-left: 6px;
+            transition: 0.15s;
+        }
+        #searchClearBtn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            color: #fff;
+        }
+        #searchSuggestions {
+            margin-top: 8px;
+            background: rgba(20, 20, 24, 0.95);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.7);
+            max-height: 380px;
+            overflow-y: auto;
+        }
+        .suggestion-item {
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            transition: background 0.15s;
+        }
+        .suggestion-item:last-child {
+            border-bottom: none;
+        }
+        .suggestion-item:hover, .suggestion-item.active {
+            background: rgba(0, 204, 255, 0.16);
+        }
+        .suggestion-main {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            overflow: hidden;
+        }
+        .suggestion-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .suggestion-sub {
+            font-size: 11.5px;
+            color: #8e8e93;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .suggestion-temp {
+            font-size: 13px;
+            font-weight: 700;
+            color: #fff;
+            background: rgba(255, 255, 255, 0.12);
+            padding: 3px 8px;
+            border-radius: 12px;
+            margin-left: 10px;
+            flex-shrink: 0;
+        }
+        .suggestion-online {
+            color: #00ccff;
+            font-style: italic;
+        }
+
+        /* KOMPAKTE PROGNOSE-KARTE / FORECAST CARD */
+        #forecast-container {
+            position: absolute;
+            top: 76px;
+            left: 24px;
+            width: 330px;
+            max-width: calc(100vw - 48px);
+            z-index: 45;
+            background: rgba(20, 20, 24, 0.92);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 16px;
+            padding: 14px 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+            color: #fff;
+            display: none;
+            transition: opacity 0.25s ease;
+        }
+        .forecast-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .forecast-title-box {
+            overflow: hidden;
+        }
+        .forecast-place {
+            font-size: 16px;
+            font-weight: 700;
+            color: #ffffff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .forecast-sub {
+            font-size: 11.5px;
+            color: #8e8e93;
+            margin-top: 1px;
+        }
+        .forecast-close {
+            background: rgba(255, 255, 255, 0.12);
+            border: none;
+            color: #aaa;
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            cursor: pointer;
+            transition: 0.15s;
+            flex-shrink: 0;
+            margin-left: 8px;
+        }
+        .forecast-close:hover {
+            background: rgba(255, 255, 255, 0.25);
+            color: #fff;
+        }
+        .forecast-current {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            margin-bottom: 10px;
+        }
+        .forecast-temp-group {
+            display: flex;
+            align-items: baseline;
+            gap: 2px;
+        }
+        .forecast-weather-icon {
+            font-size: 24px;
+            margin-right: 6px;
+            align-self: center;
+        }
+        .forecast-big-temp {
+            font-size: 32px;
+            font-weight: 800;
+            color: #ffffff;
+            letter-spacing: -1px;
+            line-height: 1;
+        }
+        .forecast-unit {
+            font-size: 14px;
+            font-weight: 600;
+            color: #00ccff;
+        }
+        .forecast-stats {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            text-align: right;
+        }
+        .forecast-stat-item {
+            display: flex;
+            justify-content: flex-end;
+            gap: 6px;
+            font-size: 11.5px;
+        }
+        .forecast-stat-label {
+            color: #8e8e93;
+        }
+        .forecast-stat-val {
+            font-weight: 600;
+            color: #ddd;
+        }
+        .forecast-timeline-title {
+            font-size: 10.5px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #777;
+            margin-bottom: 8px;
+        }
+        .forecast-timeline-scroll {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+        }
+        .forecast-timeline-scroll::-webkit-scrollbar {
+            height: 4px;
+        }
+        .forecast-timeline-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+        .forecast-hour-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 6px 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 44px;
+            flex-shrink: 0;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .forecast-hour-card:hover, .forecast-hour-card.active {
+            background: rgba(0, 204, 255, 0.2);
+            border-color: #00ccff;
+        }
+        .forecast-hour-time {
+            font-size: 10px;
+            color: #999;
+            margin-bottom: 3px;
+        }
+        .forecast-hour-icon {
+            font-size: 14px;
+            margin-bottom: 3px;
+        }
+        .forecast-hour-temp {
+            font-size: 12px;
+            font-weight: 700;
+            color: #fff;
+        }
     </style>
 </head>
 <body>
@@ -94,19 +395,64 @@
     <canvas id="screenWindCanvas"></canvas>
     <canvas id="cityLabelsCanvas"></canvas>
     <div id="popup"></div>
+
+    <!-- Suchleiste -->
+    <div id="search-container">
+        <div id="search-box">
+            <svg class="search-icon" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="searchInput" placeholder="Ort oder Stadt suchen..." autocomplete="off" spellcheck="false">
+            <button id="searchClearBtn" title="Löschen">✕</button>
+        </div>
+        <div id="searchSuggestions" style="display: none;"></div>
+    </div>
+
+    <!-- Kompakte Wetter-Prognosekarte -->
+    <div id="forecast-container">
+        <div class="forecast-header">
+            <div class="forecast-title-box">
+                <div id="forecastPlaceName" class="forecast-place">München</div>
+                <div id="forecastCountry" class="forecast-sub">Deutschland</div>
+            </div>
+            <button id="forecastCloseBtn" class="forecast-close" title="Schließen">✕</button>
+        </div>
+        
+        <div class="forecast-current">
+            <div class="forecast-temp-group">
+                <span id="forecastCurrentIcon" class="forecast-weather-icon">☀️</span>
+                <span id="forecastCurrentTemp" class="forecast-big-temp">16°</span>
+                <span class="forecast-unit">C</span>
+            </div>
+            <div class="forecast-stats">
+                <div class="forecast-stat-item">
+                    <span class="forecast-stat-label">Wind</span>
+                    <span id="forecastCurrentWind" class="forecast-stat-val">14 km/h</span>
+                </div>
+                <div class="forecast-stat-item">
+                    <span class="forecast-stat-label">Min / Max</span>
+                    <span id="forecastMinMax" class="forecast-stat-val">9° / 19°</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="forecast-timeline-title">24h / 48h Wettertrend (GFS Modell)</div>
+        <div id="forecastTimeline" class="forecast-timeline-scroll"></div>
+    </div>
     
     <div id="ui-container">
-        <div id="timeLabel">Live Oberflächentemperatur (3D Globus)</div>
-        <div style="font-size: 0.85em; color: #aaa; margin-top: 5px;">Reale interpolierte Wetterdaten</div>
+        <div id="timeLabel">Live Oberflächentemperatur (0.25° HD)</div>
+        <div style="font-size: 0.85em; color: #aaa; margin-top: 5px;">Reale Wetterdaten & Windströmungen (GFS 25 km)</div>
         
-        <div id="layer-toggles">
+        <div id="layer-toggles" style="display: none;">
             <button id="btn-temp" class="toggle-btn active" onclick="switchLayer('temp')">Temperatur</button>
             <button id="btn-wind" class="toggle-btn" onclick="switchLayer('wind')">Windgeschwindigkeit</button>
         </div>
 
         <div id="legend">
             <span id="legend-min">-30°C</span>
-            <div id="legend-bar" class="color-bar" style="background: linear-gradient(to right, #8c52ff, #a473b6, #b388ff, #88ccee, #3399cc, #1d5cae, #1b7a42, #32962a, #55ad26, #84c424, #b2d820, #d8e61e, #f7e318, #f8be17, #f69519, #eb6814, #e03e16, #dc2626, #b71c1c, #800808, #480202, #200000);"></div>
+            <div id="legend-bar" class="color-bar" style="background: linear-gradient(to right, #8c52ff 0.0%, #a473b6 12.5%, #b388ff 18.8%, #88ccee 25.0%, #3399cc 31.3%, #1d5cae 37.5%, #1b7a42 41.3%, #32962a 46.3%, #55ad26 51.2%, #84c424 56.3%, #b2d820 58.8%, #d8e61e 61.3%, #f7e318 62.5%, #ffdb00 67.5%, #ffa600 71.3%, #ff6200 75.0%, #ee3a14 78.1%, #dc2222 81.3%, #a80e14 84.4%, #700408 87.5%, #521a10 91.3%, #38140c 95.0%, #1e0c08 97.5%, #000000 100.0%);"></div>
             <span id="legend-max">+50°C</span>
         </div>
     </div>
@@ -138,11 +484,12 @@
             .clamp(true);
 
         const colorScaleTemp = d3.scaleLinear()
-            .domain([-60, -40, -30, -20, -15, -10, -5, 0, 3, 7, 11, 15, 17, 19, 20, 22, 24, 27, 30, 34, 39, 44, 49, 54])
+            .domain([-60, -40, -30, -20, -15, -10, -5, 0, 3, 7, 11, 15, 17, 19, 20, 24, 27, 30, 32.5, 35, 37.5, 40, 43, 46, 48, 50, 55])
             .range([
                 '#ffffff', '#6010a0', '#8c52ff', '#a473b6', '#b388ff', '#88ccee', '#3399cc', '#1d5cae', 
-                '#1b7a42', '#32962a', '#55ad26', '#84c424', '#b2d820', '#d8e61e', '#f7e318', '#f8be17', 
-                '#f69519', '#eb6814', '#e03e16', '#dc2626', '#b71c1c', '#800808', '#480202', '#200000'
+                '#1b7a42', '#32962a', '#55ad26', '#84c424', '#b2d820', '#d8e61e', 
+                '#f7e318', '#ffdb00', '#ffa600', '#ff6200', '#ee3a14', '#dc2222', '#a80e14', '#700408', 
+                '#521a10', '#38140c', '#1e0c08', '#000000', '#000000'
             ])
             .clamp(true);
 
@@ -188,7 +535,14 @@
                 const i00 = y0 * th.nx + x0; const i10 = y0 * th.nx + x1;
                 const i01 = y1 * th.nx + x0; const i11 = y1 * th.nx + x1;
 
-                t = (activeTemp.data[i00]||15)*(1-dx)*(1-dy) + (activeTemp.data[i10]||15)*dx*(1-dy) + (activeTemp.data[i01]||15)*(1-dx)*dy + (activeTemp.data[i11]||15)*dx*dy;
+                const scale = activeTemp.scale || 1.0;
+                const d = activeTemp.data;
+                const t00 = (d[i00] !== undefined ? d[i00] * scale : 15);
+                const t10 = (d[i10] !== undefined ? d[i10] * scale : 15);
+                const t01 = (d[i01] !== undefined ? d[i01] * scale : 15);
+                const t11 = (d[i11] !== undefined ? d[i11] * scale : 15);
+
+                t = t00*(1-dx)*(1-dy) + t10*dx*(1-dy) + t01*(1-dx)*dy + t11*dx*dy;
             }
             return { u, v, t };
         }
@@ -198,6 +552,9 @@
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.z = 250;
+        if (window.location.search.includes('alps')) {
+            camera.position.set(11.37, 89.61, 86.40);
+        }
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -209,7 +566,7 @@
         controls.dampingFactor = 0.08;
         controls.rotateSpeed = 0.35; // Sanfte, kontrollierte Drehung ohne Überschießen
         controls.zoomSpeed = 0.8;
-        controls.minDistance = 110;
+        controls.minDistance = 101.5; // Erlaubt tiefes Heranzoomen an Gelände, Straßen und Städte
         controls.maxDistance = 600;
         controls.enablePan = false;
 
@@ -262,24 +619,31 @@
         const colorRampTempTex = createColorRampTexture(colorScaleTemp, minTempRange, maxTempRange, 1024);
         const colorRampWindTex = createColorRampTexture(kmh => colorScaleWind(kmh / 3.6), 0.0, maxWindKmh, 1024);
 
-        // Pre-baking der Wetterdaten in GPU-DataTextures (dauert einmalig <150ms beim Start)
+        // Pre-baking der Wetterdaten in GPU-DataTextures (dauert dank Lookup-Tabelle nur ~80ms)
         function buildTempDataTexture(step) {
             const raw = step.data;
-            const width = 721;
-            const height = 361;
+            const h = step.header || { nx: 720, ny: 361, dx: 0.5, dy: 0.5 };
+            const nx = h.nx;
+            const ny = h.ny;
+            const width = nx + 1;
+            const height = ny;
+            const scale = step.scale || 1.0;
             const span = maxTempRange - minTempRange;
             
+            // Einmaliges Spalten-Lookup (-180°..+180° -> 0°..360° GFS Spaltenindex)
+            const colLookup = new Int32Array(width);
+            const halfNx = Math.floor(nx / 2);
+            for (let x = 0; x < width; x++) {
+                colLookup[x] = (x < halfNx) ? (x + halfNx) : (x - halfNx);
+            }
+
             if (useFloat) {
                 const buf = new Float32Array(width * height);
                 let ptr = 0;
                 for (let r = 0; r < height; r++) {
-                    const gfsRow = 360 - r;
-                    const rowOffset = gfsRow * 720;
+                    const rowOffset = ((ny - 1) - r) * nx;
                     for (let x = 0; x < width; x++) {
-                        const lng = -180 + x * 0.5;
-                        const lon360 = lng < 0 ? lng + 360 : lng;
-                        const gfsCol = Math.round(lon360 / 0.5) % 720;
-                        buf[ptr++] = raw[rowOffset + gfsCol];
+                        buf[ptr++] = raw[rowOffset + colLookup[x]] * scale;
                     }
                 }
                 const tex = new THREE.DataTexture(buf, width, height, THREE.RedFormat, THREE.FloatType);
@@ -294,13 +658,9 @@
                 const buf = new Uint8Array(width * height * 4);
                 let ptr = 0;
                 for (let r = 0; r < height; r++) {
-                    const gfsRow = 360 - r;
-                    const rowOffset = gfsRow * 720;
+                    const rowOffset = ((ny - 1) - r) * nx;
                     for (let x = 0; x < width; x++) {
-                        const lng = -180 + x * 0.5;
-                        const lon360 = lng < 0 ? lng + 360 : lng;
-                        const gfsCol = Math.round(lon360 / 0.5) % 720;
-                        const val = raw[rowOffset + gfsCol];
+                        const val = raw[rowOffset + colLookup[x]] * scale;
                         const norm = Math.max(0, Math.min(255, Math.round(((val - minTempRange) / span) * 255)));
                         buf[ptr] = norm;
                         buf[ptr + 1] = norm;
@@ -386,6 +746,7 @@
         const tempTextures = (typeof tempData !== 'undefined') ? tempData.map(buildTempDataTexture) : [];
         const windTextures = (typeof windData !== 'undefined') ? windData.map(buildWindDataTexture) : [];
 
+        // REINIGUNG DES TEMPERATUR-SHADERS: GLATTE, PERFEKTE FARBEN OHNE MATSCHIGE SOBEL-FLECKEN
         const dataGeometry = new THREE.SphereGeometry(earthRadius + 0.3, 128, 128);
         const dataMaterial = new THREE.ShaderMaterial({
             vertexShader: `
@@ -432,6 +793,212 @@
         dataMesh.renderOrder = 1;
         scene.add(dataMesh);
 
+        // HOCHAUFLÖSENDES CARTOGRAPHIC TERRAIN-RELIEF (WINDY.COM QUALITÄT)
+        // Nutzt mathematisch exakt auf den 3D-Globus projizierte ESRI World Hillshade Kacheln
+        const hillshadeGroup = new THREE.Group();
+        hillshadeGroup.rotation.y = -Math.PI / 2;
+        hillshadeGroup.renderOrder = 2;
+        scene.add(hillshadeGroup);
+
+        function lon2tile(lon, zoom) {
+            return Math.floor((lon + 180) / 360 * Math.pow(2, zoom));
+        }
+        function lat2tile(lat, zoom) {
+            const clampedLat = Math.max(-85, Math.min(85, lat));
+            return Math.floor((1 - Math.log(Math.tan(clampedLat * Math.PI / 180) + 1 / Math.cos(clampedLat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom));
+        }
+
+        function getTileGeometry(z, x, y, segs, radius) {
+            const nTiles = Math.pow(2, z);
+            const positions = [];
+            const uvs = [];
+            const indices = [];
+
+            for (let iy = 0; iy <= segs; iy++) {
+                const vTile = iy / segs;
+                const Y = y + vTile;
+                const n = Math.PI - (2 * Math.PI * Y) / nTiles;
+                const lat = (180 / Math.PI) * Math.atan(Math.sinh(n));
+                const vNorm = (90 - lat) / 180;
+
+                for (let ix = 0; ix <= segs; ix++) {
+                    const uTile = ix / segs;
+                    const X = x + uTile;
+                    const lng = (X / nTiles) * 360 - 180;
+                    const uNorm = (lng + 180) / 360;
+
+                    const px = - radius * Math.cos(uNorm * Math.PI * 2) * Math.sin(vNorm * Math.PI);
+                    const py = radius * Math.cos(vNorm * Math.PI);
+                    const pz = radius * Math.sin(uNorm * Math.PI * 2) * Math.sin(vNorm * Math.PI);
+
+                    positions.push(px, py, pz);
+                    uvs.push(uTile, 1.0 - vTile);
+                }
+            }
+
+            for (let iy = 0; iy < segs; iy++) {
+                for (let ix = 0; ix < segs; ix++) {
+                    const a = iy * (segs + 1) + ix;
+                    const b = a + 1;
+                    const c = a + (segs + 1);
+                    const d = c + 1;
+                    indices.push(a, b, d, a, d, c);
+                }
+            }
+
+            const geom = new THREE.BufferGeometry();
+            geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            geom.setIndex(indices);
+            return geom;
+        }
+
+        const loadedTiles = new Map();
+        const loadingKeys = new Set();
+
+        function getTileUrl(z, x, y) {
+            return `https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/${z}/${y}/${x}`;
+        }
+
+        function loadTileMesh(z, x, y, key) {
+            if (loadedTiles.has(key) || loadingKeys.has(key)) return;
+            loadingKeys.add(key);
+
+            const url = getTileUrl(z, x, y);
+            textureLoader.load(url, (tex) => {
+                loadingKeys.delete(key);
+                tex.generateMipmaps = false;
+                tex.minFilter = THREE.LinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+
+                const geom = getTileGeometry(z, x, y, 8, earthRadius + 0.35);
+                const mat = new THREE.ShaderMaterial({
+                    vertexShader: `
+                        varying vec2 vUv;
+                        void main() {
+                            vUv = uv;
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        }
+                    `,
+                    fragmentShader: `
+                        precision highp float;
+                        uniform sampler2D u_tile;
+                        uniform float u_strength;
+                        varying vec2 vUv;
+                        void main() {
+                            float s = texture2D(u_tile, vUv).r;
+                            // Multiplikations-Faktor: Flachland bleibt 1.0, Schatten modulieren sanft
+                            float factor = mix(1.0, s, u_strength);
+                            gl_FragColor = vec4(factor, factor, factor, 1.0);
+                        }
+                    `,
+                    uniforms: {
+                        u_tile: { value: tex },
+                        u_strength: { value: 0.65 }
+                    },
+                    blending: THREE.CustomBlending,
+                    blendSrc: THREE.DstColorFactor,
+                    blendDst: THREE.ZeroFactor,
+                    blendSrcAlpha: THREE.OneFactor,
+                    blendDstAlpha: THREE.OneFactor,
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    depthWrite: false
+                });
+
+                const mesh = new THREE.Mesh(geom, mat);
+                mesh.renderOrder = 2;
+                hillshadeGroup.add(mesh);
+                loadedTiles.set(key, { z, x, y, mesh, lastUsed: performance.now() });
+            }, undefined, () => {
+                loadingKeys.delete(key);
+            });
+        }
+
+        window.app = { camera, scene, hillshadeGroup, loadedTiles, loadingKeys };
+        window.checkpoint = 6;
+
+        let lastTileUpdate = 0;
+        let lastCameraPos = new THREE.Vector3();
+
+        function updateHillshadeTiles() {
+            const now = performance.now();
+            if (now - lastTileUpdate < 100) return;
+            
+            if (camera.position.distanceToSquared(lastCameraPos) < 0.05) return;
+            lastCameraPos.copy(camera.position);
+            lastTileUpdate = now;
+
+            const dist = camera.position.length();
+            const h = Math.max(1, dist - earthRadius);
+
+            let z = 5;
+            if (h < 20) z = 8;
+            else if (h < 40) z = 7;
+            else if (h < 85) z = 6;
+
+            const Px = camera.position.z;
+            const Py = camera.position.y;
+            const Pz = -camera.position.x;
+            const vFrac = Math.acos(Math.min(Math.max(Py / dist, -1), 1)) / Math.PI;
+            const centerLat = 90 - vFrac * 180;
+            let uFrac = Math.atan2(Pz, -Px) / (2 * Math.PI);
+            if (uFrac < 0) uFrac += 1;
+            const centerLng = uFrac * 360 - 180;
+
+            const spanDeg = Math.min(75, (h / earthRadius) * camera.fov * 1.35);
+            const cosLat = Math.max(0.18, Math.cos(centerLat * Math.PI / 180));
+            const latSpan = spanDeg * 0.65;
+            const lngSpan = (spanDeg * 0.65) / cosLat;
+
+            const latMin = Math.max(-84, centerLat - latSpan);
+            const latMax = Math.min(84, centerLat + latSpan);
+            const lngMin = centerLng - lngSpan;
+            const lngMax = centerLng + lngSpan;
+
+            const nTiles = Math.pow(2, z);
+            const xMin = lon2tile(lngMin, z);
+            const xMax = lon2tile(lngMax, z);
+            const yMin = lat2tile(latMax, z);
+            const yMax = lat2tile(latMin, z);
+
+            const candidateTiles = [];
+            for (let y = yMin; y <= yMax; y++) {
+                if (y < 0 || y >= nTiles) continue;
+                for (let x = xMin; x <= xMax; x++) {
+                    const wrappedX = ((x % nTiles) + nTiles) % nTiles;
+                    const tLon = (wrappedX + 0.5) / nTiles * 360 - 180;
+                    const tN = Math.PI - (2 * Math.PI * (y + 0.5)) / nTiles;
+                    const tLat = (180 / Math.PI) * Math.atan(Math.sinh(tN));
+                    const dLat = tLat - centerLat;
+                    const dLng = (tLon - centerLng) * cosLat;
+                    const d2 = dLat * dLat + dLng * dLng;
+                    candidateTiles.push({ z, x: wrappedX, y, d2, key: `${z}_${wrappedX}_${y}` });
+                }
+            }
+            candidateTiles.sort((a, b) => a.d2 - b.d2);
+            const maxTiles = (z >= 7) ? 36 : 24;
+            const activeKeys = new Set(candidateTiles.slice(0, maxTiles).map(t => t.key));
+
+            candidateTiles.slice(0, maxTiles).forEach(t => {
+                loadTileMesh(t.z, t.x, t.y, t.key);
+            });
+
+            for (const [key, tileObj] of loadedTiles.entries()) {
+                if (!activeKeys.has(key)) {
+                    if (tileObj.z !== z || (now - tileObj.lastUsed > 5000)) {
+                        hillshadeGroup.remove(tileObj.mesh);
+                        tileObj.mesh.geometry.dispose();
+                        loadedTiles.delete(key);
+                    }
+                } else {
+                    tileObj.lastUsed = now;
+                }
+            }
+        }
+        controls.addEventListener('change', updateHillshadeTiles);
+        updateHillshadeTiles();
+
         // SCREEN-SPACE WIND & CITY LABELS (Windy.com Architektur - IMMER GESTOCHEN SCHARF!)
         const screenWindCanvas = document.getElementById('screenWindCanvas');
         let screenW = window.innerWidth;
@@ -449,10 +1016,11 @@
         const particles = [];
         for (let i = 0; i < particleCount; i++) {
             particles.push({ 
-                x: Math.random() * screenW, 
-                y: Math.random() * screenH, 
+                lat: 0, 
+                lng: 0, 
                 age: Math.random() * 80, 
-                lifespan: 50 + Math.random() * 60 
+                lifespan: 50 + Math.random() * 60,
+                active: false
             });
         }
 
@@ -460,20 +1028,40 @@
         controls.addEventListener('start', () => { isInteracting = true; });
         controls.addEventListener('end', () => { isInteracting = false; });
 
-        const tempNextVec = new THREE.Vector3();
+        const lastWindCameraPos = new THREE.Vector3();
+        const lastWindCameraQuat = new THREE.Quaternion();
+        const vpMatrix = new THREE.Matrix4();
+        const tempVec0 = new THREE.Vector3();
+        const tempVec1 = new THREE.Vector3();
 
         function renderScreenWindParticles(timeScale = 1.0) {
-            // Beim Ziehen/Drehen altes Bild rasch verblassen, damit nichts verschmiert
-            screenWindCtx.globalCompositeOperation = 'destination-in';
-            screenWindCtx.fillStyle = isInteracting ? 'rgba(0, 0, 0, 0.70)' : 'rgba(0, 0, 0, 0.935)'; 
-            screenWindCtx.fillRect(0, 0, screenW, screenH);
-            screenWindCtx.globalCompositeOperation = 'source-over';
+            const dist = camera.position.length();
+            const h = Math.max(1, dist - earthRadius);
+
+            // Erkennen, ob der Benutzer den Globus dreht oder zieht (inkl. sanfter Dämpfung)
+            const isCameraMoving = isInteracting || 
+                camera.position.distanceToSquared(lastWindCameraPos) > 0.001 ||
+                camera.quaternion.angleTo(lastWindCameraQuat) > 0.0005;
+
+            lastWindCameraPos.copy(camera.position);
+            lastWindCameraQuat.copy(camera.quaternion);
+
+            if (isCameraMoving) {
+                // Beim Drehen/Verschieben altes Bild sofort säubern -> Partikel bleiben 1:1 fest an der Geographie verankert
+                screenWindCtx.clearRect(0, 0, screenW, screenH);
+            } else {
+                // Im Stillstand sanfte, elegante Schweife fließen lassen
+                screenWindCtx.globalCompositeOperation = 'destination-in';
+                screenWindCtx.fillStyle = 'rgba(0, 0, 0, 0.935)'; 
+                screenWindCtx.fillRect(0, 0, screenW, screenH);
+                screenWindCtx.globalCompositeOperation = 'source-over';
+            }
             
             screenWindCtx.beginPath();
-            screenWindCtx.strokeStyle = 'rgba(255, 255, 255, 0.60)'; // Perfekt ausbalancierte Deckkraft (60%)
-            screenWindCtx.lineWidth = 1.05; // Feines, klares Mittelmaß (1.05px)
+            screenWindCtx.strokeStyle = 'rgba(255, 255, 255, 0.65)'; // Klare, elegante Sichtbarkeit
+            screenWindCtx.lineWidth = 1.05;
 
-            // Kamera-Parameter für schnelles analytisches Raycasting
+            // Kamera-Parameter für schnelles analytisches Raycasting beim Partikel-Spawnen
             const m = camera.matrixWorld.elements;
             const Cx = m[12], Cy = m[13], Cz = m[14];
             const Rx = m[0], Ry = m[1], Rz = m[2];
@@ -486,12 +1074,15 @@
             const rEarth = earthRadius;
             const rSq = rEarth * rEarth;
 
+            // Blitzschnelle Matrix-Projektion (World -> Screen)
+            vpMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
 
-            for (let i = 0; i < particleCount; i++) {
-                const p = particles[i];
-
-                const ndcX = (p.x / screenW) * 2 - 1;
-                const ndcY = -(p.y / screenH) * 2 + 1;
+            // Partikel immer im aktuell sichtbaren Bildausschnitt auf dem Globus platzieren
+            function respawnOnScreen(p) {
+                const sx = Math.random() * screenW;
+                const sy = Math.random() * screenH;
+                const ndcX = (sx / screenW) * 2 - 1;
+                const ndcY = -(sy / screenH) * 2 + 1;
                 const xc = ndcX * aspect * tanHalfFov;
                 const yc = ndcY * tanHalfFov;
 
@@ -503,97 +1094,110 @@
 
                 const cDotD = Cx * Dx + Cy * Dy + Cz * Dz;
                 const disc = cDotD * cDotD - (cLenSq - rSq);
-
                 if (disc < 0) {
-                    // Außerhalb des Globus im Weltall: Neu auf dem gesamten sichtbaren Bildschirm platzieren
-                    p.x = Math.random() * screenW;
-                    p.y = Math.random() * screenH;
-                    p.age = 0;
-                    continue;
+                    p.active = false;
+                    p.age = p.lifespan;
+                    return;
                 }
 
-                // Treffpunkt auf der 3D-Kugel
                 const t = -cDotD - Math.sqrt(disc);
                 const Hx = Cx + t * Dx;
                 const Hy = Cy + t * Dy;
                 const Hz = Cz + t * Dz;
 
-                // Drehung des Globus rückgängig machen (rotation.y = -Math.PI / 2)
+                // Globus-Drehung (rotation.y = -Math.PI / 2)
                 const Px = Hz;
                 const Py = Hy;
                 const Pz = -Hx;
 
                 const vFrac = Math.acos(Math.min(Math.max(Py / rEarth, -1), 1)) / Math.PI;
-                const lat = 90 - vFrac * 180;
+                p.lat = 90 - vFrac * 180;
                 let uFrac = Math.atan2(Pz, -Px) / (2 * Math.PI);
                 if (uFrac < 0) uFrac += 1;
-                const lng = uFrac * 360 - 180;
+                p.lng = uFrac * 360 - 180;
+                p.age = Math.random() * 20;
+                p.lifespan = 50 + Math.random() * 60;
+                p.active = true;
+            }
 
-                const real = getInterpolatedData(lat, lng);
+            // Geschwindigkeitsskalierung: Bei näherem Zoom wird der geographische Schritt adaptiv skaliert,
+            // sodass die optische Strichlänge auf dem Bildschirm immer perfekt gleichmäßig bleibt!
+            const step = (h / earthRadius) * 0.0016 * timeScale;
+
+            for (let i = 0; i < particleCount; i++) {
+                const p = particles[i];
+
+                if (!p.active || p.age > p.lifespan) {
+                    respawnOnScreen(p);
+                    continue;
+                }
+
+                // 1. Startposition im 3D-Weltraum
+                const u0 = (p.lng + 180) / 360;
+                const v0 = (90 - p.lat) / 180;
+                const sinV0 = Math.sin(v0 * Math.PI);
+                const cosV0 = Math.cos(v0 * Math.PI);
+                const sinU0 = Math.sin(u0 * Math.PI * 2);
+                const cosU0 = Math.cos(u0 * Math.PI * 2);
+
+                const wx0 = - rEarth * sinU0 * sinV0;
+                const wy0 = rEarth * cosV0;
+                const wz0 = - rEarth * cosU0 * sinV0;
+
+                // Verdeckungstest: Ist der Punkt auf der dem Betrachter zugewandten Vorderseite? (P . C > rSq)
+                if (wx0 * Cx + wy0 * Cy + wz0 * Cz <= rSq) {
+                    respawnOnScreen(p);
+                    continue;
+                }
+
+                tempVec0.set(wx0, wy0, wz0).applyMatrix4(vpMatrix);
+                const sx0 = (tempVec0.x * 0.5 + 0.5) * screenW;
+                const sy0 = (-tempVec0.y * 0.5 + 0.5) * screenH;
+
+                if (sx0 < 0 || sx0 > screenW || sy0 < 0 || sy0 > screenH) {
+                    respawnOnScreen(p);
+                    continue;
+                }
+
+                // Echte Winddaten am geographischen Ort abfragen
+                const real = getInterpolatedData(p.lat, p.lng);
                 const u = real.u;
                 const v = real.v;
 
                 if (isNaN(u) || isNaN(v) || (u === 0 && v === 0)) {
-                    p.age += timeScale;
-                    if (p.age > p.lifespan) {
-                        p.x = Math.random() * screenW;
-                        p.y = Math.random() * screenH;
-                        p.age = 0;
-                    }
+                    respawnOnScreen(p);
                     continue;
                 }
 
-                let cosLat = Math.cos(lat * Math.PI / 180);
+                let cosLat = Math.cos(p.lat * Math.PI / 180);
                 if (cosLat < 0.15) cosLat = 0.15;
 
-                // Richtungsvektor auf dem Bildschirm ermitteln
-                const deltaEps = 0.005;
-                const testLat = lat + v * deltaEps;
-                const testLng = lng + (u / cosLat) * deltaEps;
+                // Wind bewegt den Partikel auf der Erdoberfläche weiter
+                const nextLat = p.lat + v * step;
+                const nextLng = p.lng + (u / cosLat) * step;
 
-                const uNext = (testLng + 180) / 360;
-                const vNext = (90 - testLat) / 180;
-                const PnextX = - rEarth * Math.cos(uNext * Math.PI * 2) * Math.sin(vNext * Math.PI);
-                const PnextY = rEarth * Math.cos(vNext * Math.PI);
-                const PnextZ = rEarth * Math.sin(uNext * Math.PI * 2) * Math.sin(vNext * Math.PI);
+                // 2. Zielposition im 3D-Weltraum
+                const u1 = (nextLng + 180) / 360;
+                const v1 = (90 - nextLat) / 180;
+                const sinV1 = Math.sin(v1 * Math.PI);
+                const cosV1 = Math.cos(v1 * Math.PI);
+                const sinU1 = Math.sin(u1 * Math.PI * 2);
+                const cosU1 = Math.cos(u1 * Math.PI * 2);
 
-                // Globus-Drehung (y = -PI/2): X_world = -Z_local, Z_world = X_local
-                tempNextVec.set(-PnextZ, PnextY, PnextX).project(camera);
+                const wx1 = - rEarth * sinU1 * sinV1;
+                const wy1 = rEarth * cosV1;
+                const wz1 = - rEarth * cosU1 * sinV1;
 
-                const testScreenX = (tempNextVec.x * 0.5 + 0.5) * screenW;
-                const testScreenY = (-tempNextVec.y * 0.5 + 0.5) * screenH;
+                tempVec1.set(wx1, wy1, wz1).applyMatrix4(vpMatrix);
+                const sx1 = (tempVec1.x * 0.5 + 0.5) * screenW;
+                const sy1 = (-tempVec1.y * 0.5 + 0.5) * screenH;
 
-                let dirX = testScreenX - p.x;
-                let dirY = testScreenY - p.y;
-                const dirLen = Math.hypot(dirX, dirY);
+                screenWindCtx.moveTo(sx0, sy0);
+                screenWindCtx.lineTo(sx1, sy1);
 
-                if (dirLen < 0.0001) {
-                    p.age += timeScale;
-                    continue;
-                }
-
-                dirX /= dirLen;
-                dirY /= dirLen;
-
-                // FESTE GESCHWINDIGKEIT IN BILDSCHIRM-PIXELN (Exakt wie im 2D-Original: windSpeed * 0.035!)
-                // Dadurch wird der Wind beim Heranzoomen NIEMALS mehr beschleunigt!
-                const windSpeed = Math.hypot(u, v);
-                const screenStep = windSpeed * 0.035 * timeScale;
-
-                const nextScreenX = p.x + dirX * screenStep;
-                const nextScreenY = p.y + dirY * screenStep;
-
-                if (p.age > p.lifespan || tempNextVec.z > 1.0 || nextScreenX < 0 || nextScreenX > screenW || nextScreenY < 0 || nextScreenY > screenH) {
-                    p.x = Math.random() * screenW;
-                    p.y = Math.random() * screenH;
-                    p.age = 0;
-                } else {
-                    screenWindCtx.moveTo(p.x, p.y);
-                    screenWindCtx.lineTo(nextScreenX, nextScreenY);
-                    p.x = nextScreenX;
-                    p.y = nextScreenY;
-                    p.age += timeScale;
-                }
+                p.lat = nextLat;
+                p.lng = nextLng;
+                p.age += timeScale;
             }
 
             screenWindCtx.stroke();
@@ -601,25 +1205,68 @@
 
         const clock = new THREE.Clock();
 
+        let cameraAnimation = null;
+
         // ANIMATION LOOP (Mit Delta-Time Normalisierung & adaptiver Drehgeschwindigkeit)
         function animate() {
             requestAnimationFrame(animate);
             
-            // Exakte physikalische 1:1 Grab-and-Drag Rotation für jeden Zoom-Level:
-            // Die Kugeloberfläche bleibt jetzt exakt unter dem Mauszeiger "gegriffen", ohne wegzuspringen!
-            const dist = camera.position.length();
-            const h = Math.max(dist - earthRadius, 1);
-            const tanHalfFov = Math.tan((camera.fov * Math.PI) / 360);
-            controls.rotateSpeed = (h * tanHalfFov) / (Math.PI * earthRadius);
-            controls.dampingFactor = dist < 140 ? 0.16 : 0.08;
-            
-            controls.update();
+            if (cameraAnimation) {
+                const now = performance.now();
+                const elapsed = now - cameraAnimation.startTime;
+                let progress = Math.min(1.0, elapsed / cameraAnimation.duration);
+                // Sanfte kubische Interpolation (Ease-in-out)
+                const t = progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+                
+                // Richtung auf der Kugel interpolieren
+                const currentDir = new THREE.Vector3().copy(cameraAnimation.startUnit).lerp(cameraAnimation.targetUnit, t).normalize();
+                
+                // Sanfter Bogen während des Fluges für spektakuläre Perspektive
+                const arch = Math.sin(progress * Math.PI) * Math.min(25, cameraAnimation.startDist * 0.12);
+                const currentDist = (cameraAnimation.startDist + (cameraAnimation.targetDist - cameraAnimation.startDist) * t) + arch;
+                
+                camera.position.copy(currentDir.multiplyScalar(currentDist));
+                camera.lookAt(0, 0, 0);
+                controls.target.set(0, 0, 0);
+                
+                if (progress >= 1.0) {
+                    const anim = cameraAnimation;
+                    cameraAnimation = null;
+                    controls.enabled = true;
+                    
+                    // Temperatur-Popup am Zielort aktivieren & anzeigen
+                    clickedPopupPoint = { lat: anim.targetLat, lng: anim.targetLng };
+                    updatePopupContent();
+                    
+                    const localP = latLngToSphereVertex(anim.targetLat, anim.targetLng, earthRadius);
+                    const worldP = localP.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
+                    const pProj = worldP.clone().project(camera);
+                    popupEl.style.display = 'block';
+                    popupEl.style.left = ((pProj.x * 0.5 + 0.5) * window.innerWidth) + 'px';
+                    popupEl.style.top = ((-pProj.y * 0.5 + 0.5) * window.innerHeight) + 'px';
+                }
+            } else {
+                // Exakte physikalische 1:1 Grab-and-Drag Rotation für jeden Zoom-Level:
+                const dist = camera.position.length();
+                const h = Math.max(dist - earthRadius, 1);
+                const tanHalfFov = Math.tan((camera.fov * Math.PI) / 360);
+                controls.rotateSpeed = (h * tanHalfFov) / (Math.PI * earthRadius);
+                controls.dampingFactor = dist < 140 ? 0.16 : 0.08;
+                controls.update();
+            }
             
             const delta = Math.min(clock.getDelta(), 0.05);
             const timeScale = delta * 60;
             
-            renderScreenWindParticles(timeScale);
-            if (typeof renderCityLabels === 'function') renderCityLabels();
+            try {
+                renderScreenWindParticles(timeScale);
+            } catch(e) { /* wind render safe */ }
+            try {
+                if (typeof renderCityLabels === 'function') renderCityLabels();
+            } catch(e) { /* city render safe */ }
+            try {
+                if (typeof updateHillshadeTiles === 'function') updateHillshadeTiles();
+            } catch(e) { /* hillshade render safe */ }
             
             renderer.render(scene, camera);
         }
@@ -698,17 +1345,117 @@
                 create3DGeoJsonLines(data, earthRadius + 0.7, 0x3a3a3a, 0.20); // Noch dünnere, sehr feine Bundesstaatengrenzen
             });
 
-        // 3D-STADTUMRISSE (Bebauungsgrenzen für Metropolregionen bei Zoom)
-        let urbanMesh = null;
-        fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_urban_areas.geojson')
-            .then(r => r.json())
-            .then(data => {
-                urbanMesh = create3DGeoJsonLines(data, earthRadius + 0.65, 0x111111, 0.45);
-                urbanMesh.renderOrder = 3;
-                urbanMesh.visible = false;
-            });
+        // 3D-BINNENSEEN & GEWÄSSER (Genfersee, Bodensee, Gardasee etc.)
+        let lakesMesh = null;
+        if (typeof lakesData !== 'undefined') {
+            lakesMesh = create3DGeoJsonLines(lakesData, earthRadius + 0.68, 0x1a334d, 0.48);
+        } else {
+            fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_lakes.geojson')
+                .then(r => r.json())
+                .then(data => {
+                    lakesMesh = create3DGeoJsonLines(data, earthRadius + 0.68, 0x1a334d, 0.48);
+                }).catch(() => {});
+        }
 
-        // DYNAMISCHE STÄDTE-LABELS & MARKER
+        // 3D-FLÜSSE & STROMNETZE (Rhein, Donau, Rhone, Elbe, Po, etc.)
+        let riversMesh = null;
+        function initRivers() {
+            if (typeof riversData === 'undefined' || !riversData) return;
+            const positions = [];
+            const r = earthRadius + 0.66;
+            function addLine(line) {
+                for (let i = 0; i < line.length - 1; i++) {
+                    const p1 = line[i];
+                    const p2 = line[i + 1];
+                    const v1 = latLngToSphereVertex(p1[1], p1[0], r);
+                    const v2 = latLngToSphereVertex(p2[1], p2[0], r);
+                    positions.push(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
+                }
+            }
+            for (let j = 0; j < riversData.length; j++) {
+                const item = riversData[j];
+                if (item.t === 1) {
+                    addLine(item.c);
+                } else if (item.t === 2) {
+                    for (let k = 0; k < item.c.length; k++) {
+                        addLine(item.c[k]);
+                    }
+                }
+            }
+            const geom = new THREE.BufferGeometry();
+            geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            const mat = new THREE.LineBasicMaterial({
+                color: 0x227bb8, // Frisches, klares Flussblau
+                transparent: true,
+                opacity: 0.65,
+                depthWrite: false
+            });
+            riversMesh = new THREE.LineSegments(geom, mat);
+            riversMesh.rotation.y = -Math.PI / 2;
+            riversMesh.renderOrder = 3;
+            riversMesh.visible = false;
+            scene.add(riversMesh);
+        }
+        initRivers();
+
+        // 3D-STRASSENNETZ & FERNSTRASSEN (Verbindungsachsen zwischen Metropolen)
+        let roadsMesh = null;
+        if (typeof roadsData !== 'undefined') {
+            roadsMesh = create3DGeoJsonLines(roadsData, earthRadius + 0.67, 0x4a3d33, 0.32);
+            roadsMesh.visible = false;
+        }
+
+        // 3D-STADTGEBIETE & KONTUREN (Inhalt bleibt dezent & hell wie in Bild 1)
+        let urbanFillMesh = null;
+        let urbanLineMesh = null;
+        function initUrbanAreas() {
+            if (typeof urbanFillVerts !== 'undefined' && typeof urbanLineVerts !== 'undefined') {
+                const fillRadius = earthRadius + 0.63;
+                const lineRadius = earthRadius + 0.65;
+
+                // 1. Stadtinhalt / Bebaute Flächen (dezent, transparent - wie in Bild 1)
+                const fillPos = new Float32Array(urbanFillVerts.length);
+                for (let i = 0; i < urbanFillVerts.length; i++) {
+                    fillPos[i] = urbanFillVerts[i] * fillRadius;
+                }
+                const fillGeom = new THREE.BufferGeometry();
+                fillGeom.setAttribute('position', new THREE.BufferAttribute(fillPos, 3));
+                const fillMat = new THREE.MeshBasicMaterial({
+                    color: 0xd49b28, // Warmer Bernstein-/Goldton wie in Bild 1
+                    transparent: true,
+                    opacity: 0.20,
+                    depthWrite: false,
+                    side: THREE.DoubleSide
+                });
+                urbanFillMesh = new THREE.Mesh(fillGeom, fillMat);
+                urbanFillMesh.rotation.y = -Math.PI / 2;
+                urbanFillMesh.renderOrder = 2;
+                urbanFillMesh.visible = false;
+                scene.add(urbanFillMesh);
+
+                // 2. Stadtumrisse / Konturlinien
+                const linePos = new Float32Array(urbanLineVerts.length);
+                for (let i = 0; i < urbanLineVerts.length; i++) {
+                    linePos[i] = urbanLineVerts[i] * lineRadius;
+                }
+                const lineGeom = new THREE.BufferGeometry();
+                lineGeom.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+                const lineMat = new THREE.LineBasicMaterial({
+                    color: 0x8a6018, // Klare, warme Umrisslinie der Stadtgrenze
+                    transparent: true,
+                    opacity: 0.45,
+                    depthWrite: false
+                });
+                urbanLineMesh = new THREE.LineSegments(lineGeom, lineMat);
+                urbanLineMesh.rotation.y = -Math.PI / 2;
+                urbanLineMesh.renderOrder = 3;
+                urbanLineMesh.visible = false;
+                scene.add(urbanLineMesh);
+            }
+        }
+        initUrbanAreas();
+
+        // DYNAMISCHE STÄDTE-LABELS & MARKER (7.340+ Orte weltweit)
         let citiesData = [];
         const cityGermanNames = {
             'Munich': 'München',
@@ -716,105 +1463,579 @@
             'Nuremberg': 'Nürnberg',
             'Vienna': 'Wien',
             'Geneva': 'Genf',
+            'Zurich': 'Zürich',
             'Prague': 'Prag',
             'Rome': 'Rom',
+            'Milan': 'Mailand',
+            'Florence': 'Florenz',
+            'Naples': 'Neapel',
+            'Venice': 'Venedig',
             'Warsaw': 'Warschau',
             'Brussels': 'Brüssel',
             'Copenhagen': 'Kopenhagen',
-            'Venice': 'Venedig'
+            'Lisbon': 'Lissabon',
+            'Athens': 'Athen',
+            'Bucharest': 'Bukarest',
+            'Belgrade': 'Belgrad',
+            'Moscow': 'Moskau',
+            'Lucerne': 'Luzern',
+            'Basel': 'Basel',
+            'Bern': 'Bern'
         };
 
-        fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_populated_places_simple.geojson')
-            .then(r => r.json())
-            .then(data => {
-                citiesData = data.features.map(f => {
-                    const lat = f.properties.latitude;
-                    const lng = f.properties.longitude;
+        function initCities() {
+            const rawList = (typeof window !== 'undefined' && window.citiesDataRaw) ? window.citiesDataRaw : [];
+            if (rawList.length > 0) {
+                citiesData = rawList.map(item => {
+                    const rawName = item[0];
+                    const lat = item[1];
+                    const lng = item[2];
+                    const rank = item[3];
+                    const country = item[4] || '';
                     const localV = latLngToSphereVertex(lat, lng, earthRadius + 0.7);
                     // Globus-Drehung (y = -PI/2): X_world = -Z_local, Z_world = X_local
                     const worldPos = new THREE.Vector3(-localV.z, localV.y, localV.x);
-                    const rawName = f.properties.name;
                     const name = cityGermanNames[rawName] || rawName;
                     return {
-                        name: name,
-                        lat: lat,
-                        lng: lng,
-                        scalerank: f.properties.scalerank !== undefined ? f.properties.scalerank : 5,
-                        worldPos: worldPos
+                        name,
+                        rawName,
+                        lat,
+                        lng,
+                        scalerank: rank,
+                        country,
+                        worldPos
                     };
                 });
-            });
+                citiesData.sort((a, b) => a.scalerank - b.scalerank);
+            }
+        }
+        initCities();
 
+        // Fallback: Falls cities_data.js nicht lokal geladen wurde, via Network laden
+        if (citiesData.length === 0) {
+            fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_populated_places_simple.geojson')
+                .then(r => r.json())
+                .then(data => {
+                    citiesData = data.features.map(f => {
+                        const lat = f.properties.latitude;
+                        const lng = f.properties.longitude;
+                        const localV = latLngToSphereVertex(lat, lng, earthRadius + 0.7);
+                        const worldPos = new THREE.Vector3(-localV.z, localV.y, localV.x);
+                        const rawName = f.properties.name;
+                        const name = cityGermanNames[rawName] || rawName;
+                        return {
+                            name: name,
+                            rawName: rawName,
+                            lat: lat,
+                            lng: lng,
+                            scalerank: f.properties.scalerank !== undefined ? f.properties.scalerank : 5,
+                            country: f.properties.adm0name || '',
+                            worldPos: worldPos
+                        };
+                    });
+                    citiesData.sort((a, b) => a.scalerank - b.scalerank);
+                })
+                .catch(() => {});
+        }
+
+        const tempCityVec = new THREE.Vector3();
         function renderCityLabels() {
             cityCtx.clearRect(0, 0, screenW, screenH);
             const dist = camera.position.length();
 
-            // Stadtumrisse sehr dezent einblenden erst bei deutlichem Nah-Zoom
-            if (urbanMesh) {
-                const urbanAlpha = Math.max(0, Math.min((150 - dist) / 35, 0.22));
-                urbanMesh.material.opacity = urbanAlpha;
-                urbanMesh.visible = urbanAlpha > 0.01;
+            // Straßennetz dezent bei Zoom einblenden
+            if (roadsMesh) {
+                const roadsAlpha = Math.max(0, Math.min((155 - dist) / 30, 0.32));
+                roadsMesh.material.opacity = roadsAlpha;
+                roadsMesh.visible = roadsAlpha > 0.01;
             }
 
-            // Städte-Namen erst bei näherem Zoom einblenden (erst ab dist < 150)
-            if (dist > 150 || citiesData.length === 0) return;
+            // Flüsse dezent bei Zoom einblenden
+            if (riversMesh) {
+                const riversAlpha = Math.max(0, Math.min((160 - dist) / 25, 0.55));
+                riversMesh.material.opacity = riversAlpha;
+                riversMesh.visible = riversAlpha > 0.01;
+            }
 
-            // Maximale Deckkraft auf sanfte 0.70 begrenzen, damit die Städte nicht den Globus dominieren
-            const fadeAlpha = Math.min((150 - dist) / 25, 0.70);
+            // Stadtumrisse & farbiger Stadtinhalt (Farbe bleibt konstant erhalten und wird beim Zoomen NICHT dunkler!)
+            if (urbanFillMesh) {
+                // Sanftes Einblenden bei Zoom ab dist < 160, bleibt dauerhaft auf 0.20 fixiert
+                const urbanAlpha = Math.max(0, Math.min((160 - dist) / 25, 1.0)) * 0.20;
+                urbanFillMesh.material.opacity = urbanAlpha;
+                urbanFillMesh.visible = urbanAlpha > 0.005;
+            }
+            if (urbanLineMesh) {
+                const urbanLineAlpha = Math.max(0, Math.min((160 - dist) / 25, 1.0)) * 0.45;
+                urbanLineMesh.material.opacity = urbanLineAlpha;
+                urbanLineMesh.visible = urbanLineAlpha > 0.005;
+            }
 
-            // Sehr selektive Auswahl: Keine Überladung mit Kleinstädten
-            let maxRank = 0; // Erst nur Megacities & Hauptstädte
-            if (dist <= 130) maxRank = 1; // Große Metropolen
-            if (dist <= 118) maxRank = 2; // Ausgewählte Großstädte
+            // Städte-Namen erst bei Zoom einblenden (ab dist < 165)
+            if (dist > 165 || citiesData.length === 0) return;
+
+            const fadeAlpha = Math.min((165 - dist) / 25, 0.85);
+
+            // Dynamische Staffelung nach Zoom-Tiefe:
+            // dist > 150: Nur Megacitys (Rank 0-1)
+            // dist 135-150: Hauptstädte & Großstädte (Rank 0-2)
+            // dist 122-135: Bedeutende Städte (Rank 0-4)
+            // dist 114-122: Mittelstädte & Ballungsräume (Rank 0-6)
+            // dist 107-114: Kleinere Städte & Bezirkshauptorte (Rank 0-8)
+            // dist < 107: Hohe Detailstufe: Gemeinden, Orte & Alpentäler (Rank 0-10)
+            let maxRank = 0;
+            let minSpacingX = 66;
+            let minSpacingY = 25;
+
+            if (dist <= 107) {
+                maxRank = 10;
+                minSpacingX = 38;
+                minSpacingY = 20;
+            } else if (dist <= 114) {
+                maxRank = 8;
+                minSpacingX = 46;
+                minSpacingY = 22;
+            } else if (dist <= 122) {
+                maxRank = 6;
+                minSpacingX = 54;
+                minSpacingY = 23;
+            } else if (dist <= 135) {
+                maxRank = 4;
+                minSpacingX = 60;
+                minSpacingY = 24;
+            } else if (dist <= 150) {
+                maxRank = 2;
+                minSpacingX = 68;
+                minSpacingY = 26;
+            } else {
+                maxRank = 1;
+                minSpacingX = 75;
+                minSpacingY = 28;
+            }
 
             const cx = camera.position.x;
             const cy = camera.position.y;
             const cz = camera.position.z;
-            const rSqThreshold = (earthRadius * earthRadius) * 1.06; // Exakte Kugel-Horizont-Formel
+            const horizonThreshold = (earthRadius / dist) - 0.02;
 
             cityCtx.save();
             cityCtx.globalAlpha = fadeAlpha;
-            cityCtx.font = '500 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
             cityCtx.textBaseline = 'middle';
+
+            const placed = [];
 
             for (let i = 0; i < citiesData.length; i++) {
                 const city = citiesData[i];
                 if (city.scalerank > maxRank) continue;
 
-                // MATHEMATISCH EXAKTE HORIZONT-PRÜFUNG: P · C > R^2
-                // Verhindert zu 100%, dass Städte an den Rändern oder durch den Globus scheinen
-                const pDotC = city.worldPos.x * cx + city.worldPos.y * cy + city.worldPos.z * cz;
-                if (pDotC <= rSqThreshold) continue;
+                // Geometrisch exakte Horizont-Prüfung für ALLE Zoomstufen (selbst bei tiefstem Zoom dist <= 101.5):
+                // Winkel zwischen Stadt und Kamera: cos(theta) = (P · C) / (|P| * |C|)
+                const cosAngle = (city.worldPos.x * cx + city.worldPos.y * cy + city.worldPos.z * cz) / (100.7 * dist);
+                if (cosAngle < horizonThreshold) continue;
 
                 // Auf Bildschirm projizieren
-                tempNextVec.copy(city.worldPos).project(camera);
-                if (tempNextVec.z > 1.0) continue;
+                tempCityVec.copy(city.worldPos).project(camera);
+                if (tempCityVec.z > 1.0) continue;
 
-                const sx = (tempNextVec.x * 0.5 + 0.5) * screenW;
-                const sy = (-tempNextVec.y * 0.5 + 0.5) * screenH;
+                const sx = (tempCityVec.x * 0.5 + 0.5) * screenW;
+                const sy = (-tempCityVec.y * 0.5 + 0.5) * screenH;
 
                 // Ausreichend Abstand zum Bildschirmrand
-                if (sx < 35 || sx > screenW - 35 || sy < 35 || sy > screenH - 35) continue;
+                if (sx < 20 || sx > screenW - 20 || sy < 20 || sy > screenH - 20) continue;
 
-                // Feiner, dezenter Stadt-Punkt (1.8px)
+                // Intelligente Kollisionsvermeidung gegen Text-Überlappungen
+                let collision = false;
+                for (let j = 0; j < placed.length; j++) {
+                    const p = placed[j];
+                    if (Math.abs(sx - p.x) < minSpacingX && Math.abs(sy - p.y) < minSpacingY) {
+                        collision = true;
+                        break;
+                    }
+                }
+                if (collision) continue;
+                placed.push({ x: sx, y: sy });
+
+                // Feiner, eleganter Stadt-Punkt mit weißem Kern & dunklem Ring
                 cityCtx.beginPath();
-                cityCtx.arc(sx, sy, 1.8, 0, Math.PI * 2);
-                cityCtx.fillStyle = '#222222';
+                cityCtx.arc(sx, sy, 2.0, 0, Math.PI * 2);
+                cityCtx.fillStyle = '#ffffff';
                 cityCtx.fill();
-                cityCtx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
-                cityCtx.lineWidth = 0.8;
+                cityCtx.strokeStyle = '#1a1a1a';
+                cityCtx.lineWidth = 1.0;
                 cityCtx.stroke();
 
-                // Edler, dezenter Stadtname in Anthrazit mit sanftem weißem Halo
-                cityCtx.shadowColor = 'rgba(255, 255, 255, 0.85)';
-                cityCtx.shadowBlur = 2.5;
-                cityCtx.fillStyle = '#1c1c1c';
-                cityCtx.fillText(city.name, sx + 5, sy);
+                // Lokale Temperatur ermitteln
+                const real = getInterpolatedData(city.lat, city.lng);
+                const tempStr = Math.round(real.t) + '°';
+
+                // Edler, dezenter Stadtname zentriert oberhalb
+                cityCtx.textAlign = 'center';
+                cityCtx.shadowColor = 'rgba(255, 255, 255, 0.90)';
+                cityCtx.shadowBlur = 3.0;
+                cityCtx.fillStyle = '#181818';
+                cityCtx.font = '500 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+                cityCtx.fillText(city.name, sx, sy - 6);
+
+                // Kräftige, klare Temperatur-Anzeige direkt unterhalb (wie bei Windy: Geneva / 18°)
+                cityCtx.font = '600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+                cityCtx.fillStyle = '#111111';
+                cityCtx.fillText(tempStr, sx, sy + 8);
                 cityCtx.shadowColor = 'transparent';
             }
             cityCtx.restore();
         }
 
+        // KAMERA FLUG (FLY-TO) FUNKTION
+        function flyToLocation(targetLat, targetLng, targetName) {
+            const localV = latLngToSphereVertex(targetLat, targetLng, 1.0);
+            const targetUnit = new THREE.Vector3(-localV.z, localV.y, localV.x).normalize();
+            const targetDist = 107.5; // Ideale Detailflughöhe für Relief & Straßen
+
+            const startPos = camera.position.clone();
+            const startUnit = startPos.clone().normalize();
+            const startDist = startPos.length();
+
+            cameraAnimation = {
+                startTime: performance.now(),
+                duration: 1300,
+                startUnit,
+                targetUnit,
+                startDist,
+                targetDist,
+                targetLat,
+                targetLng,
+                targetName
+            };
+            controls.enabled = false;
+        }
+
+        // SUCHLEISTE LOGIK & EVENTS
+        const searchInput = document.getElementById('searchInput');
+        const searchClearBtn = document.getElementById('searchClearBtn');
+        const searchSuggestions = document.getElementById('searchSuggestions');
+        let activeSuggestionIndex = -1;
+        let currentSuggestions = [];
+
+        function escapeHtml(str) {
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function updateSearchSuggestions() {
+            const query = searchInput.value.trim().toLowerCase();
+            if (!query) {
+                searchSuggestions.style.display = 'none';
+                searchSuggestions.innerHTML = '';
+                searchClearBtn.style.display = 'none';
+                currentSuggestions = [];
+                activeSuggestionIndex = -1;
+                return;
+            }
+            searchClearBtn.style.display = 'flex';
+
+            const matches = [];
+            for (let i = 0; i < citiesData.length; i++) {
+                const c = citiesData[i];
+                const nameLow = c.name.toLowerCase();
+                const rawNameLow = (c.rawName || '').toLowerCase();
+                if (nameLow.startsWith(query) || rawNameLow.startsWith(query)) {
+                    matches.push({ city: c, priority: 2 });
+                } else if (nameLow.includes(query) || rawNameLow.includes(query)) {
+                    matches.push({ city: c, priority: 1 });
+                }
+                if (matches.length >= 35) break;
+            }
+
+            matches.sort((a, b) => {
+                if (a.priority !== b.priority) return b.priority - a.priority;
+                return a.city.scalerank - b.city.scalerank;
+            });
+
+            currentSuggestions = matches.slice(0, 6).map(m => m.city);
+            activeSuggestionIndex = -1;
+            renderSuggestionsHtml(query);
+        }
+
+        function renderSuggestionsHtml(query) {
+            let html = '';
+            if (currentSuggestions.length > 0) {
+                currentSuggestions.forEach((city, idx) => {
+                    const real = getInterpolatedData(city.lat, city.lng);
+                    const tempStr = Math.round(real.t) + '°C';
+                    const countryStr = city.country || '';
+                    html += `
+                        <div class="suggestion-item" data-idx="${idx}">
+                            <div class="suggestion-main">
+                                <div class="suggestion-name">${escapeHtml(city.name)}</div>
+                                <div class="suggestion-sub">${escapeHtml(countryStr)}</div>
+                            </div>
+                            <div class="suggestion-temp">${tempStr}</div>
+                        </div>
+                    `;
+                });
+            }
+
+            html += `
+                <div class="suggestion-item suggestion-online" data-online="true">
+                    <div class="suggestion-main">
+                        <div class="suggestion-name" style="color: #00ccff;">🔍 Weltweit suchen nach "${escapeHtml(query)}"...</div>
+                        <div class="suggestion-sub">OpenStreetMap-Suche für Berge, Täler & Orte</div>
+                    </div>
+                </div>
+            `;
+
+            searchSuggestions.innerHTML = html;
+            searchSuggestions.style.display = 'block';
+
+            searchSuggestions.querySelectorAll('.suggestion-item').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (el.dataset.online === 'true') {
+                        searchOnline(query);
+                    } else {
+                        const idx = parseInt(el.dataset.idx);
+                        selectCity(currentSuggestions[idx]);
+                    }
+                });
+            });
+        }
+
+        function selectCity(city) {
+            if (!city) return;
+            searchInput.value = city.name;
+            searchSuggestions.style.display = 'none';
+            searchClearBtn.style.display = 'flex';
+            flyToLocation(city.lat, city.lng, city.name);
+            showLocationForecast(city.lat, city.lng, city.name, city.country);
+        }
+
+        function searchOnline(query) {
+            searchSuggestions.innerHTML = '<div style="padding: 14px; color: #bbb; text-align: center; font-size: 13px;">Suche weltweit via OpenStreetMap...</div>';
+            fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`)
+                .then(r => r.json())
+                .then(results => {
+                    if (results && results.length > 0) {
+                        const res = results[0];
+                        const lat = parseFloat(res.lat);
+                        const lng = parseFloat(res.lon);
+                        const name = res.display_name.split(',')[0];
+                        selectCity({ name, lat, lng });
+                    } else {
+                        searchSuggestions.innerHTML = '<div style="padding: 14px; color: #ff7777; text-align: center; font-size: 13px;">Kein Ort gefunden</div>';
+                        setTimeout(() => { searchSuggestions.style.display = 'none'; }, 2200);
+                    }
+                })
+                .catch(() => {
+                    searchSuggestions.innerHTML = '<div style="padding: 14px; color: #ff7777; text-align: center; font-size: 13px;">Suche nicht erreichbar</div>';
+                    setTimeout(() => { searchSuggestions.style.display = 'none'; }, 2200);
+                });
+        }
+
+        searchInput.addEventListener('input', updateSearchSuggestions);
+        searchInput.addEventListener('focus', () => {
+            if (searchInput.value.trim().length > 0) {
+                updateSearchSuggestions();
+            }
+        });
+
+        // Tastaturnavigation
+        searchInput.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            const items = searchSuggestions.querySelectorAll('.suggestion-item');
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (items.length > 0) {
+                    activeSuggestionIndex = (activeSuggestionIndex + 1) % items.length;
+                    items.forEach((it, i) => it.classList.toggle('active', i === activeSuggestionIndex));
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (items.length > 0) {
+                    activeSuggestionIndex = (activeSuggestionIndex - 1 + items.length) % items.length;
+                    items.forEach((it, i) => it.classList.toggle('active', i === activeSuggestionIndex));
+                }
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (activeSuggestionIndex >= 0 && items[activeSuggestionIndex]) {
+                    items[activeSuggestionIndex].click();
+                } else if (currentSuggestions.length > 0) {
+                    selectCity(currentSuggestions[0]);
+                } else if (searchInput.value.trim().length > 0) {
+                    searchOnline(searchInput.value.trim());
+                }
+            } else if (e.key === 'Escape') {
+                searchSuggestions.style.display = 'none';
+                searchInput.blur();
+            }
+        });
+
+        searchInput.addEventListener('keyup', (e) => { e.stopPropagation(); });
+        searchInput.addEventListener('keypress', (e) => { e.stopPropagation(); });
+
+        searchClearBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            searchInput.value = '';
+            searchSuggestions.style.display = 'none';
+            searchClearBtn.style.display = 'none';
+            searchInput.focus();
+        });
+
+        // CURSOR-BASIERTES ZOOMEN (Zoom to Mouse Position)
+        const zoomRaycaster = new THREE.Raycaster();
+        window.addEventListener('wheel', (event) => {
+            if (cameraAnimation) return; // Nicht während automatischem Kameraflug
+            if (event.target && typeof event.target.closest === 'function' && (
+                event.target.closest('#search-container') || event.target.closest('#forecast-container') || 
+                event.target.closest('#ui-container') || event.target.closest('#timeline-container'))) {
+                return;
+            }
+
+            if (event.deltaY < 0) { // Nur beim Hineinzoomen den Cursor-Punkt anvisieren
+                const mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+                const mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+                
+                zoomRaycaster.setFromCamera({ x: mouseX, y: mouseY }, camera);
+                const hits = zoomRaycaster.intersectObject(earthMesh);
+                
+                if (hits.length > 0) {
+                    const hitPoint = hits[0].point;
+                    const targetUnit = hitPoint.clone().normalize();
+                    const camPos = camera.position;
+                    const camUnit = camPos.clone().normalize();
+                    const dist = camPos.length();
+                    
+                    // Sanfter Richtungsversatz zur Mausposition hin (für Mausrad und Präzisions-Touchpads)
+                    const diff = targetUnit.clone().sub(camUnit);
+                    const delta = Math.abs(event.deltaY);
+                    const shiftAlpha = Math.min(0.25, Math.max(0.02, delta * 0.0012));
+                    
+                    const newCamUnit = camUnit.addScaledVector(diff, shiftAlpha).normalize();
+                    camera.position.copy(newCamUnit.multiplyScalar(dist));
+                    camera.lookAt(0, 0, 0);
+                    controls.target.set(0, 0, 0);
+                }
+            }
+        }, { capture: true, passive: true });
+
+        // PROGNOSE-FUNKTIONEN (24h / 48h Wettertrend)
+        function getTempAtStep(step, lat, lng) {
+            if (!step || !step.data) return 15;
+            const th = step.header;
+            let lon0360 = lng < 0 ? lng + 360 : lng;
+            let y = (th.la1 - lat) / th.dy;
+            let x = lon0360 / th.dx;
+            let y0 = Math.floor(y); let x0 = Math.floor(x);
+            let y1 = y0 + 1; let x1 = x0 + 1;
+            if (y0 < 0) y0 = 0; if (y0 >= th.ny) y0 = th.ny - 1;
+            if (y1 < 0) y1 = 0; if (y1 >= th.ny) y1 = th.ny - 1;
+            if (x0 < 0) x0 = 0; if (x0 >= th.nx) x0 = th.nx - 1;
+            if (x1 < 0) x1 = 0; if (x1 >= th.nx) x1 = th.nx - 1;
+            let dy = y - y0; let dx = x - x0;
+            const i00 = y0 * th.nx + x0; const i10 = y0 * th.nx + x1;
+            const i01 = y1 * th.nx + x0; const i11 = y1 * th.nx + x1;
+            const scale = step.scale || 1.0;
+            const d = step.data;
+            const t00 = d[i00] * scale;
+            const t10 = d[i10] * scale;
+            const t01 = d[i01] * scale;
+            const t11 = d[i11] * scale;
+            return t00*(1-dx)*(1-dy) + t10*dx*(1-dy) + t01*(1-dx)*dy + t11*dx*dy;
+        }
+
+        const forecastContainer = document.getElementById('forecast-container');
+        const forecastCloseBtn = document.getElementById('forecastCloseBtn');
+
+        if (forecastCloseBtn) {
+            forecastCloseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                forecastContainer.style.display = 'none';
+            });
+        }
+
+        function getWeatherIcon(t, wind) {
+            if (t <= 0) return '❄️';
+            if (wind > 35) return '💨';
+            if (t >= 25) return '☀️';
+            if (t >= 16) return '🌤️';
+            if (t >= 8) return '⛅';
+            return '☁️';
+        }
+
+        function showLocationForecast(lat, lng, name, country) {
+            if (!name) name = "Ausgewählter Ort";
+            const placeEl = document.getElementById('forecastPlaceName');
+            const countryEl = document.getElementById('forecastCountry');
+            if (placeEl) placeEl.innerText = name;
+            if (countryEl) countryEl.innerText = country || `${lat.toFixed(1)}°N, ${lng.toFixed(1)}°E`;
+
+            if (typeof tempData === 'undefined' || tempData.length === 0) return;
+
+            const liveIdx = getLiveStepIndex();
+            const liveStep = tempData[liveIdx] || tempData[0];
+            const liveTemp = getTempAtStep(liveStep, lat, lng);
+            const liveInterp = getInterpolatedData(lat, lng);
+            const windSpeedKmh = Math.round(Math.sqrt(liveInterp.u * liveInterp.u + liveInterp.v * liveInterp.v) * 3.6);
+
+            const iconEl = document.getElementById('forecastCurrentIcon');
+            const tempEl = document.getElementById('forecastCurrentTemp');
+            const windEl = document.getElementById('forecastCurrentWind');
+            const minMaxEl = document.getElementById('forecastMinMax');
+
+            if (iconEl) iconEl.innerText = getWeatherIcon(liveTemp, windSpeedKmh);
+            if (tempEl) tempEl.innerText = Math.round(liveTemp) + '°';
+            if (windEl) windEl.innerText = windSpeedKmh + ' km/h';
+
+            // Min/Max und 48h Zeitstreifen
+            const futureSteps = [];
+            let minT = Infinity;
+            let maxT = -Infinity;
+
+            const maxSteps = Math.min(tempData.length, liveIdx + 17);
+            for (let i = liveIdx; i < maxSteps; i++) {
+                const step = tempData[i];
+                const t = getTempAtStep(step, lat, lng);
+                if (t < minT) minT = t;
+                if (t > maxT) maxT = t;
+                futureSteps.push({ step, t, hourOffset: (i - liveIdx) * 3 });
+            }
+
+            if (minMaxEl) minMaxEl.innerText = `${Math.round(minT)}° / ${Math.round(maxT)}°`;
+
+            const timelineEl = document.getElementById('forecastTimeline');
+            if (timelineEl) {
+                let timelineHtml = '';
+                futureSteps.forEach((item, idx) => {
+                    const d = item.step.timestamp ? new Date(item.step.timestamp) : new Date(Date.now() + item.hourOffset * 3600000);
+                    let timeLabel = idx === 0 ? 'Jetzt' : `${d.getHours().toString().padStart(2, '0')}:00`;
+                    if (idx > 0 && d.getHours() === 0) {
+                        timeLabel = d.toLocaleDateString('de-DE', { weekday: 'short' });
+                    }
+                    const icon = getWeatherIcon(item.t, 10);
+                    const activeClass = item.hourOffset === currentHourOffset ? 'active' : '';
+
+                    timelineHtml += `
+                        <div class="forecast-hour-card ${activeClass}" data-offset="${item.hourOffset}" title="${d.toLocaleString('de-DE')}: ${Math.round(item.t)}°C">
+                            <span class="forecast-hour-time">${timeLabel}</span>
+                            <span class="forecast-hour-icon">${icon}</span>
+                            <span class="forecast-hour-temp">${Math.round(item.t)}°</span>
+                        </div>
+                    `;
+                });
+
+                timelineEl.innerHTML = timelineHtml;
+
+                timelineEl.querySelectorAll('.forecast-hour-card').forEach(card => {
+                    card.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const offset = parseInt(card.dataset.offset);
+                        timeSlider.value = offset;
+                        timeSlider.dispatchEvent(new Event('input'));
+                        timelineEl.querySelectorAll('.forecast-hour-card').forEach(c => c.classList.remove('active'));
+                        card.classList.add('active');
+                    });
+                });
+            }
+
+            if (forecastContainer) forecastContainer.style.display = 'block';
+        }
 
         // UI & EVENT HANDLERS
         let clickedPopupPoint = null;
@@ -835,10 +2056,16 @@
             popupEl.innerText = html;
         }
 
-        // Handle Click for popup
+        // Handle Click for popup & forecast
         window.addEventListener('click', (event) => {
-            if (event.clientY > window.innerHeight - 100) return; // Don't click through UI
+            // Nicht durch UI-Container, Prognose oder Suchleiste durchklicken
+            if (event.clientY > window.innerHeight - 100 || event.target.closest('#search-container') || event.target.closest('#forecast-container')) return;
             
+            // Bei Klick außerhalb der Suche Dropdown schließen
+            if (!event.target.closest('#search-container')) {
+                searchSuggestions.style.display = 'none';
+            }
+
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
             
@@ -857,6 +2084,24 @@
                 popupEl.style.left = event.clientX + 'px';
                 popupEl.style.top = event.clientY + 'px';
                 updatePopupContent();
+
+                // Nächste bekannte Stadt ermitteln oder Koordinaten anzeigen
+                let nearestCity = null;
+                let minDistSq = Infinity;
+                const checkCount = Math.min(citiesData.length, 500);
+                for (let i = 0; i < checkCount; i++) {
+                    const c = citiesData[i];
+                    const dLat = c.lat - clickedPopupPoint.lat;
+                    const dLng = (c.lng - clickedPopupPoint.lng) * Math.cos(c.lat * Math.PI / 180);
+                    const dSq = dLat * dLat + dLng * dLng;
+                    if (dSq < minDistSq) {
+                        minDistSq = dSq;
+                        nearestCity = c;
+                    }
+                }
+                const pName = (nearestCity && minDistSq < 0.5) ? nearestCity.name : "Ausgewählter Ort";
+                const pCountry = (nearestCity && minDistSq < 0.5) ? nearestCity.country : "";
+                showLocationForecast(clickedPopupPoint.lat, clickedPopupPoint.lng, pName, pCountry);
             } else {
                 clickedPopupPoint = null;
                 popupEl.style.display = 'none';
@@ -870,16 +2115,20 @@
                 const worldPos = localPos.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
                 
                 const dotProduct = worldPos.clone().normalize().dot(camera.position.clone().normalize());
+                const pos = worldPos.clone().project(camera);
                 
-                if (dotProduct < 0.05) { // Pointing away from camera
+                if (dotProduct < 0.05 || pos.z > 1.0) { // Pointing away or behind camera
                     popupEl.style.display = 'none';
                 } else {
-                    popupEl.style.display = 'block';
-                    const pos = worldPos.clone().project(camera);
                     const x = (pos.x * .5 + .5) * window.innerWidth;
                     const y = (pos.y * -.5 + .5) * window.innerHeight;
-                    popupEl.style.left = x + 'px';
-                    popupEl.style.top = y + 'px';
+                    if (x < -100 || x > window.innerWidth + 100 || y < -100 || y > window.innerHeight + 100) {
+                        popupEl.style.display = 'none';
+                    } else {
+                        popupEl.style.display = 'block';
+                        popupEl.style.left = x + 'px';
+                        popupEl.style.top = y + 'px';
+                    }
                 }
             }
         });
@@ -970,7 +2219,7 @@
             if (mode === 'temp') {
                 document.getElementById('legend-min').innerText = '-30°C';
                 document.getElementById('legend-max').innerText = '+50°C';
-                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #8c52ff, #a473b6, #b388ff, #88ccee, #3399cc, #1d5cae, #1b7a42, #32962a, #55ad26, #84c424, #b2d820, #d8e61e, #f7e318, #f8be17, #f69519, #eb6814, #e03e16, #dc2626, #b71c1c, #800808, #480202, #200000)'; 
+                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #8c52ff 0.0%, #a473b6 12.5%, #b388ff 18.8%, #88ccee 25.0%, #3399cc 31.3%, #1d5cae 37.5%, #1b7a42 41.3%, #32962a 46.3%, #55ad26 51.2%, #84c424 56.3%, #b2d820 58.8%, #d8e61e 61.3%, #f7e318 62.5%, #ffdb00 67.5%, #ffa600 71.3%, #ff6200 75.0%, #ee3a14 78.1%, #dc2222 81.3%, #a80e14 84.4%, #700408 87.5%, #521a10 91.3%, #38140c 95.0%, #1e0c08 97.5%, #000000 100.0%)'; 
                 document.getElementById('timeLabel').innerText = 'Live Oberflächentemperatur (3D Globus)';
                 dataMaterial.uniforms.u_colorRamp.value = colorRampTempTex;
                 dataMaterial.uniforms.u_minVal.value = useFloat ? minTempRange : 0.0;
