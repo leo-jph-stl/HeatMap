@@ -1,10 +1,11 @@
 # Scratch & exploratory files
+scratch/
 earth_repo/
 *.xml
 *.zip
 *.txt
-test*.png
-test.png
+*.png
+*.geojson
 fetch_live_temp.js
 fetch_opendap_temp.js
 fetch_opendap_wind.js
