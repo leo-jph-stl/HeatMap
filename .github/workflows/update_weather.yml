@@ -8,10 +8,19 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
 
 jobs:
   update-gfs:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,6 +41,15 @@ jobs:
           if git diff --staged --quiet; then
             echo 'No changes in weather data.'
           else
-            git commit -m 'chore(data): auto-update GFS 0.25deg weather data [skip ci]'
+            git commit -m 'chore(data): auto-update GFS 0.25deg weather data'
             git push
           fi
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
