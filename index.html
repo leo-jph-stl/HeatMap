@@ -1014,6 +1014,207 @@
         dataMesh.renderOrder = 1;
         scene.add(dataMesh);
 
+        // DYNAMISCHES 3D TOPOGRAPHIE- & GELÄNDE-RELIEF (ESRI World Hillshade)
+        const hillshadeGroup = new THREE.Group();
+        hillshadeGroup.rotation.y = -Math.PI / 2;
+        scene.add(hillshadeGroup);
+
+        function lon2tile(lon, zoom) {
+            return Math.floor((lon + 180) / 360 * Math.pow(2, zoom));
+        }
+        function lat2tile(lat, zoom) {
+            const rad = lat * Math.PI / 180;
+            return Math.floor((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * Math.pow(2, zoom));
+        }
+
+        function getTileGeometry(x, y, z, segs = 8, radius = earthRadius + 0.35) {
+            const nTiles = Math.pow(2, z);
+            const positions = [];
+            const uvs = [];
+            const indices = [];
+
+            for (let iy = 0; iy <= segs; iy++) {
+                const vTile = iy / segs;
+                const Y = y + vTile;
+                const n = Math.PI - (2 * Math.PI * Y) / nTiles;
+                const lat = (180 / Math.PI) * Math.atan(Math.sinh(n));
+                const vNorm = (90 - lat) / 180;
+
+                for (let ix = 0; ix <= segs; ix++) {
+                    const uTile = ix / segs;
+                    const X = x + uTile;
+                    const lng = (X / nTiles) * 360 - 180;
+                    const uNorm = (lng + 180) / 360;
+
+                    const px = - radius * Math.cos(uNorm * Math.PI * 2) * Math.sin(vNorm * Math.PI);
+                    const py = radius * Math.cos(vNorm * Math.PI);
+                    const pz = radius * Math.sin(uNorm * Math.PI * 2) * Math.sin(vNorm * Math.PI);
+
+                    positions.push(px, py, pz);
+                    uvs.push(uTile, 1.0 - vTile);
+                }
+            }
+
+            for (let iy = 0; iy < segs; iy++) {
+                for (let ix = 0; ix < segs; ix++) {
+                    const a = iy * (segs + 1) + ix;
+                    const b = a + 1;
+                    const c = a + (segs + 1);
+                    const d = c + 1;
+                    indices.push(a, b, d, a, d, c);
+                }
+            }
+
+            const geom = new THREE.BufferGeometry();
+            geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            geom.setIndex(indices);
+            return geom;
+        }
+
+        const loadedTiles = new Map();
+        const loadingKeys = new Set();
+
+        function getTileUrl(z, x, y) {
+            return `https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/${z}/${y}/${x}`;
+        }
+
+        function loadTileMesh(z, x, y, key) {
+            if (loadedTiles.has(key) || loadingKeys.has(key)) return;
+            loadingKeys.add(key);
+
+            const url = getTileUrl(z, x, y);
+            textureLoader.load(url, (tex) => {
+                loadingKeys.delete(key);
+                tex.generateMipmaps = false;
+                tex.minFilter = THREE.LinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+
+                const geom = getTileGeometry(x, y, z, 8, earthRadius + 0.35);
+                const mat = new THREE.ShaderMaterial({
+                    vertexShader: `
+                        varying vec2 vUv;
+                        void main() {
+                            vUv = uv;
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        }
+                    `,
+                    fragmentShader: `
+                        precision highp float;
+                        uniform sampler2D u_tile;
+                        uniform float u_strength;
+                        varying vec2 vUv;
+                        void main() {
+                            float s = texture2D(u_tile, vUv).r;
+                            // Multiplikations-Faktor: Flachland bleibt 1.0, Schatten modulieren sanft
+                            float factor = mix(1.0, s, u_strength);
+                            gl_FragColor = vec4(factor, factor, factor, 1.0);
+                        }
+                    `,
+                    uniforms: {
+                        u_tile: { value: tex },
+                        u_strength: { value: 0.60 }
+                    },
+                    blending: THREE.CustomBlending,
+                    blendSrc: THREE.DstColorFactor,
+                    blendDst: THREE.ZeroFactor,
+                    blendSrcAlpha: THREE.OneFactor,
+                    blendDstAlpha: THREE.OneFactor,
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    depthWrite: false
+                });
+
+                const mesh = new THREE.Mesh(geom, mat);
+                mesh.renderOrder = 2;
+                hillshadeGroup.add(mesh);
+                loadedTiles.set(key, { z, x, y, mesh, lastUsed: performance.now() });
+            }, undefined, () => {
+                loadingKeys.delete(key);
+            });
+        }
+
+        let lastTileUpdate = 0;
+        let lastCameraPos = new THREE.Vector3();
+
+        function updateHillshadeTiles() {
+            const now = performance.now();
+            if (now - lastTileUpdate < 100) return;
+            
+            if (camera.position.distanceToSquared(lastCameraPos) < 0.05) return;
+            lastCameraPos.copy(camera.position);
+            lastTileUpdate = now;
+
+            const dist = camera.position.length();
+            const h = Math.max(1, dist - earthRadius);
+
+            let z = 5;
+            if (h < 20) z = 8;
+            else if (h < 40) z = 7;
+            else if (h < 85) z = 6;
+
+            const Px = camera.position.z;
+            const Py = camera.position.y;
+            const Pz = -camera.position.x;
+            const vFrac = Math.acos(Math.min(Math.max(Py / dist, -1), 1)) / Math.PI;
+            const centerLat = 90 - vFrac * 180;
+            let uFrac = Math.atan2(Pz, -Px) / (2 * Math.PI);
+            if (uFrac < 0) uFrac += 1;
+            const centerLng = uFrac * 360 - 180;
+
+            const spanDeg = Math.min(75, (h / earthRadius) * camera.fov * 1.35);
+            const cosLat = Math.max(0.18, Math.cos(centerLat * Math.PI / 180));
+            const latSpan = spanDeg * 0.65;
+            const lngSpan = (spanDeg * 0.65) / cosLat;
+
+            const latMin = Math.max(-84, centerLat - latSpan);
+            const latMax = Math.min(84, centerLat + latSpan);
+            const lngMin = centerLng - lngSpan;
+            const lngMax = centerLng + lngSpan;
+
+            const nTiles = Math.pow(2, z);
+            const xMin = lon2tile(lngMin, z);
+            const xMax = lon2tile(lngMax, z);
+            const yMin = lat2tile(latMax, z);
+            const yMax = lat2tile(latMin, z);
+
+            const candidateTiles = [];
+            for (let y = yMin; y <= yMax; y++) {
+                if (y < 0 || y >= nTiles) continue;
+                for (let x = xMin; x <= xMax; x++) {
+                    const wrappedX = ((x % nTiles) + nTiles) % nTiles;
+                    const tLon = (wrappedX + 0.5) / nTiles * 360 - 180;
+                    const tN = Math.PI - (2 * Math.PI * (y + 0.5)) / nTiles;
+                    const tLat = (180 / Math.PI) * Math.atan(Math.sinh(tN));
+                    const dLat = tLat - centerLat;
+                    const dLng = (tLon - centerLng) * cosLat;
+                    const d2 = dLat * dLat + dLng * dLng;
+                    candidateTiles.push({ z, x: wrappedX, y, d2, key: `${z}_${wrappedX}_${y}` });
+                }
+            }
+            candidateTiles.sort((a, b) => a.d2 - b.d2);
+            const maxTiles = (z >= 7) ? 36 : 24;
+            const activeKeys = new Set(candidateTiles.slice(0, maxTiles).map(t => t.key));
+
+            candidateTiles.slice(0, maxTiles).forEach(t => {
+                loadTileMesh(t.z, t.x, t.y, t.key);
+            });
+
+            for (const [key, tileObj] of loadedTiles.entries()) {
+                if (!activeKeys.has(key)) {
+                    if (tileObj.z !== z || (now - tileObj.lastUsed > 5000)) {
+                        hillshadeGroup.remove(tileObj.mesh);
+                        tileObj.mesh.geometry.dispose();
+                        loadedTiles.delete(key);
+                    }
+                } else {
+                    tileObj.lastUsed = now;
+                }
+            }
+        }
+        controls.addEventListener('change', updateHillshadeTiles);
+        updateHillshadeTiles();
+
         // SCREEN-SPACE WIND & CITY LABELS (Windy.com Architektur - IMMER GESTOCHEN SCHARF!)
         const screenWindCanvas = document.getElementById('screenWindCanvas');
         let screenW = window.innerWidth;
