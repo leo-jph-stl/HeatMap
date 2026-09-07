@@ -5,7 +5,7 @@ const BASE_URL = 'https://thredds.ucar.edu/thredds/dodsC/grib/NCEP/GFS/Global_0p
 const NX = 1440;
 const NY = 721;
 const PTS_PER_STEP = NX * NY; // 1,038,240
-const NUM_STEPS = 25; // -24h to +48h in 3h steps
+const NUM_STEPS = 33; // -24h to +72h in 3h steps (3 Tage Prognose)
 
 function fetchText(url) {
     return new Promise((resolve, reject) => {
@@ -58,7 +58,7 @@ async function fetchTimeIndices() {
     }
 
     console.log(`Live Index: ${bestIdx} (${steps[8].timestamp})`);
-    console.log(`Zeitfenster: -24h (${steps[0].timestamp}) bis +48h (${steps[steps.length - 1].timestamp})`);
+    console.log(`Zeitfenster: -24h (${steps[0].timestamp}) bis +${steps[steps.length - 1].hour}h (${steps[steps.length - 1].timestamp})`);
     return steps;
 }
 
