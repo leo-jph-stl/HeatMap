@@ -1194,6 +1194,7 @@
 
         const lastWindCameraPos = new THREE.Vector3();
         const lastWindCameraQuat = new THREE.Quaternion();
+        let lastWindDist = 280;
         const vpMatrix = new THREE.Matrix4();
         const tempVec0 = new THREE.Vector3();
         const tempVec1 = new THREE.Vector3();
@@ -1202,16 +1203,21 @@
             const dist = camera.position.length();
             const h = Math.max(1, dist - earthRadius);
 
-            // Erkennen, ob der Benutzer den Globus dreht oder zieht (inkl. sanfter Dämpfung)
+            // Zoom-Erkennung: Hat sich die Kameradistanz (Zoom) merklich verändert?
+            const distDiff = Math.abs(dist - lastWindDist);
+            const zoomRatio = distDiff / Math.max(lastWindDist, 1);
+
+            // Erkennen, ob der Benutzer den Globus dreht, zieht oder zoomt (inkl. sanfter Dämpfung)
             const isCameraMoving = isInteracting || 
                 camera.position.distanceToSquared(lastWindCameraPos) > 0.001 ||
-                camera.quaternion.angleTo(lastWindCameraQuat) > 0.0005;
+                camera.quaternion.angleTo(lastWindCameraQuat) > 0.0005 ||
+                zoomRatio > 0.003;
 
             lastWindCameraPos.copy(camera.position);
             lastWindCameraQuat.copy(camera.quaternion);
 
             if (isCameraMoving) {
-                // Beim Drehen/Verschieben altes Bild sofort säubern -> Partikel bleiben 1:1 fest an der Geographie verankert
+                // Beim Drehen/Verschieben/Zoomen altes Bild sofort säubern -> Partikel bleiben 1:1 fest an der Geographie verankert
                 screenWindCtx.clearRect(0, 0, screenW, screenH);
             } else {
                 // Im Stillstand sanfte, elegante Schweife fließen lassen
@@ -1283,6 +1289,26 @@
                 p.lifespan = 50 + Math.random() * 60;
                 p.active = true;
             }
+
+            // ANTI-CLUSTER BEIM HERAUSZOOMEN:
+            // Wenn herausgezoomt wird (Kameradistanz wächst), würden zuvor im Nahbereich platzierte Partikel
+            // zu einem dichten weißen Kasten zusammengedrückt. Daher werden Partikel bei Zoom-Änderung
+            // gleichmäßig auf das gesamte neu sichtbare Bildfeld re-verteilt!
+            if (zoomRatio > 0.02) {
+                for (let i = 0; i < particleCount; i++) {
+                    respawnOnScreen(particles[i]);
+                    particles[i].age = Math.random() * particles[i].lifespan;
+                }
+                screenWindCtx.clearRect(0, 0, screenW, screenH);
+            } else if (zoomRatio > 0.005) {
+                const reseedCount = Math.floor(particleCount * 0.35);
+                for (let k = 0; k < reseedCount; k++) {
+                    const idx = (Math.random() * particleCount) | 0;
+                    respawnOnScreen(particles[idx]);
+                    particles[idx].age = Math.random() * particles[idx].lifespan;
+                }
+            }
+            lastWindDist = dist;
 
             // Geschwindigkeitsskalierung: Bei näherem Zoom wird der geographische Schritt adaptiv skaliert,
             // sodass die optische Strichlänge auf dem Bildschirm immer perfekt gleichmäßig bleibt!
