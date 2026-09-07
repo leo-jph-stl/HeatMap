@@ -10,7 +10,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
     
     <script src="wind_data.js"></script>
-    <script src="temp_data.js"></script>
+    <script id="tempDataScript" src="temp_data.js"></script>
     <script src="lakes_data.js"></script>
     <script src="rivers_data.js"></script>
     <script src="roads_data.js"></script>
@@ -743,8 +743,17 @@
             }
         }
 
-        const tempTextures = (typeof tempData !== 'undefined') ? tempData.map(buildTempDataTexture) : [];
-        const windTextures = (typeof windData !== 'undefined') ? windData.map(buildWindDataTexture) : [];
+        let tempTextures = (typeof tempData !== 'undefined') ? tempData.map(buildTempDataTexture) : [];
+        let windTextures = (typeof windData !== 'undefined') ? windData.map(buildWindDataTexture) : [];
+
+        function reloadDataTextures() {
+            if (typeof tempData !== 'undefined') {
+                tempTextures = tempData.map(buildTempDataTexture);
+            }
+            if (typeof windData !== 'undefined') {
+                windTextures = windData.map(buildWindDataTexture);
+            }
+        }
 
         // REINIGUNG DES TEMPERATUR-SHADERS: GLATTE, PERFEKTE FARBEN OHNE MATSCHIGE SOBEL-FLECKEN
         const dataGeometry = new THREE.SphereGeometry(earthRadius + 0.3, 128, 128);
@@ -1959,12 +1968,100 @@
             return '☁️';
         }
 
-        function showLocationForecast(lat, lng, name, country) {
+        function getTimezoneForLocation(lat, lng, country) {
+            if (!country) country = '';
+            const c = country.toLowerCase();
+            if (c.includes('deutschland') || c.includes('germany') || c.includes('france') || c.includes('frankreich') || 
+                c.includes('italy') || c.includes('italien') || c.includes('spain') || c.includes('spanien') || 
+                c.includes('schweiz') || c.includes('switzerland') || c.includes('austria') || c.includes('österreich') || 
+                c.includes('netherlands') || c.includes('niederlande') || c.includes('belgium') || c.includes('belgien') || 
+                c.includes('poland') || c.includes('polen') || c.includes('sweden') || c.includes('schweden') || 
+                c.includes('norway') || c.includes('norwegen') || c.includes('denmark') || c.includes('dänemark') || 
+                c.includes('czech') || c.includes('tschech')) return 'Europe/Berlin';
+            if (c.includes('united kingdom') || c.includes('großbritannien') || c.includes('ireland') || c.includes('irland') || c.includes('portugal')) return 'Europe/London';
+            if (c.includes('greece') || c.includes('griechenland') || c.includes('finland') || c.includes('finnland') || 
+                c.includes('turkey') || c.includes('türkei') || c.includes('ukraine') || c.includes('romania') || c.includes('rumänien')) return 'Europe/Athens';
+            if (c.includes('japan')) return 'Asia/Tokyo';
+            if (c.includes('china')) return 'Asia/Shanghai';
+            if (c.includes('india') || c.includes('indien')) return 'Asia/Kolkata';
+            if (c.includes('australia') || c.includes('australien')) return lng < 128 ? 'Australia/Perth' : 'Australia/Sydney';
+            if (c.includes('new zealand') || c.includes('neuseeland')) return 'Pacific/Auckland';
+            if (c.includes('united states') || c.includes('usa')) {
+                if (lng < -140) return 'Pacific/Honolulu';
+                if (lat > 50) return 'America/Anchorage';
+                if (lng < -114) return 'America/Los_Angeles';
+                if (lng < -102) return 'America/Denver';
+                if (lng < -86) return 'America/Chicago';
+                return 'America/New_York';
+            }
+            if (c.includes('canada') || c.includes('kanada')) {
+                if (lng < -115) return 'America/Vancouver';
+                if (lng < -100) return 'America/Edmonton';
+                if (lng < -85) return 'America/Winnipeg';
+                return 'America/Toronto';
+            }
+            if (c.includes('brazil') || c.includes('brasilien')) return 'America/Sao_Paulo';
+            if (c.includes('argentina') || c.includes('argentinien')) return 'America/Argentina/Buenos_Aires';
+            if (c.includes('russia') || c.includes('russland')) {
+                if (lng < 40) return 'Europe/Moscow';
+                if (lng < 60) return 'Asia/Yekaterinburg';
+                if (lng < 90) return 'Asia/Novosibirsk';
+                if (lng < 110) return 'Asia/Krasnoyarsk';
+                if (lng < 130) return 'Asia/Irkutsk';
+                if (lng < 145) return 'Asia/Yakutsk';
+                return 'Asia/Vladivostok';
+            }
+            return null;
+        }
+
+        function formatLocationTime(targetDate, ianaTz, lat, lng) {
+            if (ianaTz) {
+                try {
+                    return new Intl.DateTimeFormat('de-DE', {
+                        timeZone: ianaTz,
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    }).format(targetDate);
+                } catch(e) {}
+            }
+            const utcHours = targetDate.getUTCHours();
+            const utcMinutes = targetDate.getUTCMinutes();
+            const totalMinutes = utcHours * 60 + utcMinutes + Math.round((lng / 15) * 60);
+            const normMinutes = ((totalMinutes % 1440) + 1440) % 1440;
+            const h = Math.floor(normMinutes / 60).toString().padStart(2, '0');
+            const m = (normMinutes % 60).toString().padStart(2, '0');
+            return `${h}:${m}`;
+        }
+
+        function formatLocationHourCard(targetDate, ianaTz, lat, lng, isFirst) {
+            if (isFirst) return 'Jetzt';
+            if (ianaTz) {
+                try {
+                    return new Intl.DateTimeFormat('de-DE', {
+                        timeZone: ianaTz,
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    }).format(targetDate);
+                } catch(e) {}
+            }
+            const utcHours = targetDate.getUTCHours();
+            const totalHours = Math.round(utcHours + (lng / 15));
+            const h = (((totalHours % 24) + 24) % 24).toString().padStart(2, '0');
+            return `${h}:00`;
+        }
+
+        function showLocationForecast(lat, lng, name, country, customTz) {
             if (!name) name = "Ausgewählter Ort";
+            const tz = customTz || getTimezoneForLocation(lat, lng, country);
+            const localTimeStr = formatLocationTime(new Date(), tz, lat, lng);
+
             const placeEl = document.getElementById('forecastPlaceName');
             const countryEl = document.getElementById('forecastCountry');
             if (placeEl) placeEl.innerText = name;
-            if (countryEl) countryEl.innerText = country || `${lat.toFixed(1)}°N, ${lng.toFixed(1)}°E`;
+            if (countryEl) {
+                const countryPart = country ? `${country} · ` : `${lat.toFixed(1)}°N, ${lng.toFixed(1)}°E · `;
+                countryEl.innerText = `${countryPart}🕒 ${localTimeStr} Uhr (Ortszeit)`;
+            }
 
             if (typeof tempData === 'undefined' || tempData.length === 0) return;
 
@@ -2004,7 +2101,7 @@
                 let timelineHtml = '';
                 futureSteps.forEach((item, idx) => {
                     const d = item.step.timestamp ? new Date(item.step.timestamp) : new Date(Date.now() + item.hourOffset * 3600000);
-                    let timeLabel = idx === 0 ? 'Jetzt' : `${d.getHours().toString().padStart(2, '0')}:00`;
+                    let timeLabel = formatLocationHourCard(d, tz, lat, lng, idx === 0);
                     if (idx > 0 && d.getHours() === 0) {
                         timeLabel = d.toLocaleDateString('de-DE', { weekday: 'short' });
                     }
@@ -2277,10 +2374,104 @@
             renderer.setSize(screenW, screenH);
         });
 
+        // IP-BASIERTE STANDORTERMITTLUNG & WILLKOMMENS-FLUG (DSGVO-konform, keine Cookies)
+        let userLocationDetected = false;
+        async function detectUserLocationAndFly() {
+            if (userLocationDetected) return;
+            try {
+                let lat = null, lng = null, city = '', country = '', tz = null;
+                try {
+                    const res = await fetch('https://get.geojs.io/v1/ip/geo.json');
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data && data.latitude && data.longitude) {
+                            lat = parseFloat(data.latitude);
+                            lng = parseFloat(data.longitude);
+                            city = data.city || 'Dein Standort';
+                            country = data.country || '';
+                            tz = data.timezone || null;
+                        }
+                    }
+                } catch(e) {}
+
+                // Fallback zu freeipapi falls geojs blockiert oder nicht antwortet
+                if (lat === null) {
+                    try {
+                        const res2 = await fetch('https://freeipapi.com/api/json');
+                        if (res2.ok) {
+                            const data2 = await res2.json();
+                            if (data2 && typeof data2.latitude === 'number' && typeof data2.longitude === 'number') {
+                                lat = data2.latitude;
+                                lng = data2.longitude;
+                                city = data2.cityName || 'Dein Standort';
+                                country = data2.countryName || '';
+                                tz = (data2.timeZones && data2.timeZones[0]) || null;
+                            }
+                        }
+                    } catch(e) {}
+                }
+
+                if (lat !== null && lng !== null) {
+                    userLocationDetected = true;
+                    console.log(`Standort via IP lokalisiert: ${city}, ${country} (${lat}, ${lng}) [${tz}]`);
+                    setTimeout(() => {
+                        flyToLocation(lat, lng, city);
+                        showLocationForecast(lat, lng, city, country, tz);
+                    }, 800);
+                }
+            } catch(err) {
+                console.log('IP-Standort konnte nicht ermittelt werden:', err);
+            }
+        }
+
+        // AUTOMATISCHE LIVE-AKTUALISIERUNG DER WETTERDATEN (alle 15 Minuten)
+        let currentManifestTimestamp = null;
+        async function checkWeatherUpdate() {
+            try {
+                const res = await fetch('manifest.json?_t=' + Date.now());
+                if (!res.ok) return;
+                const info = await res.json();
+                if (currentManifestTimestamp && info.timestamp > currentManifestTimestamp) {
+                    console.log('Neuer GFS Wetter-Modelllauf verfügbar! Aktualisiere Daten...', info.model);
+                    reloadWeatherData();
+                }
+                currentManifestTimestamp = info.timestamp;
+            } catch(e) {}
+        }
+
+        function reloadWeatherData() {
+            const oldScript = document.getElementById('tempDataScript');
+            const s = document.createElement('script');
+            s.id = 'tempDataScript';
+            s.src = 'temp_data.js?_v=' + Date.now();
+            s.onload = () => {
+                console.log('Wetterdaten erfolgreich im laufenden Betrieb aktualisiert!');
+                if (typeof reloadDataTextures === 'function') {
+                    reloadDataTextures();
+                }
+                updateActiveData();
+                if (forecastContainer && forecastContainer.style.display !== 'none') {
+                    const pName = document.getElementById('forecastPlaceName').innerText;
+                    const pCountry = document.getElementById('forecastCountry').innerText.split(' · ')[0];
+                    if (clickedPopupPoint) {
+                        showLocationForecast(clickedPopupPoint.lat, clickedPopupPoint.lng, pName, pCountry);
+                    }
+                }
+            };
+            if (oldScript && oldScript.parentNode) {
+                oldScript.parentNode.replaceChild(s, oldScript);
+            } else {
+                document.head.appendChild(s);
+            }
+        }
+
         // INIT
         updateActiveData();
         switchLayer('temp');
         animate();
+        detectUserLocationAndFly();
+        checkWeatherUpdate();
+        setInterval(checkWeatherUpdate, 15 * 60 * 1000);
 
     </script>
 </body>

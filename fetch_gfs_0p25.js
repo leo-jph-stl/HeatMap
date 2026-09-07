@@ -156,6 +156,16 @@ const tempData = (() => {
 
         fs.writeFileSync('temp_data.js', fileContent);
         console.log('ERFOLG: temp_data.js wurde mit echten 0.25° GFS-Daten aktualisiert!');
+
+        const manifest = {
+            generatedAt: new Date().toISOString(),
+            timestamp: Date.now(),
+            stepsCount: steps.length,
+            model: 'NOAA GFS 0.25deg',
+            latestRun: steps[8] ? steps[8].timestamp : new Date().toISOString()
+        };
+        fs.writeFileSync('manifest.json', JSON.stringify(manifest, null, 2));
+        console.log('ERFOLG: manifest.json aktualisiert!');
     } catch (e) {
         console.error('Fehler:', e);
     }
