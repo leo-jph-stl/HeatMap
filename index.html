@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>3D Globale Wetterkarte</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -10,7 +13,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
     
     <script src="wind_data.js"></script>
-    <script id="tempDataScript" src="temp_data.js?_v=2"></script>
+    <script id="tempDataScript" src="temp_data.js?_v=20260907_gfs025_c2"></script>
     <script src="lakes_data.js"></script>
     <script src="rivers_data.js"></script>
     <script src="roads_data.js"></script>
@@ -744,7 +747,8 @@
 
         // GPU WEBGL SHADER ENGINE (60 FPS STUFENLOSE WETTER-TEXTURGLÄTTUNG)
         const isWebGL2 = !!renderer.capabilities.isWebGL2;
-        const useFloat = isWebGL2 || renderer.extensions.has('OES_texture_float');
+        const hasFloatLinear = isWebGL2 && (renderer.extensions.has('OES_texture_float_linear') || renderer.extensions.has('EXT_color_buffer_float'));
+        const useFloat = isWebGL2;
 
         // Farb-Rampen als 1024x1 1D Texturen vorbereiten
         function createColorRampTexture(scaleFunc, minVal, maxVal, width = 1024) {
@@ -777,9 +781,9 @@
         // Pre-baking der Wetterdaten in GPU-DataTextures (dauert dank Lookup-Tabelle nur ~80ms)
         function buildTempDataTexture(step) {
             const raw = step.data;
-            const h = step.header || { nx: 720, ny: 361, dx: 0.5, dy: 0.5 };
-            const nx = h.nx;
-            const ny = h.ny;
+            const h = step.header || (typeof tempMetadata !== 'undefined' ? tempMetadata : { nx: 1440, ny: 721, dx: 0.25, dy: 0.25 });
+            const nx = h.nx || 1440;
+            const ny = h.ny || 721;
             const width = nx + 1;
             const height = ny;
             const scale = step.scale || 1.0;
@@ -803,8 +807,9 @@
                 }
                 const tex = new THREE.DataTexture(buf, width, height, THREE.RedFormat, THREE.FloatType);
                 tex.generateMipmaps = false;
-                tex.minFilter = THREE.NearestFilter;
-                tex.magFilter = THREE.NearestFilter;
+                const filter = hasFloatLinear ? THREE.LinearFilter : THREE.NearestFilter;
+                tex.minFilter = filter;
+                tex.magFilter = filter;
                 tex.wrapS = THREE.ClampToEdgeWrapping;
                 tex.wrapT = THREE.ClampToEdgeWrapping;
                 tex.needsUpdate = true;
@@ -826,8 +831,8 @@
                 }
                 const tex = new THREE.DataTexture(buf, width, height, THREE.RGBAFormat, THREE.UnsignedByteType);
                 tex.generateMipmaps = false;
-                tex.minFilter = THREE.NearestFilter;
-                tex.magFilter = THREE.NearestFilter;
+                tex.minFilter = THREE.LinearFilter;
+                tex.magFilter = THREE.LinearFilter;
                 tex.wrapS = THREE.ClampToEdgeWrapping;
                 tex.wrapT = THREE.ClampToEdgeWrapping;
                 tex.needsUpdate = true;
@@ -859,8 +864,9 @@
                 }
                 const tex = new THREE.DataTexture(buf, width, height, THREE.RedFormat, THREE.FloatType);
                 tex.generateMipmaps = false;
-                tex.minFilter = THREE.NearestFilter;
-                tex.magFilter = THREE.NearestFilter;
+                const filter = hasFloatLinear ? THREE.LinearFilter : THREE.NearestFilter;
+                tex.minFilter = filter;
+                tex.magFilter = filter;
                 tex.wrapS = THREE.ClampToEdgeWrapping;
                 tex.wrapT = THREE.ClampToEdgeWrapping;
                 tex.needsUpdate = true;
@@ -889,8 +895,8 @@
                 }
                 const tex = new THREE.DataTexture(buf, width, height, THREE.RGBAFormat, THREE.UnsignedByteType);
                 tex.generateMipmaps = false;
-                tex.minFilter = THREE.NearestFilter;
-                tex.magFilter = THREE.NearestFilter;
+                tex.minFilter = THREE.LinearFilter;
+                tex.magFilter = THREE.LinearFilter;
                 tex.wrapS = THREE.ClampToEdgeWrapping;
                 tex.wrapT = THREE.ClampToEdgeWrapping;
                 tex.needsUpdate = true;
@@ -2531,6 +2537,10 @@
         }
 
         // INIT
+        if (typeof tempMetadata !== 'undefined' && tempMetadata.nx < 1440) {
+            console.warn('Veralteter 0.5° Browser-Cache festgestellt! Aktualisiere sofort auf 0.25° GFS Modell...');
+            reloadWeatherData();
+        }
         updateActiveData();
         switchLayer('temp');
         animate();
