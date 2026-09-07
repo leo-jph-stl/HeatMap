@@ -10,7 +10,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
     
     <script src="wind_data.js"></script>
-    <script id="tempDataScript" src="temp_data.js"></script>
+    <script id="tempDataScript" src="temp_data.js?_v=2"></script>
     <script src="lakes_data.js"></script>
     <script src="rivers_data.js"></script>
     <script src="roads_data.js"></script>
@@ -2557,9 +2557,13 @@
 
             const textures = currentMode === 'temp' ? tempTextures : windTextures;
             if (textures.length > 0 && textures[targetIdx]) {
-                dataMaterial.uniforms.u_dataA.value = textures[targetIdx];
-                dataMaterial.uniforms.u_dataB.value = textures[targetIdx];
+                const curTex = textures[targetIdx];
+                dataMaterial.uniforms.u_dataA.value = curTex;
+                dataMaterial.uniforms.u_dataB.value = curTex;
                 dataMaterial.uniforms.u_blend.value = 0.0;
+                if (curTex && curTex.image && dataMaterial.uniforms.u_texSize) {
+                    dataMaterial.uniforms.u_texSize.value.set(curTex.image.width, curTex.image.height);
+                }
             }
 
             updatePopupContent();
