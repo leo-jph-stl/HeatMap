@@ -181,83 +181,104 @@ if api_key and not metrics:
         print(f"OpenAPI Abruf fehlgeschlagen: {e}")
         traceback.print_exc()
 
-# STRATEGIE 2: FoxESS Cloud Web-Login mit requests.Session & vollständigen Browser-Headern
+# STRATEGIE 2: FoxESS Cloud Web-Login mit mehreren mobilen & Browser-Varianten
 if username and password and not metrics:
-    print("\n[Strategie 2] Versuche FoxESS Cloud Web-Login mit Session...")
-    try:
-        import requests
-        session = requests.Session()
-        browser_headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    print("\n[Strategie 2] Versuche FoxESS Cloud App-/Web-Login über verschiedene Schnittstellen...")
+    import requests
+    
+    pwd_md5 = hashlib.md5(password.encode("utf-8")).hexdigest()
+    
+    endpoints = [
+        "https://www.foxesscloud.com/c/v0/user/login",
+        "https://foxesscloud.com/c/v0/user/login",
+        "https://www.foxesscloud.com/c/v1/user/login",
+        "https://eu1.foxesscloud.com/c/v0/user/login"
+    ]
+    
+    header_variants = [
+        # Variante 1: Offizielle FoxESS Android App (OkHttp)
+        {
+            "User-Agent": "okhttp/4.9.3",
             "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "en-US,en;q=0.9,de;q=0.8",
             "Content-Type": "application/json;charset=UTF-8",
-            "Origin": "https://www.foxesscloud.com",
+            "lang": "en"
+        },
+        # Variante 2: FoxCloud 2.0 Mobile App Client
+        {
+            "User-Agent": "FoxCloud/2.2.1 (com.foxess.cloud; build:124; Android 14)",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "lang": "en"
+        },
+        # Variante 3: Standard Browser (Firefox / Chrome)
+        {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "application/json;charset=UTF-8",
             "Referer": "https://www.foxesscloud.com/login",
-            "Sec-Ch-Ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-            "Sec-Ch-Ua-Mobile": "?0",
-            "Sec-Ch-Ua-Platform": '"Windows"',
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-origin",
             "lang": "en"
         }
-        session.headers.update(browser_headers)
+    ]
 
-        pwd_md5 = hashlib.md5(password.encode("utf-8")).hexdigest()
-        
-        login_url = "https://www.foxesscloud.com/c/v0/user/login"
-        login_res_json = None
+    session = requests.Session()
+    token = None
+    successful_endpoint_base = "https://www.foxesscloud.com"
 
-        # Versuch A: MD5-Passwort
-        try:
-            r = session.post(login_url, json={"user": username, "password": pwd_md5}, timeout=15)
-            print(f"Login-Versuch (MD5) HTTP Status: {r.status_code}")
-            if r.status_code == 200:
-                login_res_json = r.json()
-        except Exception as e:
-            print("Login A (MD5) Fehler:", e)
-
-        # Versuch B: Plaintext Passwort falls MD5 417/400 liefert
-        if not login_res_json or login_res_json.get("errno") not in [0, "0", None]:
-            try:
-                r = session.post(login_url, json={"user": username, "password": password}, timeout=15)
-                print(f"Login-Versuch (Plain) HTTP Status: {r.status_code}")
-                if r.status_code == 200:
-                    login_res_json = r.json()
-            except Exception as e:
-                print("Login B (Plain) Fehler:", e)
-
-        if login_res_json:
-            print("FoxESS Login Antwort:", login_res_json.get("errno"), login_res_json.get("msg", ""))
-            token = login_res_json.get("result", {}).get("token")
-            if token:
-                session.headers.update({"token": token})
-                print("✅ Login erfolgreich! Token erhalten.")
-                
-                # Seriennummer ermitteln falls nicht vorgegeben
-                sn = device_sn
-                if not sn:
+    for ep in endpoints:
+        if token:
+            break
+        base_url = "/".join(ep.split("/")[:3])
+        for idx, hdrs in enumerate(header_variants):
+            for p_val in [pwd_md5, password]:
+                for u_key in ["user", "username"]:
                     try:
-                        r_addr = session.post("https://www.foxesscloud.com/c/v0/device/addressbook", json={}, timeout=10)
-                        if r_addr.status_code == 200:
-                            devs = r_addr.json().get("result", {}).get("devices", [])
-                            if devs:
-                                sn = devs[0].get("deviceSN")
-                                print(f"Wechselrichter Seriennummer gefunden: {sn}")
-                    except Exception as e:
-                        print("Adressbuch-Abfrage:", e)
+                        r = session.post(ep, json={u_key: username, "password": p_val}, headers=hdrs, timeout=8)
+                        if r.status_code == 200:
+                            data = r.json()
+                            if data.get("errno") in [0, "0", None] and data.get("result", {}).get("token"):
+                                token = data["result"]["token"]
+                                successful_endpoint_base = base_url
+                                print(f"✅ Login ERFOLGREICH über {ep} (Header-Variante {idx+1})! Token erhalten.")
+                                break
+                            else:
+                                print(f"Antwort von {ep}: errno={data.get('errno')}, msg={data.get('msg')}")
+                        else:
+                            # 406 oder andere Codes stumm weitertesten
+                            pass
+                    except Exception:
+                        pass
+                if token:
+                    break
 
-                query_url = "https://www.foxesscloud.com/c/v0/device/real/query"
-                payload = {"sn": sn} if sn else {}
-                r_query = session.post(query_url, json=payload, timeout=15)
-                if r_query.status_code == 200:
-                    query_res = r_query.json()
-                    print("Live-Messdaten empfangen:", query_res.get("errno"), query_res.get("msg", ""))
-                    metrics = extract_metrics(query_res)
-    except Exception as e:
-        print(f"Direkter Web-Login fehlgeschlagen: {e}")
-        traceback.print_exc()
+    if token:
+        try:
+            req_headers = {
+                "token": token,
+                "Content-Type": "application/json;charset=UTF-8",
+                "User-Agent": "okhttp/4.9.3",
+                "lang": "en"
+            }
+            sn = device_sn
+            if not sn:
+                try:
+                    r_addr = session.post(f"{successful_endpoint_base}/c/v0/device/addressbook", json={}, headers=req_headers, timeout=10)
+                    if r_addr.status_code == 200:
+                        devs = r_addr.json().get("result", {}).get("devices", [])
+                        if devs:
+                            sn = devs[0].get("deviceSN")
+                            print(f"Wechselrichter Seriennummer gefunden: {sn}")
+                except Exception as e:
+                    print("Adressbuch-Abfrage:", e)
+
+            query_url = f"{successful_endpoint_base}/c/v0/device/real/query"
+            payload = {"sn": sn} if sn else {}
+            r_query = session.post(query_url, json=payload, headers=req_headers, timeout=15)
+            if r_query.status_code == 200:
+                query_res = r_query.json()
+                print("Live-Messdaten empfangen:", query_res.get("errno"), query_res.get("msg", ""))
+                metrics = extract_metrics(query_res)
+        except Exception as e:
+            print("Fehler beim Abruf der Messdaten nach Login:", e)
 
 # STRATEGIE 3: foxesscloud Python-Paket als Fallback
 if not metrics:
