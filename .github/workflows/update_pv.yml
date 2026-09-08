@@ -18,6 +18,7 @@ concurrency:
 jobs:
   update-pv:
     runs-on: ubuntu-latest
+    environment: github-pages
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -43,6 +44,21 @@ jobs:
           FOXESS_API_KEY: ${{ secrets.FOXESS_API_KEY }}
           FOX_DEVICE_SN: ${{ secrets.FOX_DEVICE_SN }}
           FOXESS_DEVICE_SN: ${{ secrets.FOXESS_DEVICE_SN }}
+          SEC_USERNAME: ${{ secrets.USERNAME }}
+          SEC_PASSWORD: ${{ secrets.PASSWORD }}
+          SEC_USER: ${{ secrets.USER }}
+          SEC_PASS: ${{ secrets.PASS }}
+          SEC_NUTZERNAME: ${{ secrets.NUTZERNAME }}
+          SEC_BENUTZERNAME: ${{ secrets.BENUTZERNAME }}
+          SEC_BENUTZER: ${{ secrets.BENUTZER }}
+          SEC_NUTZER: ${{ secrets.NUTZER }}
+          SEC_PASSWORT: ${{ secrets.PASSWORT }}
+          SEC_KENNWORT: ${{ secrets.KENNWORT }}
+          SEC_EMAIL: ${{ secrets.EMAIL }}
+          SEC_MAIL: ${{ secrets.MAIL }}
+          SEC_LOGIN: ${{ secrets.LOGIN }}
+          SEC_FOX: ${{ secrets.FOX }}
+          SEC_FOXESS: ${{ secrets.FOXESS }}
           VAR_FOX_USERNAME: ${{ vars.FOX_USERNAME }}
           VAR_FOX_PASSWORD: ${{ vars.FOX_PASSWORD }}
           VAR_FOXESS_USERNAME: ${{ vars.FOXESS_USERNAME }}
@@ -52,6 +68,11 @@ jobs:
           VAR_FOX_API_KEY: ${{ vars.FOX_API_KEY }}
           VAR_FOXESS_API_KEY: ${{ vars.FOXESS_API_KEY }}
           VAR_FOX_DEVICE_SN: ${{ vars.FOX_DEVICE_SN }}
+          VAR_USERNAME: ${{ vars.USERNAME }}
+          VAR_PASSWORD: ${{ vars.PASSWORD }}
+          VAR_NUTZERNAME: ${{ vars.NUTZERNAME }}
+          VAR_BENUTZERNAME: ${{ vars.BENUTZERNAME }}
+          VAR_PASSWORT: ${{ vars.PASSWORT }}
         run: python fetch_pv.py
 
       - name: Commit and push if changed

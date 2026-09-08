@@ -22,13 +22,36 @@ def get_first_env(keys):
     for k in keys:
         v = os.environ.get(k, "").strip()
         if v:
+            print(f"  -> Wert gefunden unter Key: '{k}' (Länge: {len(v)})")
             return v
     return ""
 
-username = get_first_env(["FOX_USERNAME", "FOXESS_USERNAME", "FOX_USER", "FOXUSER", "USERNAME_FOX", "VAR_FOX_USERNAME", "VAR_FOXESS_USERNAME", "VAR_FOX_USER"])
-password = get_first_env(["FOX_PASSWORD", "FOXESS_PASSWORD", "FOX_PASS", "FOXPASS", "PASSWORD_FOX", "VAR_FOX_PASSWORD", "VAR_FOXESS_PASSWORD", "VAR_FOX_PASS"])
-api_key = get_first_env(["FOX_API_KEY", "FOXESS_API_KEY", "FOX_APIKEY", "FOXAPIKEY", "API_KEY", "VAR_FOX_API_KEY", "VAR_FOXESS_API_KEY"])
-device_sn = get_first_env(["FOX_DEVICE_SN", "FOXESS_DEVICE_SN", "FOX_SN", "FOXSN", "DEVICE_SN", "VAR_FOX_DEVICE_SN"])
+print("Prüfe Umgebungsvariablen auf Anmeldedaten...")
+username = get_first_env([
+    "FOX_USERNAME", "FOXESS_USERNAME", "FOX_USER", "FOXUSER", "USERNAME_FOX",
+    "SEC_FOX_USERNAME", "SEC_FOXESS_USERNAME", "SEC_USERNAME", "SEC_USER", 
+    "SEC_NUTZERNAME", "SEC_BENUTZERNAME", "SEC_BENUTZER", "SEC_NUTZER", "SEC_EMAIL", "SEC_MAIL", "SEC_LOGIN", "SEC_FOX", "SEC_FOXESS",
+    "VAR_FOX_USERNAME", "VAR_FOXESS_USERNAME", "VAR_FOX_USER", "VAR_USERNAME", "VAR_NUTZERNAME", "VAR_BENUTZERNAME"
+])
+
+password = get_first_env([
+    "FOX_PASSWORD", "FOXESS_PASSWORD", "FOX_PASS", "FOXPASS", "PASSWORD_FOX",
+    "SEC_FOX_PASSWORD", "SEC_FOXESS_PASSWORD", "SEC_PASSWORD", "SEC_PASS",
+    "SEC_PASSWORT", "SEC_KENNWORT",
+    "VAR_FOX_PASSWORD", "VAR_FOXESS_PASSWORD", "VAR_FOX_PASS", "VAR_PASSWORD", "VAR_PASSWORT"
+])
+
+api_key = get_first_env([
+    "FOX_API_KEY", "FOXESS_API_KEY", "FOX_APIKEY", "FOXAPIKEY", "API_KEY",
+    "SEC_FOX_API_KEY", "SEC_FOXESS_API_KEY", "SEC_API_KEY",
+    "VAR_FOX_API_KEY", "VAR_FOXESS_API_KEY"
+])
+
+device_sn = get_first_env([
+    "FOX_DEVICE_SN", "FOXESS_DEVICE_SN", "FOX_SN", "FOXSN", "DEVICE_SN",
+    "SEC_FOX_DEVICE_SN", "SEC_FOXESS_DEVICE_SN", "SEC_DEVICE_SN",
+    "VAR_FOX_DEVICE_SN"
+])
 
 print(f"Benutzername konfiguriert: {'Ja (' + username[:2] + '***)' if username else 'Nein'}")
 print(f"Passwort konfiguriert: {'Ja (' + str(len(password)) + ' Zeichen)' if password else 'Nein'}")
