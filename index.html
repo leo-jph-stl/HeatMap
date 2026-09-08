@@ -814,6 +814,25 @@
         camera.position.z = 250;
         if (window.location.search.includes('alps')) {
             camera.position.set(11.37, 89.61, 86.40);
+        } else {
+            try {
+                const cachedLat = localStorage.getItem('last_user_lat');
+                const cachedLng = localStorage.getItem('last_user_lng');
+                if (cachedLat && cachedLng) {
+                    const cLat = parseFloat(cachedLat);
+                    const cLng = parseFloat(cachedLng);
+                    if (!isNaN(cLat) && !isNaN(cLng)) {
+                        const u = (cLng + 180) / 360;
+                        const v = (90 - cLat) / 180;
+                        const lx = - Math.cos(u * Math.PI * 2) * Math.sin(v * Math.PI);
+                        const ly = Math.cos(v * Math.PI);
+                        const lz = Math.sin(u * Math.PI * 2) * Math.sin(v * Math.PI);
+                        const initUnit = new THREE.Vector3(-lz, ly, lx).normalize();
+                        camera.position.copy(initUnit.multiplyScalar(260));
+                        camera.lookAt(0, 0, 0);
+                    }
+                }
+            } catch(e) {}
         }
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -1589,6 +1608,10 @@
                         popupEl.style.display = 'block';
                         popupEl.style.left = ((pProj.x * 0.5 + 0.5) * window.innerWidth) + 'px';
                         popupEl.style.top = ((-pProj.y * 0.5 + 0.5) * window.innerHeight) + 'px';
+
+                        if (anim.showForecast) {
+                            showLocationForecast(anim.targetLat, anim.targetLng, anim.targetName, anim.country, anim.tz);
+                        }
                     }
                 }
             } else {
@@ -2225,6 +2248,37 @@
             controls.enabled = false;
         }
 
+        // DIREKTER VERTIKALER HERANZOOM-FLUG (ohne Schwenken um die halbe Welt)
+        function zoomInDirectToLocation(targetLat, targetLng, targetName, country, tz) {
+            if (userNavigatedManually) return;
+            const localV = latLngToSphereVertex(targetLat, targetLng, 1.0);
+            const targetUnit = new THREE.Vector3(-localV.z, localV.y, localV.x).normalize();
+            const targetDist = 107.5; // Ideale Detailflughöhe für Relief & Straßen
+
+            // Kamera sofort über dem Zielort ausrichten
+            const startDist = Math.max(camera.position.length(), 240);
+            const startUnit = targetUnit.clone();
+            camera.position.copy(startUnit.clone().multiplyScalar(startDist));
+            camera.lookAt(0, 0, 0);
+            controls.target.set(0, 0, 0);
+
+            cameraAnimation = {
+                startTime: performance.now(),
+                duration: 900,
+                startUnit,
+                targetUnit,
+                startDist,
+                targetDist,
+                targetLat,
+                targetLng,
+                targetName,
+                country,
+                tz,
+                showForecast: true
+            };
+            controls.enabled = false;
+        }
+
         // SUCHLEISTE LOGIK & EVENTS
         const searchInput = document.getElementById('searchInput');
         const searchClearBtn = document.getElementById('searchClearBtn');
@@ -2427,10 +2481,15 @@
         // CURSOR-BASIERTES ZOOMEN (Zoom to Mouse Position)
         const zoomRaycaster = new THREE.Raycaster();
         window.addEventListener('wheel', (event) => {
-            if (cameraAnimation) return; // Nicht während automatischem Kameraflug
+            if (cameraAnimation) {
+                cameraAnimation = null;
+                controls.enabled = true;
+                userNavigatedManually = true;
+            }
             if (event.target && typeof event.target.closest === 'function' && (
                 event.target.closest('#search-container') || event.target.closest('#forecast-container') || 
-                event.target.closest('#ui-container') || event.target.closest('#timeline-container'))) {
+                event.target.closest('#pv-container') || event.target.closest('#ui-container') || 
+                event.target.closest('#timeline-container'))) {
                 return;
             }
 
@@ -2726,10 +2785,21 @@
         let pointerStartY = 0;
         let isPointerDragging = false;
 
+        function abortCameraAnimation() {
+            if (cameraAnimation) {
+                cameraAnimation = null;
+                controls.enabled = true;
+            }
+            userNavigatedManually = true;
+        }
+
         window.addEventListener('pointerdown', (e) => {
             pointerStartX = e.clientX;
             pointerStartY = e.clientY;
             isPointerDragging = false;
+            if (cameraAnimation && e.target && (e.target.tagName === 'CANVAS' || e.target.id === 'canvas-container')) {
+                abortCameraAnimation();
+            }
         }, { passive: true });
 
         window.addEventListener('pointermove', (e) => {
@@ -2737,11 +2807,15 @@
             const dy = e.clientY - pointerStartY;
             if (dx * dx + dy * dy > 36) { // Mehr als 6 Pixel Verschiebung = Wisch-/Drag-Geste
                 isPointerDragging = true;
+                if (cameraAnimation) {
+                    abortCameraAnimation();
+                }
             }
         }, { passive: true });
 
-        // Sobald der User den Globus rotiert, scrollt oder verschiebt: Temperatur-Popup sofort schließen!
+        // Sobald der User den Globus rotiert, scrollt oder verschiebt: Temperatur-Popup sofort schließen & Animation stoppen!
         controls.addEventListener('start', () => {
+            abortCameraAnimation();
             if (clickedPopupPoint) {
                 clickedPopupPoint = null;
                 popupEl.style.display = 'none';
@@ -3031,13 +3105,14 @@
 
                 if (lat !== null && lng !== null && !userNavigatedManually) {
                     userLocationDetected = true;
+                    try {
+                        localStorage.setItem('last_user_lat', lat);
+                        localStorage.setItem('last_user_lng', lng);
+                    } catch(e) {}
                     console.log(`Standort via IP lokalisiert: ${city}, ${country} (${lat}, ${lng}) [${tz}]`);
-                    setTimeout(() => {
-                        if (!userNavigatedManually) {
-                            flyToLocation(lat, lng, city);
-                            showLocationForecast(lat, lng, city, country, tz);
-                        }
-                    }, 800);
+                    if (!userNavigatedManually) {
+                        zoomInDirectToLocation(lat, lng, city, country, tz);
+                    }
                 }
             } catch(err) {
                 console.log('IP-Standort konnte nicht ermittelt werden:', err);
