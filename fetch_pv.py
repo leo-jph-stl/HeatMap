@@ -13,19 +13,31 @@ PV_LAT = 50.008
 PV_LNG = 8.350
 LOCATION_NAME = "Hochheim am Main (Südstadt)"
 
-username = os.environ.get("FOX_USERNAME", "").strip()
-password = os.environ.get("FOX_PASSWORD", "").strip()
-api_key = os.environ.get("FOX_API_KEY", "").strip()
-device_sn = os.environ.get("FOX_DEVICE_SN", "").strip()
-
+# Alle möglichen Key-Varianten absuchen
+env_keys = list(os.environ.keys())
 print(f"=== FoxESS Abruf gestartet am {datetime.utcnow().isoformat()}Z ===")
-print(f"Benutzername konfiguriert: {'Ja (' + username[:3] + '***)' if username else 'Nein'}")
-print(f"Passwort konfiguriert: {'Ja' if password else 'Nein'}")
+print("Vorhandene Umgebungsvariablen (gefiltert):", [k for k in env_keys if any(w in k.upper() for w in ['FOX', 'USER', 'PASS', 'API', 'SECRET', 'VAR'])])
+
+def get_first_env(keys):
+    for k in keys:
+        v = os.environ.get(k, "").strip()
+        if v:
+            return v
+    return ""
+
+username = get_first_env(["FOX_USERNAME", "FOXESS_USERNAME", "FOX_USER", "FOXUSER", "USERNAME_FOX", "VAR_FOX_USERNAME", "VAR_FOXESS_USERNAME", "VAR_FOX_USER"])
+password = get_first_env(["FOX_PASSWORD", "FOXESS_PASSWORD", "FOX_PASS", "FOXPASS", "PASSWORD_FOX", "VAR_FOX_PASSWORD", "VAR_FOXESS_PASSWORD", "VAR_FOX_PASS"])
+api_key = get_first_env(["FOX_API_KEY", "FOXESS_API_KEY", "FOX_APIKEY", "FOXAPIKEY", "API_KEY", "VAR_FOX_API_KEY", "VAR_FOXESS_API_KEY"])
+device_sn = get_first_env(["FOX_DEVICE_SN", "FOXESS_DEVICE_SN", "FOX_SN", "FOXSN", "DEVICE_SN", "VAR_FOX_DEVICE_SN"])
+
+print(f"Benutzername konfiguriert: {'Ja (' + username[:2] + '***)' if username else 'Nein'}")
+print(f"Passwort konfiguriert: {'Ja (' + str(len(password)) + ' Zeichen)' if password else 'Nein'}")
 print(f"API-Key konfiguriert: {'Ja (' + api_key[:4] + '***)' if api_key else 'Nein'}")
+print(f"Geräte-SN konfiguriert: {'Ja (' + device_sn + ')' if device_sn else 'Nein'}")
 
 if not username and not api_key:
-    print("HINWEIS: Keine FoxESS Zugangsdaten in den GitHub Secrets hinterlegt.")
-    print("Bitte FOX_USERNAME und FOX_PASSWORD (oder FOX_API_KEY) in den GitHub Secrets eintragen.")
+    print("\nHINWEIS: Keine FoxESS Zugangsdaten in den Umgebungsvariablen gefunden.")
+    print("Bitte prüfen Sie die genaue Schreibweise in GitHub Settings -> Secrets and variables -> Actions.")
     sys.exit(0)
 
 def extract_metrics(raw_data):

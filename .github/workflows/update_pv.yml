@@ -33,10 +33,25 @@ jobs:
 
       - name: Fetch Live FoxESS PV Data
         env:
-          FOX_USERNAME: ${{ secrets.FOX_USERNAME || secrets.FOXESS_USERNAME || secrets.FOX_USER || secrets.USERNAME }}
-          FOX_PASSWORD: ${{ secrets.FOX_PASSWORD || secrets.FOXESS_PASSWORD || secrets.FOX_PASS || secrets.PASSWORD }}
-          FOX_API_KEY: ${{ secrets.FOX_API_KEY || secrets.FOXESS_API_KEY || secrets.FOX_APIKEY || secrets.API_KEY }}
-          FOX_DEVICE_SN: ${{ secrets.FOX_DEVICE_SN || secrets.FOXESS_DEVICE_SN || secrets.FOX_SN || secrets.DEVICE_SN }}
+          FOX_USERNAME: ${{ secrets.FOX_USERNAME }}
+          FOX_PASSWORD: ${{ secrets.FOX_PASSWORD }}
+          FOXESS_USERNAME: ${{ secrets.FOXESS_USERNAME }}
+          FOXESS_PASSWORD: ${{ secrets.FOXESS_PASSWORD }}
+          FOX_USER: ${{ secrets.FOX_USER }}
+          FOX_PASS: ${{ secrets.FOX_PASS }}
+          FOX_API_KEY: ${{ secrets.FOX_API_KEY }}
+          FOXESS_API_KEY: ${{ secrets.FOXESS_API_KEY }}
+          FOX_DEVICE_SN: ${{ secrets.FOX_DEVICE_SN }}
+          FOXESS_DEVICE_SN: ${{ secrets.FOXESS_DEVICE_SN }}
+          VAR_FOX_USERNAME: ${{ vars.FOX_USERNAME }}
+          VAR_FOX_PASSWORD: ${{ vars.FOX_PASSWORD }}
+          VAR_FOXESS_USERNAME: ${{ vars.FOXESS_USERNAME }}
+          VAR_FOXESS_PASSWORD: ${{ vars.FOXESS_PASSWORD }}
+          VAR_FOX_USER: ${{ vars.FOX_USER }}
+          VAR_FOX_PASS: ${{ vars.FOX_PASS }}
+          VAR_FOX_API_KEY: ${{ vars.FOX_API_KEY }}
+          VAR_FOXESS_API_KEY: ${{ vars.FOXESS_API_KEY }}
+          VAR_FOX_DEVICE_SN: ${{ vars.FOX_DEVICE_SN }}
         run: python fetch_pv.py
 
       - name: Commit and push if changed
