@@ -181,81 +181,74 @@ if api_key and not metrics:
         print(f"OpenAPI Abruf fehlgeschlagen: {e}")
         traceback.print_exc()
 
-# STRATEGIE 2: FoxESS Cloud Web-Login mit mehreren mobilen & Browser-Varianten
+# STRATEGIE 2: FoxESS Cloud Web-Login mit initialer Cookie-Session & mobilen Headern
 if username and password and not metrics:
-    print("\n[Strategie 2] Versuche FoxESS Cloud App-/Web-Login über verschiedene Schnittstellen...")
+    print("\n[Strategie 2] Versuche FoxESS Cloud Login mit Session & Cookie-Initialisierung...")
     import requests
     
     pwd_md5 = hashlib.md5(password.encode("utf-8")).hexdigest()
-    
+    session = requests.Session()
+
+    # Schritt 1: Initialer GET-Aufruf zur Cookie-Initialisierung
+    try:
+        r_init = session.get("https://www.foxesscloud.com/login", headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "de,en-US;q=0.7,en;q=0.3"
+        }, timeout=10)
+        print(f"Cookie-Init Status: HTTP {r_init.status_code}, Erhaltene Cookies: {list(session.cookies.get_dict().keys())}")
+    except Exception as e:
+        print("Cookie-Init Warnung:", e)
+
     endpoints = [
         "https://www.foxesscloud.com/c/v0/user/login",
         "https://foxesscloud.com/c/v0/user/login",
-        "https://www.foxesscloud.com/c/v1/user/login",
-        "https://eu1.foxesscloud.com/c/v0/user/login"
+        "https://www.foxesscloud.com/c/v1/user/login"
     ]
     
-    header_variants = [
-        # Variante 1: Offizielle FoxESS Android App (OkHttp)
-        {
-            "User-Agent": "okhttp/4.9.3",
-            "Accept": "application/json, text/plain, */*",
-            "Content-Type": "application/json;charset=UTF-8",
-            "lang": "en"
-        },
-        # Variante 2: FoxCloud 2.0 Mobile App Client
-        {
-            "User-Agent": "FoxCloud/2.2.1 (com.foxess.cloud; build:124; Android 14)",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "lang": "en"
-        },
-        # Variante 3: Standard Browser (Firefox / Chrome)
-        {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
-            "Accept": "application/json, text/plain, */*",
-            "Content-Type": "application/json;charset=UTF-8",
-            "Referer": "https://www.foxesscloud.com/login",
-            "lang": "en"
-        }
-    ]
+    headers_browser = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "de,en-US;q=0.7,en;q=0.3",
+        "Content-Type": "application/json;charset=UTF-8",
+        "Origin": "https://www.foxesscloud.com",
+        "Referer": "https://www.foxesscloud.com/login"
+    }
 
-    session = requests.Session()
     token = None
     successful_endpoint_base = "https://www.foxesscloud.com"
 
     for ep in endpoints:
         if token:
             break
-        base_url = "/".join(ep.split("/")[:3])
-        for idx, hdrs in enumerate(header_variants):
-            for p_val in [pwd_md5, password]:
-                for u_key in ["user", "username"]:
-                    try:
-                        r = session.post(ep, json={u_key: username, "password": p_val}, headers=hdrs, timeout=8)
-                        if r.status_code == 200:
-                            data = r.json()
-                            if data.get("errno") in [0, "0", None] and data.get("result", {}).get("token"):
-                                token = data["result"]["token"]
-                                successful_endpoint_base = base_url
-                                print(f"✅ Login ERFOLGREICH über {ep} (Header-Variante {idx+1})! Token erhalten.")
-                                break
-                            else:
-                                print(f"Antwort von {ep}: errno={data.get('errno')}, msg={data.get('msg')}")
-                        else:
-                            # 406 oder andere Codes stumm weitertesten
-                            pass
-                    except Exception:
-                        pass
-                if token:
-                    break
+        for p_val, p_desc in [(pwd_md5, "MD5"), (password, "Plain")]:
+            for u_key in ["user", "username"]:
+                try:
+                    r = session.post(ep, json={u_key: username, "password": p_val}, headers=headers_browser, timeout=10)
+                    print(f"Login {ep} ({p_desc}, Key={u_key}): HTTP {r.status_code}")
+                    if r.status_code == 200:
+                        data = r.json()
+                        print(f"  -> Antwort: errno={data.get('errno')}, msg={data.get('msg')}")
+                        if data.get("errno") in [0, "0", None] and data.get("result", {}).get("token"):
+                            token = data["result"]["token"]
+                            successful_endpoint_base = "/".join(ep.split("/")[:3])
+                            print(f"✅ Login ERFOLGREICH! Token erhalten.")
+                            break
+                    elif r.status_code != 406:
+                        print(f"  -> Status {r.status_code}: {r.text[:100]}")
+                except Exception as ex:
+                    print(f"  -> Fehler bei {ep}: {ex}")
+            if token:
+                break
 
     if token:
         try:
             req_headers = {
                 "token": token,
                 "Content-Type": "application/json;charset=UTF-8",
-                "User-Agent": "okhttp/4.9.3",
+                "User-Agent": headers_browser["User-Agent"],
+                "Origin": "https://www.foxesscloud.com",
+                "Referer": "https://www.foxesscloud.com/",
                 "lang": "en"
             }
             sn = device_sn
@@ -277,6 +270,8 @@ if username and password and not metrics:
                 query_res = r_query.json()
                 print("Live-Messdaten empfangen:", query_res.get("errno"), query_res.get("msg", ""))
                 metrics = extract_metrics(query_res)
+            else:
+                print(f"Query HTTP {r_query.status_code}: {r_query.text[:150]}")
         except Exception as e:
             print("Fehler beim Abruf der Messdaten nach Login:", e)
 
@@ -289,17 +284,26 @@ if not metrics:
         except Exception:
             import foxesscloud as fox
 
+        print("Verfügbare foxesscloud Funktionen:", [m for m in dir(fox) if not m.startswith('_')])
+
         if username: fox.username = username
         if password: fox.password = password
-        if api_key: fox.pv_api_key = api_key
         if device_sn: fox.device_sn = device_sn
 
-        if hasattr(fox, 'get_realtime'):
-            data = fox.get_realtime()
-            metrics = extract_metrics(data)
-        elif hasattr(fox, 'get_raw'):
-            data = fox.get_raw(summary=1)
-            metrics = extract_metrics(data)
+        # Teste alle verfügbaren Methoden
+        for method_name in ['get_realtime', 'get_raw', 'get_device', 'get_site', 'get_status', 'get_earnings']:
+            if hasattr(fox, method_name):
+                try:
+                    fn = getattr(fox, method_name)
+                    print(f"Rufe fox.{method_name}() auf...")
+                    res = fn()
+                    print(f"Ergebnis von {method_name}:", res)
+                    m = extract_metrics(res)
+                    if m and m.get("solar_power", 0) > 0 or m.get("battery_soc", 0) > 0:
+                        metrics = m
+                        break
+                except Exception as ex:
+                    print(f"Fehler bei fox.{method_name}(): {ex}")
     except Exception as e:
         print(f"Library-Fallback fehlgeschlagen: {e}")
 
