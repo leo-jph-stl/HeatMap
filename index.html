@@ -841,6 +841,8 @@
         container.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        window.camera = camera;
+        window.controls = controls;
         controls.enableDamping = true;
         controls.dampingFactor = 0.08;
         controls.rotateSpeed = 0.35; // Sanfte, kontrollierte Drehung ohne Überschießen
@@ -2781,6 +2783,7 @@
         }
 
         // Wisch- / Drag-Erkennung (Unterscheidung zwischen echtem Tippen und Globus-Verschieben)
+        let isPointerDown = false;
         let pointerStartX = 0;
         let pointerStartY = 0;
         let isPointerDragging = false;
@@ -2794,23 +2797,34 @@
         }
 
         window.addEventListener('pointerdown', (e) => {
+            isPointerDown = true;
             pointerStartX = e.clientX;
             pointerStartY = e.clientY;
             isPointerDragging = false;
+            // Wenn der User bewusst auf die Karte klickt: Animation abbrechen
             if (cameraAnimation && e.target && (e.target.tagName === 'CANVAS' || e.target.id === 'canvas-container')) {
                 abortCameraAnimation();
             }
         }, { passive: true });
 
         window.addEventListener('pointermove', (e) => {
+            if (!isPointerDown) return; // Reines Bewegen des Mauszeigers ohne Klick ignoriert!
             const dx = e.clientX - pointerStartX;
             const dy = e.clientY - pointerStartY;
-            if (dx * dx + dy * dy > 36) { // Mehr als 6 Pixel Verschiebung = Wisch-/Drag-Geste
+            if (dx * dx + dy * dy > 36) { // Echtes Ziehen / Wischen mit gedrückter Maustaste
                 isPointerDragging = true;
                 if (cameraAnimation) {
                     abortCameraAnimation();
                 }
             }
+        }, { passive: true });
+
+        window.addEventListener('pointerup', () => {
+            isPointerDown = false;
+        }, { passive: true });
+
+        window.addEventListener('pointercancel', () => {
+            isPointerDown = false;
         }, { passive: true });
 
         // Sobald der User den Globus rotiert, scrollt oder verschiebt: Temperatur-Popup sofort schließen & Animation stoppen!
