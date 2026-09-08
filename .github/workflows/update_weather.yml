@@ -41,7 +41,8 @@ jobs:
           if git diff --staged --quiet; then
             echo 'No changes in weather data.'
           else
-            git commit -m 'chore(data): auto-update GFS 0.25deg weather data'
+            git commit -m 'chore(data): auto-update GFS 0.25deg weather data [skip ci]'
+            git pull --rebase origin main
             git push
           fi
 
