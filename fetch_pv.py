@@ -126,14 +126,16 @@ metrics = None
 # STRATEGIE 1: Offizielle FoxESS Open API (falls API-Key vorhanden)
 if api_key and not metrics:
     print("\n[Strategie 1] Versuche Abruf über offizielle FoxESS Open API...")
-    try:
-        path = "op/v1/device/real/query"
-        url = f"https://www.foxesscloud.com/{path}"
-        ts = str(int(time.time() * 1000))
-        to_sign = f"{path}\\r\\n{api_key}\\r\\n{ts}"
-        sig = hashlib.md5(to_sign.encode("utf-8")).hexdigest()
+    import requests
+    session_api = requests.Session()
 
-        headers = {
+    def call_fox_openapi(path, payload_data):
+        url = f"https://www.foxesscloud.com{path}"
+        ts = str(int(time.time() * 1000))
+        # FoxESS Open API Signatur: path + \r\n + token + \r\n + timestamp
+        to_sign = f"{path}\r\n{api_key}\r\n{ts}"
+        sig = hashlib.md5(to_sign.encode("utf-8")).hexdigest()
+        hdrs = {
             "token": api_key,
             "timestamp": ts,
             "signature": sig,
@@ -141,14 +143,43 @@ if api_key and not metrics:
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0"
         }
-        payload = {"sn": device_sn} if device_sn else {}
-        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=15) as response:
-            res_json = json.loads(response.read().decode("utf-8"))
-            print("OpenAPI Antwort erhalten:", res_json.get("errno"), res_json.get("msg", ""))
-            metrics = extract_metrics(res_json)
+        r = session_api.post(url, json=payload_data, headers=hdrs, timeout=15)
+        if r.status_code == 200:
+            return r.json()
+        print(f"OpenAPI HTTP {r.status_code} für {path}")
+        return None
+
+    try:
+        sn = device_sn
+        # Falls keine Seriennummer vorgegeben: aus Device-List holen
+        if not sn:
+            list_res = call_fox_openapi("/op/v0/device/list", {"pageSize": 10, "currentPage": 1})
+            if list_res and list_res.get("errno") in [0, "0"]:
+                devices = list_res.get("result", {}).get("data", [])
+                if devices:
+                    sn = devices[0].get("deviceSN")
+                    print(f"Wechselrichter via OpenAPI erkannt: {sn}")
+
+        # Real-Query mit allen Standard-Variablen
+        query_payload = {
+            "sn": sn,
+            "variables": [
+                "pvPower", "loadPower", "soc", "batPower", "feedinPower", 
+                "todayYield", "generationToday", "batChargePower", "batDischargePower", 
+                "gridConsumptionPower", "invBatPower", "meterPower"
+            ]
+        } if sn else {}
+
+        real_res = call_fox_openapi("/op/v0/device/real/query", query_payload)
+        if not real_res or real_res.get("errno") not in [0, "0"]:
+            real_res = call_fox_openapi("/op/v1/device/real/query", query_payload)
+
+        if real_res:
+            print("OpenAPI Antwort erhalten:", real_res.get("errno"), real_res.get("msg", ""))
+            metrics = extract_metrics(real_res)
     except Exception as e:
         print(f"OpenAPI Abruf fehlgeschlagen: {e}")
+        traceback.print_exc()
 
 # STRATEGIE 2: FoxESS Cloud Web-Login mit requests.Session & vollständigen Browser-Headern
 if username and password and not metrics:
