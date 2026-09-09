@@ -5,33 +5,21 @@ window.foxessPvData = {
     "lng": 8.35
   },
   "solar_power": 0.0,
-  "house_load": 0.0,
-  "battery_soc": 0,
-  "battery_power": 0.31,
+  "house_load": 0.21,
+  "battery_soc": 68,
+  "battery_power": 0.16,
   "grid_feed_in": 0.0,
-  "today_yield": 36.3,
+  "today_yield": 36.4,
   "device_status": "online",
-  "month_yield": 339.1,
-  "cumulative_yield": 15368.1,
-  "year_yield": 7816.4,
-  "week_yield": 0.0,
+  "month_yield": 339.2,
+  "cumulative_yield": 15368.2,
+  "year_yield": 7816.5,
+  "week_yield": 264.8,
+  "today_feedin": 26.9,
+  "today_grid_import": 2.6,
+  "today_battery_charge": 7.8,
+  "today_battery_discharge": 9.8,
   "history_3d": [
-    {
-      "t": "2026-09-06 21:04:03 CEST+0200",
-      "pv": 0.0
-    },
-    {
-      "t": "2026-09-06 21:08:34 CEST+0200",
-      "pv": 0.0
-    },
-    {
-      "t": "2026-09-06 21:13:04 CEST+0200",
-      "pv": 0.0
-    },
-    {
-      "t": "2026-09-06 21:17:34 CEST+0200",
-      "pv": 0.0
-    },
     {
       "t": "2026-09-06 21:22:04 CEST+0200",
       "pv": 0.0
@@ -3855,8 +3843,24 @@ window.foxessPvData = {
     {
       "t": "2026-09-09 21:01:41 CEST+0200",
       "pv": 0.0
+    },
+    {
+      "t": "2026-09-09 21:06:12 CEST+0200",
+      "pv": 0.0
+    },
+    {
+      "t": "2026-09-09 21:10:42 CEST+0200",
+      "pv": 0.0
+    },
+    {
+      "t": "2026-09-09 21:15:12 CEST+0200",
+      "pv": 0.0
+    },
+    {
+      "t": "2026-09-09 21:19:41 CEST+0200",
+      "pv": 0.0
     }
   ],
   "status": "online",
-  "last_updated": "2026-09-09T19:02:15.302125Z"
+  "last_updated": "2026-09-09T19:20:48.813975Z"
 };
