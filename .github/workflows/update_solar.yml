@@ -1,0 +1,63 @@
+name: Update Solar Radiation Data
+
+on:
+  schedule:
+    # Live-Zeitreihe: 4x täglich, 5 Minuten nach dem GFS-Wetter-Update versetzt
+    # (beide teilen sich die "pages"-Concurrency-Gruppe und würden sich sonst gegenseitig abbrechen)
+    - cron: '5 4,10,16,22 * * *'
+    # Klimatologie (20-Jahres-Mittel) ändert sich praktisch nie - reicht wöchentlich
+    - cron: '15 3 * * 0'
+  workflow_dispatch: # Manueller Trigger über den Actions-Tab
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  update-solar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Fetch Live Solar Radiation Timeline (GFS 0.25°)
+        run: node fetch_solar_timeline.js
+
+      - name: Fetch Solar Climatology (NASA POWER, wöchentlich oder manuell)
+        if: github.event.schedule == '15 3 * * 0' || github.event_name == 'workflow_dispatch'
+        run: node fetch_solar_climatology.js
+
+      - name: Commit and push if changed
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add solar_data.js solar_climatology_data.js
+          if git diff --staged --quiet; then
+            echo 'No changes in solar data.'
+          else
+            git commit -m 'chore(data): auto-update solar radiation data [skip ci]'
+            git pull --rebase origin main
+            git push
+          fi
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

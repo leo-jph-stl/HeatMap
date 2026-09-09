@@ -14,6 +14,8 @@
     
     <script src="wind_data.js"></script>
     <script id="tempDataScript" src="temp_data.js?_v=20260907_gfs025_c2"></script>
+    <script src="solar_data.js"></script>
+    <script src="solar_climatology_data.js"></script>
     <script src="lakes_data.js"></script>
     <script src="rivers_data.js"></script>
     <script src="roads_data.js"></script>
@@ -102,6 +104,52 @@
             padding-top: 8px;
             border-top: 1px solid rgba(255, 255, 255, 0.08);
         }
+        #layer-toggles-visible {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .layer-toggle-btn {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #999;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .layer-toggle-btn:hover {
+            color: #fff;
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+        .layer-toggle-btn.active {
+            background: rgba(0, 204, 255, 0.15);
+            border-color: rgba(0, 204, 255, 0.5);
+            color: #00ccff;
+        }
+        .layer-toggle-btn.active-solar {
+            background: rgba(255, 219, 0, 0.15);
+            border-color: rgba(255, 219, 0, 0.5);
+            color: #ffdb00;
+        }
+        #solarClimSelectWrap {
+            display: none;
+            align-items: center;
+        }
+        #solarClimSelect {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            color: #ddd;
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 10px;
+            padding: 4px 6px;
+            cursor: pointer;
+        }
+        #solarClimSelect:focus { outline: none; border-color: rgba(255, 219, 0, 0.5); }
         .color-bar {
             flex-grow: 1;
             height: 7px;
@@ -770,6 +818,28 @@
             <span>Live</span>
             <span>+48h</span>
         </div>
+        <div id="layer-toggles-visible">
+            <button id="btn-temp-vis" class="layer-toggle-btn active" onclick="switchLayer('temp')">🌡️ Temperatur</button>
+            <button id="btn-solar-vis" class="layer-toggle-btn" onclick="switchLayer('solar')">☀️ Einstrahlung</button>
+            <div id="solarClimSelectWrap" style="display:none;">
+                <select id="solarClimSelect" onchange="setSolarClimSelection(this.value)" title="Zeitraum wählen">
+                    <option value="live">Live</option>
+                    <option value="JAN">Januar ⌀</option>
+                    <option value="FEB">Februar ⌀</option>
+                    <option value="MAR">März ⌀</option>
+                    <option value="APR">April ⌀</option>
+                    <option value="MAY">Mai ⌀</option>
+                    <option value="JUN">Juni ⌀</option>
+                    <option value="JUL">Juli ⌀</option>
+                    <option value="AUG">August ⌀</option>
+                    <option value="SEP">September ⌀</option>
+                    <option value="OCT">Oktober ⌀</option>
+                    <option value="NOV">November ⌀</option>
+                    <option value="DEC">Dezember ⌀</option>
+                    <option value="ANN">Jahresmittel</option>
+                </select>
+            </div>
+        </div>
         <div id="legend">
             <span id="legend-min">-30°C</span>
             <div id="legend-bar" class="color-bar" style="background: linear-gradient(to right, #8c52ff 0.0%, #a473b6 12.5%, #b388ff 18.8%, #88ccee 25.0%, #3399cc 31.3%, #1d5cae 37.5%, #1b7a42 41.3%, #32962a 46.3%, #55ad26 51.2%, #84c424 56.3%, #b2d820 58.8%, #d8e61e 61.3%, #f7e318 62.5%, #ffdb00 67.5%, #ffa600 71.3%, #ff6200 75.0%, #ee3a14 78.1%, #dc2222 81.3%, #a80e14 84.4%, #700408 87.5%, #521a10 91.3%, #38140c 95.0%, #1e0c08 97.5%, #000000 100.0%);"></div>
@@ -790,6 +860,8 @@
         let currentHourOffset = 0;
         let activeTemp = null;
         let activeWind = null;
+        let activeSolar = null;
+        let solarClimSelection = 'live'; // 'live' | 'JAN'..'DEC' | 'ANN'
         
         // INTERPOLATION DATA
         const colorScaleWind = d3.scaleLinear()
@@ -800,11 +872,17 @@
         const colorScaleTemp = d3.scaleLinear()
             .domain([-60, -40, -30, -20, -15, -10, -5, 0, 3, 7, 11, 15, 17, 19, 20, 24, 27, 30, 32.5, 35, 37.5, 40, 43, 46, 48, 50, 55])
             .range([
-                '#ffffff', '#6010a0', '#8c52ff', '#a473b6', '#b388ff', '#88ccee', '#3399cc', '#1d5cae', 
-                '#1b7a42', '#32962a', '#55ad26', '#84c424', '#b2d820', '#d8e61e', 
-                '#f7e318', '#ffdb00', '#ffa600', '#ff6200', '#ee3a14', '#dc2222', '#a80e14', '#700408', 
+                '#ffffff', '#6010a0', '#8c52ff', '#a473b6', '#b388ff', '#88ccee', '#3399cc', '#1d5cae',
+                '#1b7a42', '#32962a', '#55ad26', '#84c424', '#b2d820', '#d8e61e',
+                '#f7e318', '#ffdb00', '#ffa600', '#ff6200', '#ee3a14', '#dc2222', '#a80e14', '#700408',
                 '#521a10', '#38140c', '#1e0c08', '#000000', '#000000'
             ])
+            .clamp(true);
+
+        // Sonneneinstrahlung (GHI, W/m^2): dunkel/Nachtseite -> Purpur/Orange -> helles Gold bei Zenit-Peak
+        const colorScaleSolar = d3.scaleLinear()
+            .domain([0, 50, 150, 300, 450, 600, 750, 900, 1000, 1100])
+            .range(['#050510', '#1a1240', '#3a1568', '#6b1866', '#a8243f', '#d9541f', '#f2841a', '#ffbe33', '#ffe485', '#ffffff'])
             .clamp(true);
 
         function getInterpolatedData(lat, lng) {
@@ -951,12 +1029,21 @@
         const minTempRange = -60.0;
         const maxTempRange = 55.0;
         const maxWindKmh = 115.0;
+        const minSolarRange = 0.0;
+        const maxSolarRange = 1100.0;
+        // Klimatologie-Werte sind Tagesmittel in kWh/m^2/Tag (typ. 0.5-8), eine ganz andere
+        // Größenordnung als die instantane Live-Leistung in W/m^2 - eigene Skala nötig.
+        const minSolarClimRange = 0.0;
+        const maxSolarClimRange = 8.0;
 
         const colorRampTempTex = createColorRampTexture(colorScaleTemp, minTempRange, maxTempRange, 2048);
         const colorRampWindTex = createColorRampTexture(kmh => colorScaleWind(kmh / 3.6), 0.0, maxWindKmh, 2048);
+        const colorRampSolarTex = createColorRampTexture(colorScaleSolar, minSolarRange, maxSolarRange, 2048);
 
         // Pre-baking der Wetterdaten in GPU-DataTextures (dauert dank Lookup-Tabelle nur ~80ms)
-        function buildTempDataTexture(step) {
+        // Generisch für jedes Skalarfeld-Grid (Temperatur, Sonneneinstrahlung, Klimatologie-Layer, ...)
+        // - nutzt nur step.data/step.header/step.scale, nichts Temperatur-Spezifisches.
+        function buildTempDataTexture(step, rangeMin = minTempRange, rangeMax = maxTempRange) {
             const raw = step.data;
             const h = step.header || (typeof tempMetadata !== 'undefined' ? tempMetadata : { nx: 1440, ny: 721, dx: 0.25, dy: 0.25 });
             const nx = h.nx || 1440;
@@ -964,7 +1051,7 @@
             const width = nx + 1;
             const height = ny;
             const scale = step.scale || 1.0;
-            const span = maxTempRange - minTempRange;
+            const span = rangeMax - rangeMin;
             
             // Einmaliges Spalten-Lookup (-180°..+180° -> 0°..360° GFS Spaltenindex)
             const colLookup = new Int32Array(width);
@@ -998,7 +1085,7 @@
                     const rowOffset = ((ny - 1) - r) * nx;
                     for (let x = 0; x < width; x++) {
                         const val = raw[rowOffset + colLookup[x]] * scale;
-                        const norm = Math.max(0, Math.min(255, Math.round(((val - minTempRange) / span) * 255)));
+                        const norm = Math.max(0, Math.min(255, Math.round(((val - rangeMin) / span) * 255)));
                         buf[ptr] = norm;
                         buf[ptr + 1] = norm;
                         buf[ptr + 2] = norm;
@@ -1081,16 +1168,36 @@
             }
         }
 
-        let tempTextures = (typeof tempData !== 'undefined') ? tempData.map(buildTempDataTexture) : [];
+        // Achtung: buildTempDataTexture(step, rangeMin, rangeMax) hat jetzt 3 Parameter - beim
+        // Einsatz als Array.prototype.map()-Callback würden Index/Array sonst als rangeMin/rangeMax
+        // durchgereicht werden. Deshalb überall in ein Arrow-Wrapping mit explizitem Argument packen.
+        let tempTextures = (typeof tempData !== 'undefined') ? tempData.map(step => buildTempDataTexture(step)) : [];
         let windTextures = (typeof windData !== 'undefined') ? windData.map(buildWindDataTexture) : [];
+        let solarTextures = (typeof solarData !== 'undefined') ? solarData.map(step => buildTempDataTexture(step, minSolarRange, maxSolarRange)) : [];
+        // Klimatologie-Layer (12 Monate + Jahresmittel) werden träge/on-demand gebaut und gecacht,
+        // da sie im Normalfall gar nicht angeschaut werden (siehe getSolarClimatologyTexture).
+        const solarClimTextureCache = new Map();
+        function getSolarClimatologyTexture(label) {
+            if (typeof solarClimatologyData === 'undefined') return null;
+            if (solarClimTextureCache.has(label)) return solarClimTextureCache.get(label);
+            const layer = solarClimatologyData.find(l => l.label === label);
+            if (!layer) return null;
+            const tex = buildTempDataTexture(layer, minSolarClimRange, maxSolarClimRange);
+            solarClimTextureCache.set(label, tex);
+            return tex;
+        }
 
         function reloadDataTextures() {
             if (typeof tempData !== 'undefined') {
-                tempTextures = tempData.map(buildTempDataTexture);
+                tempTextures = tempData.map(step => buildTempDataTexture(step));
             }
             if (typeof windData !== 'undefined') {
                 windTextures = windData.map(buildWindDataTexture);
             }
+            if (typeof solarData !== 'undefined') {
+                solarTextures = solarData.map(step => buildTempDataTexture(step, minSolarRange, maxSolarRange));
+            }
+            solarClimTextureCache.clear();
         }
 
         // ULTRA-HIGH-DEFINITION TEMPERATUR-SHADER: C2 QUINTIC SMOOTHING & VEKTOR-GLÄTTUNG
@@ -3312,7 +3419,7 @@
         function updateActiveData() {
             const liveIdx = getLiveStepIndex();
             const stepOffset = Math.round(currentHourOffset / 3);
-            
+
             let targetIdx = 0;
             if (typeof tempData !== 'undefined' && tempData.length > 0) {
                 targetIdx = Math.max(0, Math.min(tempData.length - 1, liveIdx + stepOffset));
@@ -3322,19 +3429,32 @@
                 const windIdx = Math.max(0, Math.min(windData.length - 1, liveIdx + stepOffset));
                 activeWind = windData[windIdx];
             }
-            
+            let solarIdx = 0;
+            if (typeof solarData !== 'undefined' && solarData.length > 0) {
+                solarIdx = Math.max(0, Math.min(solarData.length - 1, liveIdx + stepOffset));
+                activeSolar = solarData[solarIdx];
+            }
+
             const titleEl = document.getElementById('timeDisplayTitle');
             if (titleEl) {
                 titleEl.innerText = formatDisplayTime(activeTemp, currentHourOffset);
             }
 
-            const textures = currentMode === 'temp' ? tempTextures : windTextures;
-            if (textures.length > 0 && textures[targetIdx]) {
-                const curTex = textures[targetIdx];
+            let curTex = null;
+            if (currentMode === 'temp') {
+                curTex = tempTextures[targetIdx];
+            } else if (currentMode === 'wind') {
+                curTex = windTextures[targetIdx];
+            } else if (currentMode === 'solar') {
+                curTex = (solarClimSelection !== 'live')
+                    ? getSolarClimatologyTexture(solarClimSelection)
+                    : solarTextures[solarIdx];
+            }
+            if (curTex) {
                 dataMaterial.uniforms.u_dataA.value = curTex;
                 dataMaterial.uniforms.u_dataB.value = curTex;
                 dataMaterial.uniforms.u_blend.value = 0.0;
-                if (curTex && curTex.image && dataMaterial.uniforms.u_texSize) {
+                if (curTex.image && dataMaterial.uniforms.u_texSize) {
                     dataMaterial.uniforms.u_texSize.value.set(curTex.image.width, curTex.image.height);
                 }
             }
@@ -3351,19 +3471,29 @@
 
         function switchLayer(mode) {
             currentMode = mode;
-            
+
             document.getElementById('btn-temp').className = mode === 'temp' ? 'toggle-btn active' : 'toggle-btn';
             document.getElementById('btn-wind').className = mode === 'wind' ? 'toggle-btn active' : 'toggle-btn';
-            
+            const btnTempVis = document.getElementById('btn-temp-vis');
+            const btnSolarVis = document.getElementById('btn-solar-vis');
+            if (btnTempVis) btnTempVis.className = 'layer-toggle-btn' + (mode === 'temp' ? ' active' : '');
+            if (btnSolarVis) btnSolarVis.className = 'layer-toggle-btn' + (mode === 'solar' ? ' active-solar' : '');
+            const climWrap = document.getElementById('solarClimSelectWrap');
+            if (climWrap) climWrap.style.display = mode === 'solar' ? 'flex' : 'none';
+
             if (mode === 'temp') {
                 document.getElementById('legend-min').innerText = '-30°C';
                 document.getElementById('legend-max').innerText = '+50°C';
-                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #8c52ff 0.0%, #a473b6 12.5%, #b388ff 18.8%, #88ccee 25.0%, #3399cc 31.3%, #1d5cae 37.5%, #1b7a42 41.3%, #32962a 46.3%, #55ad26 51.2%, #84c424 56.3%, #b2d820 58.8%, #d8e61e 61.3%, #f7e318 62.5%, #ffdb00 67.5%, #ffa600 71.3%, #ff6200 75.0%, #ee3a14 78.1%, #dc2222 81.3%, #a80e14 84.4%, #700408 87.5%, #521a10 91.3%, #38140c 95.0%, #1e0c08 97.5%, #000000 100.0%)'; 
+                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #8c52ff 0.0%, #a473b6 12.5%, #b388ff 18.8%, #88ccee 25.0%, #3399cc 31.3%, #1d5cae 37.5%, #1b7a42 41.3%, #32962a 46.3%, #55ad26 51.2%, #84c424 56.3%, #b2d820 58.8%, #d8e61e 61.3%, #f7e318 62.5%, #ffdb00 67.5%, #ffa600 71.3%, #ff6200 75.0%, #ee3a14 78.1%, #dc2222 81.3%, #a80e14 84.4%, #700408 87.5%, #521a10 91.3%, #38140c 95.0%, #1e0c08 97.5%, #000000 100.0%)';
                 document.getElementById('timeLabel').innerText = 'Live Oberflächentemperatur (3D Globus)';
                 dataMaterial.uniforms.u_colorRamp.value = colorRampTempTex;
                 dataMaterial.uniforms.u_minVal.value = useFloat ? minTempRange : 0.0;
                 dataMaterial.uniforms.u_maxVal.value = useFloat ? maxTempRange : 1.0;
                 if (dataMaterial.uniforms.u_texSize) dataMaterial.uniforms.u_texSize.value.set(1441.0, 721.0);
+            } else if (mode === 'solar') {
+                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #050510 0%, #1a1240 11%, #3a1568 22%, #6b1866 33%, #a8243f 44%, #d9541f 55%, #f2841a 66%, #ffbe33 77%, #ffe485 88%, #ffffff 100%)';
+                dataMaterial.uniforms.u_colorRamp.value = colorRampSolarTex;
+                applySolarRangeAndLegend();
             } else {
                 document.getElementById('legend-min').innerText = '0 km/h';
                 document.getElementById('legend-max').innerText = '100+ km/h';
@@ -3377,6 +3507,28 @@
             updateActiveData();
         }
         window.switchLayer = switchLayer;
+
+        function applySolarRangeAndLegend() {
+            const isLive = solarClimSelection === 'live';
+            document.getElementById('legend-min').innerText = isLive ? '0 W/m²' : '0 kWh/m²/Tag';
+            document.getElementById('legend-max').innerText = isLive ? '1100 W/m²' : '8 kWh/m²/Tag';
+            document.getElementById('timeLabel').innerText = isLive
+                ? 'Live Sonneneinstrahlung / GHI (3D Globus)'
+                : 'Sonneneinstrahlung – langjähriges Mittel (3D Globus)';
+            dataMaterial.uniforms.u_minVal.value = useFloat ? (isLive ? minSolarRange : minSolarClimRange) : 0.0;
+            dataMaterial.uniforms.u_maxVal.value = useFloat ? (isLive ? maxSolarRange : maxSolarClimRange) : 1.0;
+            // u_texSize wird direkt danach von updateActiveData() anhand der tatsächlich
+            // gebundenen Textur (Live-Grid 1441x721 vs. Klimatologie-Grid 361x180) gesetzt.
+        }
+
+        function setSolarClimSelection(value) {
+            solarClimSelection = value;
+            if (currentMode === 'solar') {
+                applySolarRangeAndLegend();
+            }
+            updateActiveData();
+        }
+        window.setSolarClimSelection = setSolarClimSelection;
 
         const timeSlider = document.getElementById('timeSlider');
         const playBtn = document.getElementById('playBtn');
@@ -3401,6 +3553,11 @@
         
         timeSlider.addEventListener('input', (e) => {
             currentHourOffset = parseInt(e.target.value);
+            if (solarClimSelection !== 'live') {
+                solarClimSelection = 'live';
+                const sel = document.getElementById('solarClimSelect');
+                if (sel) sel.value = 'live';
+            }
             updateActiveData();
         });
 
