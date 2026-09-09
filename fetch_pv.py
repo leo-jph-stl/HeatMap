@@ -122,6 +122,7 @@ def extract_metrics(raw_data):
     }
 
 metrics = None
+extra_data = {}  # Gerätestatus, Wochen-/Monats-/Jahres-/Gesamtertrag, 3-Tage-Verlauf (nur via Strategie 1 verfügbar)
 
 # STRATEGIE 1: Offizielle FoxESS Open API (falls API-Key vorhanden)
 if api_key and not metrics:
@@ -145,8 +146,12 @@ if api_key and not metrics:
         }
         r = session_api.post(url, json=payload_data, headers=hdrs, timeout=15)
         if r.status_code == 200:
-            return r.json()
-        print(f"OpenAPI HTTP {r.status_code} für {path}")
+            data = r.json()
+            if data.get("errno") not in [0, "0"]:
+                print(f"OpenAPI Fehler bei {path}: errno={data.get('errno')} msg={data.get('msg')}")
+                return None  # Fehler-Antwort NICHT als gültiges Ergebnis werten
+            return data
+        print(f"OpenAPI HTTP {r.status_code} für {path}: {r.text[:200]}")
         return None
 
     try:
@@ -161,22 +166,109 @@ if api_key and not metrics:
                     print(f"Wechselrichter via OpenAPI erkannt: {sn}")
 
         # Real-Query mit allen Standard-Variablen
-        query_payload = {
-            "sn": sn,
-            "variables": [
-                "pvPower", "loadPower", "soc", "batPower", "feedinPower", 
-                "todayYield", "generationToday", "batChargePower", "batDischargePower", 
-                "gridConsumptionPower", "invBatPower", "meterPower"
-            ]
-        } if sn else {}
+        variables = [
+            "pvPower", "loadPower", "soc", "batPower", "feedinPower",
+            "todayYield", "generationToday", "batChargePower", "batDischargePower",
+            "gridConsumptionPower", "invBatPower", "meterPower"
+        ]
 
-        real_res = call_fox_openapi("/op/v0/device/real/query", query_payload)
-        if not real_res or real_res.get("errno") not in [0, "0"]:
-            real_res = call_fox_openapi("/op/v1/device/real/query", query_payload)
+        real_res = None
+        if sn:
+            # v0 (deprecated, aber noch aktiv): singuläres "sn"
+            real_res = call_fox_openapi("/op/v0/device/real/query", {"sn": sn, "variables": variables})
+            if not real_res:
+                # v1 (aktuell): erwartet "sns" als Array, nicht "sn"
+                real_res = call_fox_openapi("/op/v1/device/real/query", {"sns": [sn], "variables": variables})
 
         if real_res:
-            print("OpenAPI Antwort erhalten:", real_res.get("errno"), real_res.get("msg", ""))
-            metrics = extract_metrics(real_res)
+            # result ist eine Liste pro Gerät: [{deviceSN, datas: [{variable, value}, ...]}]
+            result = real_res.get("result")
+            datas = result[0].get("datas", []) if isinstance(result, list) and result else []
+            if datas:
+                print(f"OpenAPI: {len(datas)} Messwerte erhalten: {[d.get('variable') for d in datas]}")
+                metrics = extract_metrics({"result": datas})
+            else:
+                print(f"OpenAPI: Antwort ok, aber 'datas' ist leer (Gerät liefert evtl. andere Variablennamen). Rohantwort: {json.dumps(real_res)[:500]}")
+        elif sn:
+            print("OpenAPI: Weder v0 noch v1 lieferten eine gültige Antwort für sn", sn)
+
+        # Zusatzdaten: Gerätestatus, Ertrag (Tag/Woche/Monat/Jahr/gesamt), 3-Tage-Verlauf
+        if sn:
+            def call_fox_openapi_get(path, params):
+                url = f"https://www.foxesscloud.com{path}"
+                ts = str(int(time.time() * 1000))
+                to_sign = f"{path}\r\n{api_key}\r\n{ts}"
+                sig = hashlib.md5(to_sign.encode("utf-8")).hexdigest()
+                hdrs = {
+                    "token": api_key, "timestamp": ts, "signature": sig,
+                    "lang": "en", "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"
+                }
+                r = session_api.get(url, params=params, headers=hdrs, timeout=15)
+                if r.status_code == 200:
+                    data = r.json()
+                    if data.get("errno") not in [0, "0"]:
+                        print(f"OpenAPI Fehler (GET) bei {path}: errno={data.get('errno')} msg={data.get('msg')}")
+                        return None
+                    return data
+                print(f"OpenAPI HTTP {r.status_code} (GET) für {path}: {r.text[:200]}")
+                return None
+
+            now = datetime.utcnow()
+
+            time.sleep(1.1)
+            detail_res = call_fox_openapi_get("/op/v1/device/detail", {"sn": sn})
+            if detail_res:
+                status_code = detail_res.get("result", {}).get("status")
+                extra_data["device_status"] = {1: "online", 2: "fault", 3: "offline"}.get(status_code, "unknown")
+                print(f"Gerätestatus: {extra_data['device_status']}")
+
+            time.sleep(1.1)
+            gen_res = call_fox_openapi_get("/op/v0/device/generation", {"sn": sn})
+            if gen_res:
+                g = gen_res.get("result", {})
+                if g.get("today") is not None:
+                    extra_data["today_yield"] = round(float(g["today"]), 2)
+                if g.get("month") is not None:
+                    extra_data["month_yield"] = round(float(g["month"]), 2)
+                if g.get("cumulative") is not None:
+                    extra_data["cumulative_yield"] = round(float(g["cumulative"]), 2)
+
+            time.sleep(1.1)
+            year_res = call_fox_openapi("/op/v0/device/report/query", {
+                "sn": sn, "year": now.year, "dimension": "year", "variables": ["generation"]
+            })
+            if year_res:
+                res_list = year_res.get("result", [])
+                if res_list:
+                    vals = [v for v in res_list[0].get("values", []) if isinstance(v, (int, float))]
+                    extra_data["year_yield"] = round(sum(vals), 2)
+
+            time.sleep(1.1)
+            month_res = call_fox_openapi("/op/v0/device/report/query", {
+                "sn": sn, "year": now.year, "month": now.month, "dimension": "month", "variables": ["generation"]
+            })
+            if month_res:
+                res_list = month_res.get("result", [])
+                if res_list:
+                    vals = [v for v in res_list[0].get("values", []) if isinstance(v, (int, float))]
+                    extra_data["week_yield"] = round(sum(vals[-7:]), 2)
+
+            time.sleep(1.1)
+            history_res = call_fox_openapi("/op/v0/device/history/query", {"sn": sn, "variables": ["pvPower"]})
+            if history_res:
+                res_list = history_res.get("result", [])
+                if res_list:
+                    history_3d = []
+                    for d in res_list[0].get("datas", []):
+                        if d.get("variable") == "pvPower":
+                            for point in d.get("data", []):
+                                try:
+                                    history_3d.append({"t": point.get("time"), "pv": round(float(point.get("value", 0)), 3)})
+                                except (TypeError, ValueError):
+                                    continue
+                    if history_3d:
+                        extra_data["history_3d"] = history_3d
+                        print(f"3-Tage-Verlauf: {len(history_3d)} Datenpunkte")
     except Exception as e:
         print(f"OpenAPI Abruf fehlgeschlagen: {e}")
         traceback.print_exc()
@@ -320,7 +412,8 @@ pv_data = {
         "lng": PV_LNG
     },
     **metrics,
-    "status": "online",
+    **extra_data,
+    "status": extra_data.get("device_status", "online"),
     "last_updated": datetime.utcnow().isoformat() + "Z"
 }
 
