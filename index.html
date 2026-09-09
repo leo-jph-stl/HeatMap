@@ -2096,6 +2096,19 @@
             renderPvHistoryChart(livePvData.history_3d);
         }
 
+        function parsePvTimestamp(t) {
+            if (typeof t !== 'string') return NaN;
+            let d = new Date(t);
+            if (!isNaN(d.getTime())) return d.getTime();
+            // Fallback für FoxESS-Rohformat "yyyy-MM-dd HH:mm:ss zZ" (z.B. "2026-09-06 21:04:03 CEST+0200"),
+            // das new Date() nicht zuverlässig parst (Zeitzonen-Kürzel + Offset kombiniert)
+            const m = t.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})\s+[A-Za-z]*([+-]\d{4})$/);
+            if (!m) return NaN;
+            const iso = `${m[1]}T${m[2]}${m[3].slice(0, 3)}:${m[3].slice(3)}`;
+            d = new Date(iso);
+            return isNaN(d.getTime()) ? NaN : d.getTime();
+        }
+
         function renderPvHistoryChart(history) {
             const svg = document.getElementById('pvHistoryChart');
             if (!svg) return;
@@ -2105,7 +2118,7 @@
             }
             const W = 300, H = 56, PAD = 3;
             const points = history
-                .map(p => ({ t: new Date(p.t).getTime(), pv: p.pv }))
+                .map(p => ({ t: parsePvTimestamp(p.t), pv: p.pv }))
                 .filter(p => !isNaN(p.t))
                 .sort((a, b) => a.t - b.t);
             if (!points.length) { svg.innerHTML = ''; return; }

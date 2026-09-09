@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import sys
 import time
 import hashlib
@@ -62,6 +63,22 @@ if not username and not api_key:
     print("\nHINWEIS: Keine FoxESS Zugangsdaten in den Umgebungsvariablen gefunden.")
     print("Bitte prüfen Sie die genaue Schreibweise in GitHub Settings -> Secrets and variables -> Actions.")
     sys.exit(0)
+
+FOX_TIME_RE = re.compile(r'^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})\s+[A-Za-z]*([+-]\d{4})$')
+
+
+def normalize_fox_time(t):
+    """Wandelt FoxESS-Zeitstempel ("2026-09-06 21:04:03 CEST+0200") in ISO 8601 um.
+    JS' `new Date(...)` kann das FoxESS-Format (Zeitzonen-Kürzel + Offset kombiniert)
+    nicht zuverlässig parsen und liefert sonst still `Invalid Date`."""
+    if not t:
+        return None
+    m = FOX_TIME_RE.match(t)
+    if not m:
+        return t
+    date_part, time_part, offset = m.groups()
+    return f"{date_part}T{time_part}{offset[:3]}:{offset[3:]}"
+
 
 def extract_metrics(raw_data):
     """Extrahiert einheitliche Messwerte aus verschiedenen FoxESS JSON-Strukturen."""
@@ -305,7 +322,7 @@ if api_key and not metrics:
                         if d.get("variable") == "pvPower":
                             for point in d.get("data", []):
                                 try:
-                                    history_3d.append({"t": point.get("time"), "pv": round(float(point.get("value", 0)), 3)})
+                                    history_3d.append({"t": normalize_fox_time(point.get("time")), "pv": round(float(point.get("value", 0)), 3)})
                                 except (TypeError, ValueError):
                                     continue
                     if history_3d:
