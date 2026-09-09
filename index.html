@@ -658,7 +658,11 @@
     <div id="pv-container">
         <div class="forecast-header">
             <div class="forecast-title-box">
-                <div class="forecast-place" style="color: #ffdb00;">☀️ FoxESS PV-Anlage</div>
+                <div class="forecast-place" style="color: #ffdb00; display: flex; align-items: center; gap: 6px;">
+                    ☀️ FoxESS PV-Anlage
+                    <span id="pvStatusDot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#888;"></span>
+                    <span id="pvStatusLabel" style="font-size: 10px; font-weight: 600; color: #888; text-transform: uppercase;"></span>
+                </div>
                 <div id="pvLocationSub" class="forecast-sub">Hochheim am Main (Südstadt)</div>
             </div>
             <div class="forecast-btn-group">
@@ -696,8 +700,32 @@
                 </div>
             </div>
 
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #aaa; background: rgba(0,0,0,0.3); padding: 6px 10px; border-radius: 8px;">
-                <span>Tagesertrag: <strong id="pvTodayYield" style="color: #fff;">28.4 kWh</strong></span>
+            <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 9px; margin-bottom: 7px;">
+                <div style="font-size: 10px; color: #888; margin-bottom: 4px;">PV-Leistung, letzte 3 Tage</div>
+                <svg id="pvHistoryChart" viewBox="0 0 300 56" preserveAspectRatio="none" style="width:100%; height:56px; display:block; overflow: visible;"></svg>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 7px;">
+                <div style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 5px 3px; text-align: center;">
+                    <div style="font-size: 9px; color: #888;">Tag</div>
+                    <div id="pvTodayYield" style="font-size: 11.5px; font-weight: 700; color: #fff;">-- kWh</div>
+                </div>
+                <div style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 5px 3px; text-align: center;">
+                    <div style="font-size: 9px; color: #888;">Woche</div>
+                    <div id="pvWeekYield" style="font-size: 11.5px; font-weight: 700; color: #fff;">-- kWh</div>
+                </div>
+                <div style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 5px 3px; text-align: center;">
+                    <div style="font-size: 9px; color: #888;">Monat</div>
+                    <div id="pvMonthYield" style="font-size: 11.5px; font-weight: 700; color: #fff;">-- kWh</div>
+                </div>
+                <div style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 5px 3px; text-align: center;">
+                    <div style="font-size: 9px; color: #888;">Jahr</div>
+                    <div id="pvYearYield" style="font-size: 11.5px; font-weight: 700; color: #fff;">-- kWh</div>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #aaa;">
+                <span id="pvCumulativeYield" style="color: #888;"></span>
                 <span id="pvLastUpdated" style="color: #888;">Live</span>
             </div>
         </div>
@@ -1958,17 +1986,31 @@
             const solarVal = livePvData.solar_power !== undefined ? livePvData.solar_power.toFixed(2) : '--';
             const houseVal = livePvData.house_load !== undefined ? livePvData.house_load.toFixed(2) + ' kW' : '--';
             const socVal = livePvData.battery_soc !== undefined ? livePvData.battery_soc + ' %' : '--';
-            
+
             const gridFeed = livePvData.grid_feed_in !== undefined ? livePvData.grid_feed_in : 0;
             const gridStr = (gridFeed >= 0 ? '+' : '') + gridFeed.toFixed(2) + ' kW';
             const gridColor = gridFeed >= 0 ? '#00e5ff' : '#ff9100';
-            
+
             const batPower = livePvData.battery_power !== undefined ? livePvData.battery_power : 0;
             const batStr = (batPower >= 0 ? '+' : '') + batPower.toFixed(2) + ' kW';
             const batColor = batPower <= 0 ? '#00ff88' : '#b388ff';
-            
-            const yieldVal = livePvData.today_yield !== undefined ? livePvData.today_yield.toFixed(1) + ' kWh' : '--';
-            
+
+            const fmtYield = (v) => (v !== undefined && v !== null) ? v.toFixed(1) + ' kWh' : '-- kWh';
+            const todayYieldVal = fmtYield(livePvData.today_yield);
+            const weekYieldVal = fmtYield(livePvData.week_yield);
+            const monthYieldVal = fmtYield(livePvData.month_yield);
+            const yearYieldVal = fmtYield(livePvData.year_yield);
+            const cumulativeStr = (livePvData.cumulative_yield !== undefined && livePvData.cumulative_yield !== null)
+                ? 'Gesamt: ' + livePvData.cumulative_yield.toFixed(0) + ' kWh' : '';
+
+            const statusMap = {
+                online: { color: '#00ff88', label: 'Online' },
+                offline: { color: '#888', label: 'Offline' },
+                fault: { color: '#ff5252', label: 'Fehler' },
+                unknown: { color: '#888', label: '' }
+            };
+            const st = statusMap[livePvData.status || livePvData.device_status] || statusMap.unknown;
+
             let updatedStr = 'Live';
             if (livePvData.last_updated) {
                 const d = new Date(livePvData.last_updated);
@@ -1980,8 +2022,14 @@
             const socEl = document.getElementById('pvBatterySoc');
             const gridEl = document.getElementById('pvGridFeed');
             const batEl = document.getElementById('pvBatPower');
-            const yieldEl = document.getElementById('pvTodayYield');
+            const todayYieldEl = document.getElementById('pvTodayYield');
+            const weekYieldEl = document.getElementById('pvWeekYield');
+            const monthYieldEl = document.getElementById('pvMonthYield');
+            const yearYieldEl = document.getElementById('pvYearYield');
+            const cumulativeEl = document.getElementById('pvCumulativeYield');
             const updateEl = document.getElementById('pvLastUpdated');
+            const statusDotEl = document.getElementById('pvStatusDot');
+            const statusLabelEl = document.getElementById('pvStatusLabel');
 
             if (solEl) solEl.innerText = solarVal;
             if (loadEl) loadEl.innerText = houseVal;
@@ -1994,8 +2042,60 @@
                 batEl.innerText = batStr;
                 batEl.style.color = batColor;
             }
-            if (yieldEl) yieldEl.innerText = yieldVal;
+            if (todayYieldEl) todayYieldEl.innerText = todayYieldVal;
+            if (weekYieldEl) weekYieldEl.innerText = weekYieldVal;
+            if (monthYieldEl) monthYieldEl.innerText = monthYieldVal;
+            if (yearYieldEl) yearYieldEl.innerText = yearYieldVal;
+            if (cumulativeEl) cumulativeEl.innerText = cumulativeStr;
             if (updateEl) updateEl.innerText = updatedStr;
+            if (statusDotEl) {
+                statusDotEl.style.background = st.color;
+                statusDotEl.style.boxShadow = st.label ? `0 0 6px ${st.color}` : 'none';
+            }
+            if (statusLabelEl) {
+                statusLabelEl.innerText = st.label;
+                statusLabelEl.style.color = st.color;
+            }
+
+            renderPvHistoryChart(livePvData.history_3d);
+        }
+
+        function renderPvHistoryChart(history) {
+            const svg = document.getElementById('pvHistoryChart');
+            if (!svg) return;
+            if (!history || !history.length) {
+                svg.innerHTML = '';
+                return;
+            }
+            const W = 300, H = 56, PAD = 3;
+            const points = history
+                .map(p => ({ t: new Date(p.t).getTime(), pv: p.pv }))
+                .filter(p => !isNaN(p.t))
+                .sort((a, b) => a.t - b.t);
+            if (!points.length) { svg.innerHTML = ''; return; }
+
+            const tMin = points[0].t, tMax = points[points.length - 1].t;
+            const pvMax = Math.max(1, ...points.map(p => p.pv));
+            const x = (t) => PAD + (tMax > tMin ? (t - tMin) / (tMax - tMin) : 0) * (W - 2 * PAD);
+            const y = (pv) => (H - PAD) - (pv / pvMax) * (H - 2 * PAD);
+
+            const linePts = points.map(p => `${x(p.t).toFixed(1)},${y(p.pv).toFixed(1)}`).join(' ');
+            const areaPts = `${PAD},${H - PAD} ` + linePts + ` ${W - PAD},${H - PAD}`;
+
+            // Tagesgrenzen als dezente vertikale Linien
+            let dayLines = '';
+            const dayMs = 24 * 60 * 60 * 1000;
+            let dayStart = Math.ceil(tMin / dayMs) * dayMs;
+            for (; dayStart < tMax; dayStart += dayMs) {
+                const dx = x(dayStart).toFixed(1);
+                dayLines += `<line x1="${dx}" y1="${PAD}" x2="${dx}" y2="${H - PAD}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2,2"/>`;
+            }
+
+            svg.innerHTML = `
+                <polygon points="${areaPts}" fill="rgba(255,219,0,0.18)" stroke="none"></polygon>
+                ${dayLines}
+                <polyline points="${linePts}" fill="none" stroke="#ffdb00" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"></polyline>
+            `;
         }
 
         function showPvDashboard() {
