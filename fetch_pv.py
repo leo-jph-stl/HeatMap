@@ -90,27 +90,29 @@ def extract_metrics(raw_data):
             except Exception:
                 continue
 
-            if "pvpower" in name or name == "pv":
+            # Exakte FoxESS-Variablennamen (Groß-/Kleinschreibung ist bei der API relevant,
+            # hier aber bereits kleingeschrieben verglichen)
+            if name == "pvpower":
                 pv_power = val
-            elif "loadpower" in name or name == "load":
+            elif name == "loadspower":
                 load_power = val
-            elif "soc" in name or name == "batsoc":
+            elif name == "soc":
                 soc = int(round(val))
-            elif "batpower" in name or name == "bat":
+            elif name == "invbatpower":
                 bat_power = val
-            elif "feedinpower" in name or "gridpower" in name:
+            elif name == "feedinpower":
                 feed_in = val
-            elif "todayyield" in name or "generation" in name:
+            elif name == "todayyield":
                 today_yield = val
 
     elif isinstance(res, dict):
         # Falls Datas als Dict vorliegen
         pv_power = float(res.get("pvPower", res.get("pv_power", res.get("pv", 0.0))))
-        load_power = float(res.get("loadPower", res.get("load_power", res.get("load", 0.0))))
-        soc = int(round(float(res.get("soc", res.get("SoC", res.get("battery_soc", 0))))))
-        bat_power = float(res.get("batPower", res.get("bat_power", res.get("bat", 0.0))))
-        feed_in = float(res.get("feedInPower", res.get("feed_in_power", res.get("grid_feed_in", 0.0))))
-        today_yield = float(res.get("todayYield", res.get("generationToday", res.get("today_yield", 0.0))))
+        load_power = float(res.get("loadsPower", res.get("load_power", res.get("load", 0.0))))
+        soc = int(round(float(res.get("SoC", res.get("soc", res.get("battery_soc", 0))))))
+        bat_power = float(res.get("invBatPower", res.get("bat_power", res.get("bat", 0.0))))
+        feed_in = float(res.get("feedinPower", res.get("feed_in_power", res.get("grid_feed_in", 0.0))))
+        today_yield = float(res.get("todayYield", res.get("today_yield", 0.0)))
 
     return {
         "solar_power": round(pv_power, 2),
@@ -165,11 +167,13 @@ if api_key and not metrics:
                     sn = devices[0].get("deviceSN")
                     print(f"Wechselrichter via OpenAPI erkannt: {sn}")
 
-        # Real-Query mit allen Standard-Variablen
+        # Real-Query mit den tatsächlichen FoxESS-Variablennamen (siehe offizielle Variable-Table;
+        # "loadPower"/"soc"/"batPower"/"generationToday" existieren dort NICHT und werden von der
+        # API stillschweigend ignoriert, wenn sie falsch benannt sind)
         variables = [
-            "pvPower", "loadPower", "soc", "batPower", "feedinPower",
-            "todayYield", "generationToday", "batChargePower", "batDischargePower",
-            "gridConsumptionPower", "invBatPower", "meterPower"
+            "pvPower", "loadsPower", "SoC", "invBatPower", "feedinPower",
+            "todayYield", "batChargePower", "batDischargePower",
+            "gridConsumptionPower", "meterPower"
         ]
 
         real_res = None
@@ -247,11 +251,29 @@ if api_key and not metrics:
             month_res = call_fox_openapi("/op/v0/device/report/query", {
                 "sn": sn, "year": now.year, "month": now.month, "dimension": "month", "variables": ["generation"]
             })
+            week_vals = []
             if month_res:
                 res_list = month_res.get("result", [])
                 if res_list:
                     vals = [v for v in res_list[0].get("values", []) if isinstance(v, (int, float))]
-                    extra_data["week_yield"] = round(sum(vals[-7:]), 2)
+                    # Werte sind pro Kalendertag indiziert (Index 0 = Tag 1) und für den ganzen
+                    # Monat vorbelegt -> nur bis "heute" nehmen, sonst zählen unerreichte Tage als 0 mit
+                    week_vals = vals[:now.day][-7:]
+                    if len(week_vals) < 7:
+                        missing = 7 - len(week_vals)
+                        prev_month = now.month - 1 or 12
+                        prev_year = now.year if now.month > 1 else now.year - 1
+                        time.sleep(1.1)
+                        prev_res = call_fox_openapi("/op/v0/device/report/query", {
+                            "sn": sn, "year": prev_year, "month": prev_month, "dimension": "month", "variables": ["generation"]
+                        })
+                        if prev_res:
+                            prev_list = prev_res.get("result", [])
+                            if prev_list:
+                                prev_vals = [v for v in prev_list[0].get("values", []) if isinstance(v, (int, float))]
+                                week_vals = prev_vals[-missing:] + week_vals
+            if week_vals:
+                extra_data["week_yield"] = round(sum(week_vals), 2)
 
             time.sleep(1.1)
             history_res = call_fox_openapi("/op/v0/device/history/query", {"sn": sn, "variables": ["pvPower"]})
