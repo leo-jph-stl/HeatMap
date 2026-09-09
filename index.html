@@ -701,8 +701,12 @@
             </div>
 
             <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 9px; margin-bottom: 7px;">
-                <div style="font-size: 10px; color: #888; margin-bottom: 4px;">PV-Leistung, letzte 3 Tage</div>
-                <svg id="pvHistoryChart" viewBox="0 0 300 56" preserveAspectRatio="none" style="width:100%; height:56px; display:block; overflow: visible;"></svg>
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+                    <div style="font-size: 10px; color: #888;">PV-Leistung <span id="pvHistoryRange"></span></div>
+                    <button id="pvHistoryResetBtn" title="Auf 3 Tage zurücksetzen" style="display:none; background: rgba(255,219,0,0.12); border: 1px solid rgba(255,219,0,0.35); color: #ffdb00; border-radius: 6px; font-size: 9px; font-weight: 600; padding: 1px 6px; cursor: pointer;">↺ 3 Tage</button>
+                </div>
+                <svg id="pvHistoryChart" viewBox="0 0 300 56" preserveAspectRatio="none" style="width:100%; height:56px; display:block; overflow: visible; touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none;"></svg>
+                <div style="font-size: 8.5px; color: #666; margin-top: 2px;">Ziehen zum Verschieben, Mausrad/Pinch zum Zoomen</div>
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 7px;">
@@ -2109,33 +2113,90 @@
             return isNaN(d.getTime()) ? NaN : d.getTime();
         }
 
+        // Zoom/Pan-Zustand des 3-Tage-Charts. viewStart/viewEnd grenzen den sichtbaren
+        // Zeitausschnitt ein; fullStart/fullEnd sind die Grenzen der geladenen Rohdaten.
+        const pvChartState = { data: [], fullStart: null, fullEnd: null, viewStart: null, viewEnd: null };
+        const PV_CHART_MIN_SPAN_MS = 20 * 60 * 1000; // näher als 20 Minuten wird nicht reingezoomt
+
         function renderPvHistoryChart(history) {
             const svg = document.getElementById('pvHistoryChart');
             if (!svg) return;
-            if (!history || !history.length) {
+            const points = (history || [])
+                .map(p => ({ t: parsePvTimestamp(p.t), pv: p.pv }))
+                .filter(p => !isNaN(p.t) && typeof p.pv === 'number')
+                .sort((a, b) => a.t - b.t);
+
+            if (!points.length) {
                 svg.innerHTML = '';
+                pvChartState.data = [];
+                const rangeEl = document.getElementById('pvHistoryRange');
+                if (rangeEl) rangeEl.innerText = '';
+                const resetBtn = document.getElementById('pvHistoryResetBtn');
+                if (resetBtn) resetBtn.style.display = 'none';
                 return;
             }
+
+            pvChartState.data = points;
+            const newFullStart = points[0].t, newFullEnd = points[points.length - 1].t;
+            const hadView = pvChartState.viewStart !== null && pvChartState.viewEnd !== null;
+            const wasZoomed = hadView && (pvChartState.viewStart > pvChartState.fullStart + 1000 || pvChartState.viewEnd < pvChartState.fullEnd - 1000);
+
+            if (!hadView || !wasZoomed) {
+                // Nicht gezoomt (oder Erstladung): Ansicht mit den Daten auf "volle 3 Tage" mitführen
+                pvChartState.viewStart = newFullStart;
+                pvChartState.viewEnd = newFullEnd;
+            } else {
+                // Nutzer ist reingezoomt: Fenstergröße/-position beibehalten, nur an neue Datengrenzen klemmen
+                const span = pvChartState.viewEnd - pvChartState.viewStart;
+                pvChartState.viewStart = Math.max(newFullStart, Math.min(pvChartState.viewStart, newFullEnd - span));
+                pvChartState.viewEnd = pvChartState.viewStart + span;
+            }
+            pvChartState.fullStart = newFullStart;
+            pvChartState.fullEnd = newFullEnd;
+
+            drawPvChart();
+        }
+
+        function drawPvChart() {
+            const svg = document.getElementById('pvHistoryChart');
+            const rangeEl = document.getElementById('pvHistoryRange');
+            const resetBtn = document.getElementById('pvHistoryResetBtn');
+            if (!svg || !pvChartState.data.length) return;
+
+            const { data, fullStart, fullEnd } = pvChartState;
+            let { viewStart, viewEnd } = pvChartState;
+            if (viewEnd - viewStart < PV_CHART_MIN_SPAN_MS) {
+                const mid = (viewStart + viewEnd) / 2;
+                viewStart = mid - PV_CHART_MIN_SPAN_MS / 2;
+                viewEnd = mid + PV_CHART_MIN_SPAN_MS / 2;
+            }
+
             const W = 300, H = 56, PAD = 3;
-            const points = history
-                .map(p => ({ t: parsePvTimestamp(p.t), pv: p.pv }))
-                .filter(p => !isNaN(p.t))
-                .sort((a, b) => a.t - b.t);
-            if (!points.length) { svg.innerHTML = ''; return; }
+            const x = (t) => PAD + (viewEnd > viewStart ? (t - viewStart) / (viewEnd - viewStart) : 0) * (W - 2 * PAD);
+            const y = (pv, pvMax) => (H - PAD) - (pv / pvMax) * (H - 2 * PAD);
 
-            const tMin = points[0].t, tMax = points[points.length - 1].t;
-            const pvMax = Math.max(1, ...points.map(p => p.pv));
-            const x = (t) => PAD + (tMax > tMin ? (t - tMin) / (tMax - tMin) : 0) * (W - 2 * PAD);
-            const y = (pv) => (H - PAD) - (pv / pvMax) * (H - 2 * PAD);
+            // Sichtbare Punkte plus je einen Rahmenpunkt links/rechts, damit die Linie nicht
+            // an den Fensterkanten "abgeschnitten" aussieht
+            const visible = data.filter(p => p.t >= viewStart && p.t <= viewEnd);
+            const beforeIdx = data.findLastIndex ? data.findLastIndex(p => p.t < viewStart) : (() => {
+                let idx = -1; for (let i = 0; i < data.length; i++) if (data[i].t < viewStart) idx = i; return idx;
+            })();
+            const afterPoint = data.find(p => p.t > viewEnd);
+            const plotPoints = [
+                ...(beforeIdx >= 0 ? [data[beforeIdx]] : []),
+                ...visible,
+                ...(afterPoint ? [afterPoint] : [])
+            ];
 
-            const linePts = points.map(p => `${x(p.t).toFixed(1)},${y(p.pv).toFixed(1)}`).join(' ');
+            const pvMax = Math.max(1, ...plotPoints.map(p => p.pv));
+            const linePts = plotPoints.map(p => `${x(p.t).toFixed(1)},${y(p.pv, pvMax).toFixed(1)}`).join(' ');
             const areaPts = `${PAD},${H - PAD} ` + linePts + ` ${W - PAD},${H - PAD}`;
 
-            // Tagesgrenzen als dezente vertikale Linien
+            // Tagesgrenzen (Mitternacht) als dezente vertikale Linien, nur im sichtbaren Fenster
             let dayLines = '';
             const dayMs = 24 * 60 * 60 * 1000;
-            let dayStart = Math.ceil(tMin / dayMs) * dayMs;
-            for (; dayStart < tMax; dayStart += dayMs) {
+            let dayStart = Math.ceil(viewStart / dayMs) * dayMs;
+            for (; dayStart < viewEnd; dayStart += dayMs) {
                 const dx = x(dayStart).toFixed(1);
                 dayLines += `<line x1="${dx}" y1="${PAD}" x2="${dx}" y2="${H - PAD}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2,2"/>`;
             }
@@ -2145,6 +2206,135 @@
                 ${dayLines}
                 <polyline points="${linePts}" fill="none" stroke="#ffdb00" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"></polyline>
             `;
+
+            const zoomed = viewStart > fullStart + 1000 || viewEnd < fullEnd - 1000;
+            if (resetBtn) resetBtn.style.display = zoomed ? 'inline-block' : 'none';
+            if (rangeEl) {
+                const fmt = (t, withDate) => new Date(t).toLocaleString('de-DE', withDate
+                    ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }
+                    : { hour: '2-digit', minute: '2-digit' });
+                const sameDay = new Date(viewStart).toDateString() === new Date(viewEnd).toDateString();
+                rangeEl.innerText = zoomed ? `· ${fmt(viewStart, !sameDay)} – ${fmt(viewEnd, !sameDay)}` : '· letzte 3 Tage';
+            }
+        }
+
+        function pvChartZoom(factor, anchorRel) {
+            const { fullStart, fullEnd } = pvChartState;
+            if (fullStart === null) return;
+            const span = pvChartState.viewEnd - pvChartState.viewStart;
+            const anchorT = pvChartState.viewStart + anchorRel * span;
+            const maxSpan = fullEnd - fullStart || PV_CHART_MIN_SPAN_MS;
+            let newSpan = Math.min(maxSpan, Math.max(PV_CHART_MIN_SPAN_MS, span * factor));
+            let newStart = anchorT - anchorRel * newSpan;
+            let newEnd = newStart + newSpan;
+            if (newStart < fullStart) { newEnd += (fullStart - newStart); newStart = fullStart; }
+            if (newEnd > fullEnd) { newStart -= (newEnd - fullEnd); newEnd = fullEnd; }
+            pvChartState.viewStart = Math.max(fullStart, newStart);
+            pvChartState.viewEnd = Math.min(fullEnd, newEnd);
+            drawPvChart();
+        }
+
+        function pvChartPanTo(viewStart, viewEnd) {
+            const { fullStart, fullEnd } = pvChartState;
+            if (fullStart === null) return;
+            const span = viewEnd - viewStart;
+            let ns = viewStart, ne = viewEnd;
+            if (ns < fullStart) { ne += (fullStart - ns); ns = fullStart; }
+            if (ne > fullEnd) { ns -= (ne - fullEnd); ne = fullEnd; }
+            pvChartState.viewStart = Math.max(fullStart, ns);
+            pvChartState.viewEnd = Math.min(fullEnd, ne);
+            drawPvChart();
+        }
+
+        function initPvHistoryChartInteraction() {
+            const svg = document.getElementById('pvHistoryChart');
+            const resetBtn = document.getElementById('pvHistoryResetBtn');
+            if (!svg) return;
+
+            const relX = (clientX) => {
+                const rect = svg.getBoundingClientRect();
+                return rect.width > 0 ? Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)) : 0.5;
+            };
+
+            svg.addEventListener('wheel', (e) => {
+                if (!pvChartState.data.length) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const factor = e.deltaY < 0 ? 0.75 : 1 / 0.75;
+                pvChartZoom(factor, relX(e.clientX));
+            }, { passive: false });
+
+            const pointers = new Map();
+            let dragStart = null;      // { view0, view1, clientX } für Ein-Finger-Pan
+            let pinchStart = null;     // { dist, view0, view1 } für Zwei-Finger-Pinch
+
+            svg.addEventListener('pointerdown', (e) => {
+                if (!pvChartState.data.length) return;
+                svg.setPointerCapture(e.pointerId);
+                pointers.set(e.pointerId, e.clientX);
+                if (pointers.size === 1) {
+                    svg.style.cursor = 'grabbing';
+                    dragStart = { clientX: e.clientX, viewStart: pvChartState.viewStart, viewEnd: pvChartState.viewEnd };
+                    pinchStart = null;
+                } else if (pointers.size === 2) {
+                    dragStart = null;
+                    const xs = [...pointers.values()];
+                    pinchStart = { dist: Math.abs(xs[0] - xs[1]), viewStart: pvChartState.viewStart, viewEnd: pvChartState.viewEnd };
+                }
+            });
+
+            svg.addEventListener('pointermove', (e) => {
+                if (!pointers.has(e.pointerId)) return;
+                pointers.set(e.pointerId, e.clientX);
+                e.preventDefault();
+                e.stopPropagation();
+
+                if (pointers.size === 2 && pinchStart) {
+                    const xs = [...pointers.values()];
+                    const dist = Math.max(1, Math.abs(xs[0] - xs[1]));
+                    const factor = pinchStart.dist / dist;
+                    const span = pinchStart.viewEnd - pinchStart.viewStart;
+                    const midClientX = (xs[0] + xs[1]) / 2;
+                    const anchorT = pinchStart.viewStart + relX(midClientX) * span;
+                    const maxSpan = pvChartState.fullEnd - pvChartState.fullStart || PV_CHART_MIN_SPAN_MS;
+                    let newSpan = Math.min(maxSpan, Math.max(PV_CHART_MIN_SPAN_MS, span * factor));
+                    let ns = anchorT - relX(midClientX) * newSpan;
+                    pvChartPanTo(ns, ns + newSpan);
+                } else if (pointers.size === 1 && dragStart) {
+                    const rect = svg.getBoundingClientRect();
+                    const dxRel = rect.width > 0 ? (e.clientX - dragStart.clientX) / rect.width : 0;
+                    const span = dragStart.viewEnd - dragStart.viewStart;
+                    const shift = -dxRel * span;
+                    pvChartPanTo(dragStart.viewStart + shift, dragStart.viewEnd + shift);
+                }
+            });
+
+            const endPointer = (e) => {
+                pointers.delete(e.pointerId);
+                try { svg.releasePointerCapture(e.pointerId); } catch (err) {}
+                if (pointers.size === 0) { dragStart = null; svg.style.cursor = 'grab'; }
+                if (pointers.size < 2) pinchStart = null;
+                if (pointers.size === 1) {
+                    const [remaining] = pointers.entries();
+                    dragStart = { clientX: remaining[1], viewStart: pvChartState.viewStart, viewEnd: pvChartState.viewEnd };
+                }
+            };
+            svg.addEventListener('pointerup', endPointer);
+            svg.addEventListener('pointercancel', endPointer);
+            svg.addEventListener('pointerleave', (e) => { if (pointers.size === 0) svg.style.cursor = 'grab'; });
+
+            svg.addEventListener('dblclick', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                pvChartPanTo(pvChartState.fullStart, pvChartState.fullEnd);
+            });
+
+            if (resetBtn) {
+                resetBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    pvChartPanTo(pvChartState.fullStart, pvChartState.fullEnd);
+                });
+            }
         }
 
         function showPvDashboard() {
@@ -3338,6 +3528,7 @@
                 closePvDashboard();
             });
         }
+        initPvHistoryChartInteraction();
 
         // INIT
         if (typeof tempMetadata !== 'undefined' && tempMetadata.nx < 1440) {
