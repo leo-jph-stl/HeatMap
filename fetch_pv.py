@@ -276,6 +276,26 @@ if api_key and not metrics:
                 extra_data["week_yield"] = round(sum(week_vals), 2)
 
             time.sleep(1.1)
+            day_res = call_fox_openapi("/op/v0/device/report/query", {
+                "sn": sn, "year": now.year, "month": now.month, "day": now.day, "dimension": "day",
+                "variables": ["feedin", "gridConsumption", "chargeEnergyToTal", "dischargeEnergyToTal"]
+            })
+            if day_res:
+                res_list = day_res.get("result", [])
+                day_totals = {}
+                for item in res_list:
+                    vals = [v for v in item.get("values", []) if isinstance(v, (int, float))]
+                    day_totals[item.get("variable")] = round(sum(vals), 2)
+                if "feedin" in day_totals:
+                    extra_data["today_feedin"] = day_totals["feedin"]
+                if "gridConsumption" in day_totals:
+                    extra_data["today_grid_import"] = day_totals["gridConsumption"]
+                if "chargeEnergyToTal" in day_totals:
+                    extra_data["today_battery_charge"] = day_totals["chargeEnergyToTal"]
+                if "dischargeEnergyToTal" in day_totals:
+                    extra_data["today_battery_discharge"] = day_totals["dischargeEnergyToTal"]
+
+            time.sleep(1.1)
             history_res = call_fox_openapi("/op/v0/device/history/query", {"sn": sn, "variables": ["pvPower"]})
             if history_res:
                 res_list = history_res.get("result", [])
