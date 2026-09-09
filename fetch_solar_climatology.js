@@ -24,7 +24,10 @@ const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', '
 
 // Ergebnisgitter: 1x1 Grad, Punkte bei X.5/Y.5 (NASA POWER solar-Auflösung)
 const NX = 360, NY = 180;
-const LO1 = -179.5, LA1 = 89.5; // oben-links (Nordwesten), Zeilen laufen von Nord nach Süd
+// Spalten in GFS-Konvention (0..360° Ost, aufsteigend) statt NASA POWERs -180..180°, damit
+// dieselbe Spalten-Remapping-Logik wie bei den Live-GFS-Daten (buildTempDataTexture in
+// index.html) greift - sonst landet die Klimatologie um ~180° längenverschoben auf dem Globus.
+const LO1 = 0.5, LA1 = 89.5; // oben-links (Nordwesten), Zeilen laufen von Nord nach Süd
 
 function fetchJson(url) {
     return new Promise((resolve, reject) => {
@@ -77,7 +80,8 @@ async function run() {
             try {
                 const points = await fetchTile(lonMin, latMin);
                 for (const p of points) {
-                    const col = Math.round(p.lon - LO1);
+                    const lon360 = p.lon < 0 ? p.lon + 360 : p.lon;
+                    const col = Math.round(lon360 - LO1);
                     const row = Math.round(LA1 - p.lat);
                     if (col < 0 || col >= NX || row < 0 || row >= NY) continue;
                     const idx = row * NX + col;

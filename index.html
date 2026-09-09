@@ -886,7 +886,7 @@
             .clamp(true);
 
         function getInterpolatedData(lat, lng) {
-            let u=0, v=0, t=15;
+            let u=0, v=0, t=15, solar=0;
             let lon0360 = lng < 0 ? lng + 360 : lng;
             
             if (activeWind) {
@@ -936,7 +936,39 @@
 
                 t = t00*(1-dx)*(1-dy) + t10*dx*(1-dy) + t01*(1-dx)*dy + t11*dx*dy;
             }
-            return { u, v, t };
+
+            // Sonneneinstrahlung: je nach Dropdown entweder die aktuelle Live-Zeitreihe oder,
+            // wenn eine Klimatologie-Option gewählt ist, das entsprechende Monats-/Jahresmittel-Grid
+            const solarSource = (solarClimSelection !== 'live' && typeof solarClimatologyData !== 'undefined')
+                ? solarClimatologyData.find(l => l.label === solarClimSelection)
+                : activeSolar;
+            if (solarSource) {
+                const sh = solarSource.header;
+                let y = (sh.la1 - lat) / sh.dy;
+                let x = lon0360 / sh.dx;
+
+                let y0 = Math.floor(y); let x0 = Math.floor(x);
+                let y1 = y0 + 1; let x1 = x0 + 1;
+
+                if (y0 < 0) y0 = 0; if (y0 >= sh.ny) y0 = sh.ny - 1;
+                if (y1 < 0) y1 = 0; if (y1 >= sh.ny) y1 = sh.ny - 1;
+                if (x0 < 0) x0 = 0; if (x0 >= sh.nx) x0 = sh.nx - 1;
+                if (x1 < 0) x1 = 0; if (x1 >= sh.nx) x1 = sh.nx - 1;
+
+                let dy2 = y - y0; let dx2 = x - x0;
+                const i00 = y0 * sh.nx + x0; const i10 = y0 * sh.nx + x1;
+                const i01 = y1 * sh.nx + x0; const i11 = y1 * sh.nx + x1;
+
+                const sScale = solarSource.scale || 1.0;
+                const sd = solarSource.data;
+                const s00 = (sd[i00] !== undefined ? Math.max(0, sd[i00] * sScale) : 0);
+                const s10 = (sd[i10] !== undefined ? Math.max(0, sd[i10] * sScale) : 0);
+                const s01 = (sd[i01] !== undefined ? Math.max(0, sd[i01] * sScale) : 0);
+                const s11 = (sd[i11] !== undefined ? Math.max(0, sd[i11] * sScale) : 0);
+
+                solar = s00*(1-dx2)*(1-dy2) + s10*dx2*(1-dy2) + s01*(1-dx2)*dy2 + s11*dx2*dy2;
+            }
+            return { u, v, t, solar };
         }
 
         // THREE.JS SETUP
@@ -3221,6 +3253,10 @@
             let html = "";
             if (currentMode === 'temp') {
                 html = `${real.t.toFixed(1)} °C`;
+            } else if (currentMode === 'solar') {
+                html = (solarClimSelection === 'live')
+                    ? `${real.solar.toFixed(0)} W/m²`
+                    : `${real.solar.toFixed(2)} kWh/m²/Tag`;
             } else {
                 const speedKmh = Math.sqrt(real.u * real.u + real.v * real.v) * 3.6;
                 html = `${speedKmh.toFixed(1)} km/h`;
@@ -3233,6 +3269,11 @@
         let pointerStartX = 0;
         let pointerStartY = 0;
         let isPointerDragging = false;
+        let pointerDownType = 'mouse';
+        // Finger-Tipps zittern naturgemäß mehr als ein Mausklick - bei zu enger Schwelle wird
+        // auf Mobilgeräten praktisch jeder Tap fälschlich als Wisch-Geste erkannt und das
+        // Popup nie angezeigt. Touch bekommt daher eine großzügigere Toleranz als Maus/Pen.
+        const DRAG_THRESHOLD_SQ = { mouse: 36, pen: 36, touch: 400 }; // px^2 (6px bzw. 20px)
 
         function abortCameraAnimation() {
             if (cameraAnimation) {
@@ -3247,6 +3288,7 @@
             pointerStartX = e.clientX;
             pointerStartY = e.clientY;
             isPointerDragging = false;
+            pointerDownType = e.pointerType || 'mouse';
             // Wenn der User bewusst auf die Karte klickt: Animation abbrechen
             if (cameraAnimation && e.target && (e.target.tagName === 'CANVAS' || e.target.id === 'canvas-container')) {
                 abortCameraAnimation();
@@ -3257,7 +3299,8 @@
             if (!isPointerDown) return; // Reines Bewegen des Mauszeigers ohne Klick ignoriert!
             const dx = e.clientX - pointerStartX;
             const dy = e.clientY - pointerStartY;
-            if (dx * dx + dy * dy > 36) { // Echtes Ziehen / Wischen mit gedrückter Maustaste
+            const threshold = DRAG_THRESHOLD_SQ[pointerDownType] ?? DRAG_THRESHOLD_SQ.mouse;
+            if (dx * dx + dy * dy > threshold) { // Echtes Ziehen / Wischen mit gedrückter Maustaste
                 isPointerDragging = true;
                 if (cameraAnimation) {
                     abortCameraAnimation();
