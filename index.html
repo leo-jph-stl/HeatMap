@@ -724,6 +724,28 @@
                 </div>
             </div>
 
+            <div id="pvDayDetail" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 9px; margin-bottom: 7px; display: none;">
+                <div style="font-size: 10px; color: #888; margin-bottom: 5px;">Heute im Detail</div>
+                <div style="display: flex; flex-direction: column; gap: 4px; font-size: 11px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #aaa;">↗ Einspeisung</span>
+                        <strong id="pvTodayFeedin" style="color: #00e5ff;">-- kWh</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #aaa;">↙ Netzbezug</span>
+                        <strong id="pvTodayGridImport" style="color: #ff9100;">-- kWh</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #aaa;">⚡ Batterie geladen</span>
+                        <strong id="pvTodayBatCharge" style="color: #00ff88;">-- kWh</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #aaa;">🔋 Batterie entladen</span>
+                        <strong id="pvTodayBatDischarge" style="color: #b388ff;">-- kWh</strong>
+                    </div>
+                </div>
+            </div>
+
             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #aaa;">
                 <span id="pvCumulativeYield" style="color: #888;"></span>
                 <span id="pvLastUpdated" style="color: #888;">Live</span>
@@ -2003,6 +2025,10 @@
             const cumulativeStr = (livePvData.cumulative_yield !== undefined && livePvData.cumulative_yield !== null)
                 ? 'Gesamt: ' + livePvData.cumulative_yield.toFixed(0) + ' kWh' : '';
 
+            const fmtKwh = (v) => (v !== undefined && v !== null) ? v.toFixed(1) + ' kWh' : '-- kWh';
+            const hasDayDetail = ['today_feedin', 'today_grid_import', 'today_battery_charge', 'today_battery_discharge']
+                .some(k => livePvData[k] !== undefined && livePvData[k] !== null);
+
             const statusMap = {
                 online: { color: '#00ff88', label: 'Online' },
                 offline: { color: '#888', label: 'Offline' },
@@ -2030,6 +2056,11 @@
             const updateEl = document.getElementById('pvLastUpdated');
             const statusDotEl = document.getElementById('pvStatusDot');
             const statusLabelEl = document.getElementById('pvStatusLabel');
+            const dayDetailEl = document.getElementById('pvDayDetail');
+            const feedinEl = document.getElementById('pvTodayFeedin');
+            const gridImportEl = document.getElementById('pvTodayGridImport');
+            const batChargeEl = document.getElementById('pvTodayBatCharge');
+            const batDischargeEl = document.getElementById('pvTodayBatDischarge');
 
             if (solEl) solEl.innerText = solarVal;
             if (loadEl) loadEl.innerText = houseVal;
@@ -2056,6 +2087,11 @@
                 statusLabelEl.innerText = st.label;
                 statusLabelEl.style.color = st.color;
             }
+            if (dayDetailEl) dayDetailEl.style.display = hasDayDetail ? 'block' : 'none';
+            if (feedinEl) feedinEl.innerText = fmtKwh(livePvData.today_feedin);
+            if (gridImportEl) gridImportEl.innerText = fmtKwh(livePvData.today_grid_import);
+            if (batChargeEl) batChargeEl.innerText = fmtKwh(livePvData.today_battery_charge);
+            if (batDischargeEl) batDischargeEl.innerText = fmtKwh(livePvData.today_battery_discharge);
 
             renderPvHistoryChart(livePvData.history_3d);
         }
