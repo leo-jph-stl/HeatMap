@@ -1323,6 +1323,7 @@
                 uniform float u_showNightClouds;
                 uniform float u_nightThreshold;
                 uniform float u_cloudMax;
+                uniform float u_useBilinear;
                 varying vec2 vUv;
 
                 // 16-PUNKT BICUBIC CATMULL-ROM SPLINE FILTER (Windy.com / GIS Professional Interpolation)
@@ -1375,8 +1376,23 @@
                 }
 
                 void main() {
-                    float valA = sampleSmooth(u_dataA, vUv);
-                    float valB = sampleSmooth(u_dataB, vUv);
+                    // Einstrahlung nutzt bewusst bilineare statt Catmull-Rom-geglätteter Interpolation:
+                    // eine bilineare Abtastung ist eine Konvexkombination der 4 Nachbarwerte und kann per
+                    // Definition nie über/unter sie hinausschießen, während der Spline das bei den
+                    // scharfen Gradienten realer Einstrahlungsdaten nachweislich tut - am 2026-09-10 per
+                    // Klick belegt: derselbe Punkt zeigte per Klick 201 W/m², während die daraus
+                    // berechnete Farbe einem Wert von 391 W/m² entsprach (16-Punkt-Stichprobe: 46 von 56
+                    // hellen Punkten wichen um über 150 W/m² ab). Temperatur/Wind bleiben beim Spline,
+                    // da dort keine vergleichbar scharfen Kanten auftreten und die zusätzliche Glättung
+                    // dort unproblematisch ist.
+                    float valA, valB;
+                    if (u_useBilinear > 0.5) {
+                        valA = texture2D(u_dataA, vUv).r;
+                        valB = texture2D(u_dataB, vUv).r;
+                    } else {
+                        valA = sampleSmooth(u_dataA, vUv);
+                        valB = sampleSmooth(u_dataB, vUv);
+                    }
                     float val = mix(valA, valB, u_blend);
                     float norm = clamp((val - u_minVal) / (u_maxVal - u_minVal), 0.0, 1.0);
                     vec3 dayColor = texture2D(u_colorRamp, vec2(norm, 0.5)).rgb;
@@ -1431,7 +1447,8 @@
                 // (siehe buildTempDataTexture) - die Schwelle muss dort in derselben 0..1-Skala
                 // vorliegen wie valSafe, sonst würde sie nie (oder immer) greifen.
                 u_nightThreshold: { value: useFloat ? nightCloudThreshold : nightCloudThreshold / maxSolarRange },
-                u_cloudMax: { value: useFloat ? maxCloudRange : 1.0 }
+                u_cloudMax: { value: useFloat ? maxCloudRange : 1.0 },
+                u_useBilinear: { value: 0.0 }
             },
             transparent: true,
             depthWrite: false
@@ -4375,6 +4392,7 @@
 
         function switchLayer(mode) {
             currentMode = mode;
+            dataMaterial.uniforms.u_useBilinear.value = mode === 'solar' ? 1.0 : 0.0;
 
             document.getElementById('btn-temp').className = mode === 'temp' ? 'toggle-btn active' : 'toggle-btn';
             document.getElementById('btn-wind').className = mode === 'wind' ? 'toggle-btn active' : 'toggle-btn';
