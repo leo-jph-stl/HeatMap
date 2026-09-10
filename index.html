@@ -759,9 +759,22 @@
                 </div>
                 <svg id="pvHistoryChart" viewBox="0 0 300 70" preserveAspectRatio="none" style="width:100%; height:70px; display:block; overflow: visible; touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none;"></svg>
                 <div style="font-size: 8.5px; color: #666; margin-top: 2px;">Ziehen zum Verschieben, Mausrad/Pinch zum Zoomen, Tippen für Details</div>
-                <div id="pvForecastSummary" style="display:none; font-size: 9.5px; color: #aaa; margin-top: 5px; padding-top: 5px; border-top: 1px solid rgba(255,255,255,0.08);" title="Geschätzt aus der GFS-Einstrahlungsprognose, kalibriert auf die tatsächliche Leistungsantwort dieser Anlage in den letzten 24h.">
-                    ☀️ Prognose · nächste 24h: <strong id="pvForecast24h" style="color:#fff;">-- kWh</strong>
-                    &nbsp;·&nbsp; nächste <span id="pvForecastHorizonLabel">72h</span>: <strong id="pvForecast72h" style="color:#fff;">-- kWh</strong>
+                <div id="pvForecastSummary" style="display:none; margin-top: 7px; padding-top: 7px; border-top: 1px solid rgba(255,255,255,0.08);">
+                    <div style="font-size: 9px; color: #888; margin-bottom: 4px;">☀️ Prognose (kumuliert)</div>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;">
+                        <div style="background: rgba(255,219,0,0.07); border: 1px solid rgba(255,219,0,0.2); border-radius: 8px; padding: 5px 3px; text-align: center;">
+                            <div id="pvForecastLabel24" style="font-size: 9px; color: #888;">24h</div>
+                            <div id="pvForecast24h" style="font-size: 11.5px; font-weight: 700; color: #ffdb00;">-- kWh</div>
+                        </div>
+                        <div style="background: rgba(255,219,0,0.07); border: 1px solid rgba(255,219,0,0.2); border-radius: 8px; padding: 5px 3px; text-align: center;">
+                            <div id="pvForecastLabel48" style="font-size: 9px; color: #888;">48h</div>
+                            <div id="pvForecast48h" style="font-size: 11.5px; font-weight: 700; color: #ffdb00;">-- kWh</div>
+                        </div>
+                        <div style="background: rgba(255,219,0,0.07); border: 1px solid rgba(255,219,0,0.2); border-radius: 8px; padding: 5px 3px; text-align: center;">
+                            <div id="pvForecastLabel72" style="font-size: 9px; color: #888;">72h</div>
+                            <div id="pvForecast72h" style="font-size: 11.5px; font-weight: 700; color: #ffdb00;">-- kWh</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -2474,15 +2487,21 @@
             const now = Date.now();
             const horizonEnd = forecast.points[forecast.points.length - 1].t;
             const horizonHours = Math.max(0, Math.round((horizonEnd - now) / 3600000));
-            const kwh24 = integrateForecastKwh(forecast.points, now, Math.min(now + 24 * 3600000, horizonEnd));
-            const kwh72 = integrateForecastKwh(forecast.points, now, horizonEnd);
 
-            const el24 = document.getElementById('pvForecast24h');
-            const el72 = document.getElementById('pvForecast72h');
-            const labelEl = document.getElementById('pvForecastHorizonLabel');
-            if (el24) el24.innerText = kwh24.toFixed(1) + ' kWh';
-            if (el72) el72.innerText = kwh72.toFixed(1) + ' kWh';
-            if (labelEl) labelEl.innerText = horizonHours + 'h';
+            // Drei Checkpoints statt nur einem: sollen visuell mit den 3 Tagen des Charts darüber
+            // korrespondieren (24h ~ Tag 1, 48h ~ Tag 2, 72h ~ Tag 3 der Prognose).
+            [
+                { h: 24, valEl: 'pvForecast24h', labelEl: 'pvForecastLabel24' },
+                { h: 48, valEl: 'pvForecast48h', labelEl: 'pvForecastLabel48' },
+                { h: 72, valEl: 'pvForecast72h', labelEl: 'pvForecastLabel72' }
+            ].forEach(({ h, valEl, labelEl }) => {
+                const targetT = Math.min(now + h * 3600000, horizonEnd);
+                const kwh = integrateForecastKwh(forecast.points, now, targetT);
+                const el = document.getElementById(valEl);
+                const lbl = document.getElementById(labelEl);
+                if (el) el.innerText = kwh.toFixed(1) + ' kWh';
+                if (lbl) lbl.innerText = Math.min(h, horizonHours) + 'h';
+            });
             summaryEl.style.display = 'block';
             if (legendEl) legendEl.style.display = 'inline';
 
