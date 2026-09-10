@@ -961,11 +961,12 @@
                                         <span style="color: #888;">%</span>
                                     </div>
                                 </div>
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.06);">
+                                <div id="pvSelfProtectRow" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.06);">
                                     <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #bbb;">
                                         <input id="pvSelfProtectToggle" type="checkbox" checked style="cursor: pointer; accent-color: #00ff88;">
                                         <span>Eigenverbrauchs-Schutz (Nacht-Puffer)</span>
                                     </label>
+                                    <span id="pvSelfProtectHint" style="font-size: 8.5px; color: #ff9100;"></span>
                                 </div>
                                 <div style="font-size: 8px; color: #777; margin-top: 4px; line-height: 1.2;">
                                     Puffert Mittags-Tiefpreise (bis Kapazitäts- &amp; AC-Limit) und speist in Abend-Hochpreisstunden ein.
@@ -3217,7 +3218,9 @@
             });
 
             const fullShiftCap = Math.max(0, pvRevenueConfig.shiftCapKwh || 8.0);
-            const nightReserve = (pvRevenueConfig.selfProtect !== false) ? getTypicalNightReserveKwh(fromT) : 0;
+            // Eigenverbrauchs-Schutz greift nur bei Option A (Netzeinspeisung), da bei Option B 100 % vermarktet werden:
+            const isGrossOptionB = (pvRevenueConfig.feedinBasis === 'gross');
+            const nightReserve = (!isGrossOptionB && pvRevenueConfig.selfProtect !== false) ? getTypicalNightReserveKwh(fromT) : 0;
             const shiftCap = Math.max(0, fullShiftCap - nightReserve);
             const inverterKw = Math.max(0.1, pvRevenueConfig.inverterAcKw || 5.0);
             const efficiency = Math.min(1, Math.max(0.1, (pvRevenueConfig.efficiencyPct || 90) / 100));
@@ -3434,7 +3437,21 @@
             if (eegRateInput) eegRateInput.value = pvRevenueConfig.eegRateCt;
             if (solarSpitzenToggle) solarSpitzenToggle.checked = !!pvRevenueConfig.applySolarSpitzen;
             if (batteryShiftToggle) batteryShiftToggle.checked = !!pvRevenueConfig.batteryShift;
-            if (selfProtectToggle) selfProtectToggle.checked = pvRevenueConfig.selfProtect !== false;
+            
+            const isGrossOptionB = (pvRevenueConfig.feedinBasis === 'gross');
+            const selfProtectRow = document.getElementById('pvSelfProtectRow');
+            const selfProtectHint = document.getElementById('pvSelfProtectHint');
+            if (selfProtectToggle) {
+                selfProtectToggle.checked = !isGrossOptionB && pvRevenueConfig.selfProtect !== false;
+                selfProtectToggle.disabled = isGrossOptionB;
+            }
+            if (selfProtectRow) {
+                selfProtectRow.style.opacity = isGrossOptionB ? '0.45' : '1.0';
+            }
+            if (selfProtectHint) {
+                selfProtectHint.innerText = isGrossOptionB ? '(inaktiv bei 100% Volleinspeisung)' : '';
+            }
+
             if (theoreticalParams) theoreticalParams.style.display = pvRevenueConfig.batteryShift ? 'block' : 'none';
             if (shiftCapInput) shiftCapInput.value = pvRevenueConfig.shiftCapKwh;
             if (inverterKwInput) inverterKwInput.value = pvRevenueConfig.inverterAcKw;
@@ -3806,6 +3823,7 @@
                 feedinBasisSelect.addEventListener('change', (e) => {
                     pvRevenueConfig.feedinBasis = e.target.value;
                     saveRevenueConfig();
+                    updatePvRevenueControlsUI();
                     renderEuroTable();
                     if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
                 });
