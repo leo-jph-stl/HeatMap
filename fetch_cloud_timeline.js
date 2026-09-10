@@ -26,7 +26,9 @@ const argv = Object.fromEntries(process.argv.slice(2).map(a => {
 }));
 
 const STRIDE = parseInt(argv.stride || '1', 10);
-const NUM_STEPS = parseInt(argv.steps || '33', 10);
+// 36 statt 33 Schritte: -24h bis +81h, 9h Extra-Puffer für die Staleness zwischen zwei
+// 6-stündlichen Abrufen - siehe fetch_solar_timeline.js für die ausführliche Begründung.
+const NUM_STEPS = parseInt(argv.steps || '36', 10);
 const BACK_STEPS = parseInt(argv.back || '8', 10);
 
 const FULL_NX = 1440, FULL_NY = 721;

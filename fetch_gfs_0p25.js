@@ -5,7 +5,11 @@ const BASE_URL = 'https://thredds.ucar.edu/thredds/dodsC/grib/NCEP/GFS/Global_0p
 const NX = 1440;
 const NY = 721;
 const PTS_PER_STEP = NX * NY; // 1,038,240
-const NUM_STEPS = 33; // -24h to +72h in 3h steps (3 Tage Prognose)
+// 36 statt 33 Schritte: -24h bis +81h. Die 9h Extra-Puffer über die im UI beworbenen +72h hinaus
+// gleichen aus, dass der Abruf nur alle 6h läuft - kurz vor dem nächsten Pull wäre das Array sonst
+// nur noch "+66h ab jetzt" statt "+72h ab jetzt" (das Fenster ist am Abrufzeitpunkt verankert, nicht
+// am Anzeigezeitpunkt). Siehe auch timeSlider-Anpassung in index.html (dynamisches max).
+const NUM_STEPS = 36;
 
 function fetchText(url) {
     return new Promise((resolve, reject) => {
