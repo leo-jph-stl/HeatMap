@@ -812,7 +812,7 @@
             <div id="timeDisplayTitle">Live (Jetzt)</div>
             <button id="pvQuickBtn" class="pv-badge-btn" title="Zur PV-Anlage Hochheim am Main springen">☀️ PV Hochheim</button>
         </div>
-        <input type="range" id="timeSlider" min="-24" max="48" step="3" value="0">
+        <input type="range" id="timeSlider" min="-24" max="48" step="1" value="0">
         <div class="time-labels">
             <span>-24h</span>
             <span>Live</span>
@@ -3617,20 +3617,35 @@
 
         function updateActiveData() {
             const liveIdx = getLiveStepIndex();
-            const stepOffset = Math.round(currentHourOffset / 3);
+            // GFS-Zeitschritte liegen 3h auseinander; currentHourOffset läuft jetzt stündlich
+            // (Play-Button), daher hier als Bruchteil zwischen zwei Schritten behandeln und per
+            // u_blend im Shader weich überblenden, statt hart auf den nächsten 3h-Schritt zu springen.
+            const rawIdx = liveIdx + currentHourOffset / 3;
+            const stepOffset = Math.round(currentHourOffset / 3); // für Popup/Titel: nächstgelegener Schritt
 
             let targetIdx = 0;
+            let tempIdx0 = 0, tempIdx1 = 0, tempBlend = 0;
             if (typeof tempData !== 'undefined' && tempData.length > 0) {
-                targetIdx = Math.max(0, Math.min(tempData.length - 1, liveIdx + stepOffset));
+                const maxI = tempData.length - 1;
+                const clamped = Math.max(0, Math.min(maxI, rawIdx));
+                tempIdx0 = Math.floor(clamped);
+                tempIdx1 = Math.min(maxI, tempIdx0 + 1);
+                tempBlend = clamped - tempIdx0;
+                targetIdx = Math.max(0, Math.min(maxI, liveIdx + stepOffset));
                 activeTemp = tempData[targetIdx];
             }
             if (typeof windData !== 'undefined' && windData.length > 0) {
                 const windIdx = Math.max(0, Math.min(windData.length - 1, liveIdx + stepOffset));
                 activeWind = windData[windIdx];
             }
-            let solarIdx = 0;
+            let solarIdx0 = 0, solarIdx1 = 0, solarBlend = 0;
             if (typeof solarData !== 'undefined' && solarData.length > 0) {
-                solarIdx = Math.max(0, Math.min(solarData.length - 1, liveIdx + stepOffset));
+                const maxI = solarData.length - 1;
+                const clamped = Math.max(0, Math.min(maxI, rawIdx));
+                solarIdx0 = Math.floor(clamped);
+                solarIdx1 = Math.min(maxI, solarIdx0 + 1);
+                solarBlend = clamped - solarIdx0;
+                const solarIdx = Math.max(0, Math.min(maxI, liveIdx + stepOffset));
                 activeSolar = solarData[solarIdx];
             }
 
@@ -3639,22 +3654,24 @@
                 titleEl.innerText = formatDisplayTime(activeTemp, currentHourOffset);
             }
 
-            let curTex = null;
+            let texA = null, texB = null, blend = 0;
             if (currentMode === 'temp') {
-                curTex = tempTextures[targetIdx];
+                texA = tempTextures[tempIdx0]; texB = tempTextures[tempIdx1]; blend = tempBlend;
             } else if (currentMode === 'wind') {
-                curTex = windTextures[targetIdx];
+                texA = texB = windTextures[targetIdx];
             } else if (currentMode === 'solar') {
-                curTex = (solarClimSelection !== 'live')
-                    ? getSolarClimatologyTexture(solarClimSelection)
-                    : solarTextures[solarIdx];
+                if (solarClimSelection !== 'live') {
+                    texA = texB = getSolarClimatologyTexture(solarClimSelection);
+                } else {
+                    texA = solarTextures[solarIdx0]; texB = solarTextures[solarIdx1]; blend = solarBlend;
+                }
             }
-            if (curTex) {
-                dataMaterial.uniforms.u_dataA.value = curTex;
-                dataMaterial.uniforms.u_dataB.value = curTex;
-                dataMaterial.uniforms.u_blend.value = 0.0;
-                if (curTex.image && dataMaterial.uniforms.u_texSize) {
-                    dataMaterial.uniforms.u_texSize.value.set(curTex.image.width, curTex.image.height);
+            if (texA && texB) {
+                dataMaterial.uniforms.u_dataA.value = texA;
+                dataMaterial.uniforms.u_dataB.value = texB;
+                dataMaterial.uniforms.u_blend.value = blend;
+                if (texA.image && dataMaterial.uniforms.u_texSize) {
+                    dataMaterial.uniforms.u_texSize.value.set(texA.image.width, texA.image.height);
                 }
             }
 
@@ -3741,11 +3758,11 @@
             } else {
                 playBtn.innerText = '⏸ Pause';
                 playInterval = setInterval(() => {
-                    let val = parseInt(timeSlider.value) + 3;
-                    if (val > 48) val = -24; 
+                    let val = parseInt(timeSlider.value) + 1;
+                    if (val > 48) val = -24;
                     timeSlider.value = val;
                     timeSlider.dispatchEvent(new Event('input'));
-                }, 1000); 
+                }, 150); // 1h-Schritte, GPU blendet zwischen den 3h-GFS-Stützstellen weich über
             }
         }
         playBtn.addEventListener('click', togglePlay);
