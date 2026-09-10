@@ -21,14 +21,18 @@ function fetchText(url) {
 }
 
 async function fetchTimeIndices() {
-    console.log('Ermittle aktuelle Zeitstempel vom Unidata GFS 0.25 THREDDS Server...');
+    console.log('Ermittle Referenzdatum und aktuelle Zeitstempel vom Unidata GFS 0.25 THREDDS Server...');
+    const das = await fetchText(`${BASE_URL}.das`);
+    const timeBlockMatch = das.match(/time\s*\{[^}]*units\s+"Hour since ([^"]+)"/);
+    if (!timeBlockMatch) throw new Error('Konnte Referenzdatum für time nicht aus .das lesen');
+    const baseDate = new Date(timeBlockMatch[1]).getTime();
+    console.log(`Referenzdatum time: ${timeBlockMatch[1]}`);
+
     const text = await fetchText(`${BASE_URL}.ascii?time`);
     const lines = text.split('\n');
     const dataLines = lines.filter(l => /^\d/.test(l.trim()));
     const times = dataLines.join(',').split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
 
-    // Time units: "Hour since 2026-08-30T00:00:00Z"
-    const baseDate = new Date('2026-08-30T00:00:00Z').getTime();
     const nowHours = (Date.now() - baseDate) / 3600000;
 
     let bestIdx = 0;
