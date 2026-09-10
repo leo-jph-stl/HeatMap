@@ -292,25 +292,58 @@ if api_key and not metrics:
             if week_vals:
                 extra_data["week_yield"] = round(sum(week_vals), 2)
 
-            time.sleep(1.1)
-            day_res = call_fox_openapi("/op/v0/device/report/query", {
-                "sn": sn, "year": now.year, "month": now.month, "day": now.day, "dimension": "day",
-                "variables": ["feedin", "gridConsumption", "chargeEnergyToTal", "dischargeEnergyToTal"]
-            })
-            if day_res:
-                res_list = day_res.get("result", [])
-                day_totals = {}
-                for item in res_list:
-                    vals = [v for v in item.get("values", []) if isinstance(v, (int, float))]
-                    day_totals[item.get("variable")] = round(sum(vals), 2)
-                if "feedin" in day_totals:
-                    extra_data["today_feedin"] = day_totals["feedin"]
-                if "gridConsumption" in day_totals:
-                    extra_data["today_grid_import"] = day_totals["gridConsumption"]
-                if "chargeEnergyToTal" in day_totals:
-                    extra_data["today_battery_charge"] = day_totals["chargeEnergyToTal"]
-                if "dischargeEnergyToTal" in day_totals:
-                    extra_data["today_battery_discharge"] = day_totals["dischargeEnergyToTal"]
+            from datetime import timedelta
+            # Stündliche Tagesberichte für heute und die letzten 3 Tage abrufen (24-Stunden-Vektoren)
+            daily_reports = {}
+            archive_file = "pv_daily_history.json"
+            if os.path.exists(archive_file):
+                try:
+                    with open(archive_file, "r", encoding="utf-8") as f:
+                        daily_reports = json.load(f)
+                except Exception as ex:
+                    print(f"Hinweis: Konnte {archive_file} nicht laden: {ex}")
+
+            report_vars = ["feedin", "gridConsumption", "chargeEnergyToTal", "dischargeEnergyToTal", "generation", "loads"]
+            for days_back in range(4):
+                target_date = now - timedelta(days=days_back)
+                date_key = target_date.strftime("%Y-%m-%d")
+                time.sleep(1.1)
+                day_res = call_fox_openapi("/op/v0/device/report/query", {
+                    "sn": sn, "year": target_date.year, "month": target_date.month, "day": target_date.day,
+                    "dimension": "day",
+                    "variables": report_vars
+                })
+                if day_res and day_res.get("errno") in [0, "0"]:
+                    res_list = day_res.get("result", [])
+                    day_entry = {"hours": list(range(24)), "totals": {}}
+                    for item in res_list:
+                        var_name = item.get("variable")
+                        vals = [round(float(v), 3) if isinstance(v, (int, float)) else 0.0 for v in item.get("values", [])]
+                        if len(vals) < 24:
+                            vals = vals + [0.0] * (24 - len(vals))
+                        else:
+                            vals = vals[:24]
+                        day_entry[var_name] = vals
+                        day_entry["totals"][var_name] = round(sum(vals), 2)
+                    
+                    if any(day_entry["totals"].get(k, 0) > 0 for k in ["feedin", "generation", "gridConsumption", "loads"]):
+                        daily_reports[date_key] = day_entry
+
+                    if days_back == 0:
+                        totals = day_entry.get("totals", {})
+                        if "feedin" in totals: extra_data["today_feedin"] = totals["feedin"]
+                        if "gridConsumption" in totals: extra_data["today_grid_import"] = totals["gridConsumption"]
+                        if "chargeEnergyToTal" in totals: extra_data["today_battery_charge"] = totals["chargeEnergyToTal"]
+                        if "dischargeEnergyToTal" in totals: extra_data["today_battery_discharge"] = totals["dischargeEnergyToTal"]
+
+            try:
+                with open(archive_file, "w", encoding="utf-8") as f:
+                    json.dump(daily_reports, f, indent=2, ensure_ascii=False)
+                print(f"Tagesberichte im Archiv gespeichert: {list(daily_reports.keys())}")
+            except Exception as ex:
+                print(f"Fehler beim Speichern von {archive_file}: {ex}")
+
+            extra_data["daily_reports"] = daily_reports
 
             time.sleep(1.1)
             history_res = call_fox_openapi("/op/v0/device/history/query", {"sn": sn, "variables": ["pvPower"]})
