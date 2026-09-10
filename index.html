@@ -778,6 +778,29 @@
                 </div>
             </div>
 
+            <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; margin-bottom: 7px; overflow: hidden;">
+                <button id="pvEuroToggle" style="width:100%; display:flex; justify-content:space-between; align-items:center; background:none; border:none; padding: 8px 9px; cursor:pointer; color:#fff; font-size: 11px; font-weight:600; text-align:left;">
+                    <span>€ Erlös &amp; Strompreis</span>
+                    <span id="pvEuroChevron" style="color:#888; font-size:10px;">▸</span>
+                </button>
+                <div id="pvEuroBody" style="display:none; padding: 0 9px 9px 9px;">
+                    <div style="font-size: 8.5px; color: #666; margin-bottom: 6px;">Netto-Marktpreis (EPEX Day-Ahead, aWATTar) - nicht zwingend dein tatsächlicher Tarif. Zukunftspreise nur soweit die Börse sie bereits veröffentlicht hat (meist bis morgen).</div>
+                    <div style="overflow-x:auto;">
+                        <table style="width:100%; border-collapse: collapse; font-size: 10.5px;">
+                            <thead>
+                                <tr style="color:#888; text-align:right;">
+                                    <th style="text-align:left; font-weight:500; padding-bottom:4px;">Zeitraum</th>
+                                    <th style="font-weight:500; padding-bottom:4px;">kWh</th>
+                                    <th style="font-weight:500; padding-bottom:4px;">Ø ct/kWh</th>
+                                    <th style="font-weight:500; padding-bottom:4px;">Erlös</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pvEuroTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 7px;">
                 <div style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 5px 3px; text-align: center;">
                     <div style="font-size: 9px; color: #888;">Tag</div>
@@ -2215,6 +2238,16 @@
             } catch (e) {}
         }
 
+        // Day-Ahead-Strompreis (EPEX DE/LU, aWATTar), siehe fetch_electricity_price.js. Stündliche
+        // Netto-Marktpreise in ct/kWh - keine echten Endkundenkonditionen, siehe Hinweistext im €-Panel.
+        let priceData = [];
+        async function loadPriceData() {
+            try {
+                const res = await fetch('electricity_price.json?_t=' + Date.now());
+                if (res.ok) priceData = await res.json();
+            } catch (e) {}
+        }
+
         async function loadPvData() {
             if (typeof window !== 'undefined' && window.foxessPvData) {
                 livePvData = window.foxessPvData;
@@ -2459,8 +2492,10 @@
             return { points, medianRatio, sampleCount: calibPairs.length, capKw, calibSource, calibDays };
         }
 
-        // Trapez-Integration der Prognoseleistung zwischen fromT und toT (ms) -> kWh.
-        function integrateForecastKwh(points, fromT, toT) {
+        // Trapez-Integration einer Leistungs-Zeitreihe ({t, pv}-Punkte, egal ob Messwerte oder
+        // Prognose) zwischen fromT und toT (ms) -> kWh. Von der Forecast-Zusammenfassung UND vom
+        // €-Erlös-Panel genutzt.
+        function integrateKwh(points, fromT, toT) {
             let kwh = 0;
             for (let i = 0; i < points.length - 1; i++) {
                 const a = points[i], b = points[i + 1];
@@ -2496,7 +2531,7 @@
                 { h: 72, valEl: 'pvForecast72h', labelEl: 'pvForecastLabel72' }
             ].forEach(({ h, valEl, labelEl }) => {
                 const targetT = Math.min(now + h * 3600000, horizonEnd);
-                const kwh = integrateForecastKwh(forecast.points, now, targetT);
+                const kwh = integrateKwh(forecast.points, now, targetT);
                 const el = document.getElementById(valEl);
                 const lbl = document.getElementById(labelEl);
                 if (el) el.innerText = kwh.toFixed(1) + ' kWh';
@@ -2509,6 +2544,98 @@
                 ? `${forecast.sampleCount} Messwerten aus bis zu ${forecast.calibDays} Tagen`
                 : `${forecast.sampleCount} Messwerten der letzten 24h (Log noch im Aufbau)`;
             summaryEl.title = `Geschätzt aus der GFS-Einstrahlungsprognose, kalibriert auf ${basisStr} dieser Anlage.`;
+        }
+
+        // Erlös (€) für eine Leistungs-Zeitreihe im Intervall [fromT, toT): summiert je Stunden-
+        // Strompreis-Zeile die in diese Stunde fallende kWh-Menge mal Preis. Gibt null zurück statt
+        // 0 zu erfinden, wenn für den Zeitraum gar keine Preisdaten vorliegen (z.B. Tag 2/3 der
+        // PV-Prognose, für die die Börse noch keinen Day-Ahead-Preis veröffentlicht hat).
+        function estimateRevenueEur(points, fromT, toT) {
+            if (!points || points.length < 2 || !priceData.length) return null;
+            const rows = priceData.filter(r => r.endT > fromT && r.t < toT);
+            if (!rows.length) return null;
+            let eur = 0;
+            for (const r of rows) {
+                const segStart = Math.max(r.t, fromT), segEnd = Math.min(r.endT, toT);
+                if (segEnd <= segStart) continue;
+                eur += integrateKwh(points, segStart, segEnd) * (r.ctKwh / 100);
+            }
+            return eur;
+        }
+
+        // Baut die Zeilen für das €-Panel: vergangene Kalendertage (Ist-Werte, dieselbe UTC-Tagesgrenze
+        // wie die gestrichelten Linien im Chart) gefolgt von bis zu 3 rollierenden 24h-Fenstern für die
+        // Prognose (Tag +1/+2/+3, konsistent mit der 24h/48h/72h-Anzeige direkt darüber).
+        function buildEuroRows() {
+            const rows = [];
+            const dayMs = 24 * 3600 * 1000;
+            const now = Date.now();
+            const data = pvChartState.data;
+
+            if (data.length) {
+                const dataStart = data[0].t;
+                let dayStart = Math.floor(dataStart / dayMs) * dayMs;
+                while (dayStart < now) {
+                    const segStart = Math.max(dayStart, dataStart);
+                    const dayEnd = Math.min(dayStart + dayMs, now);
+                    if (dayEnd > segStart) {
+                        const kwh = integrateKwh(data, segStart, dayEnd);
+                        const eur = estimateRevenueEur(data, segStart, dayEnd);
+                        const label = (dayStart + dayMs >= now) ? 'Heute' : new Date(dayStart).toLocaleDateString('de-DE', { weekday: 'short' });
+                        rows.push({ label, kwh, eur, isForecast: false });
+                    }
+                    dayStart += dayMs;
+                }
+            }
+
+            const forecast = pvChartState.forecast;
+            if (forecast && forecast.length) {
+                const horizonEnd = forecast[forecast.length - 1].t;
+                for (let i = 0; i < 3; i++) {
+                    const segStart = now + i * dayMs;
+                    if (segStart >= horizonEnd) break;
+                    const segEnd = Math.min(segStart + dayMs, horizonEnd);
+                    const kwh = integrateKwh(forecast, segStart, segEnd);
+                    const eur = estimateRevenueEur(forecast, segStart, segEnd);
+                    rows.push({ label: `Tag +${i + 1}`, kwh, eur, isForecast: true });
+                }
+            }
+            return rows;
+        }
+
+        function renderEuroTable() {
+            const tbody = document.getElementById('pvEuroTableBody');
+            if (!tbody) return;
+            const rows = buildEuroRows();
+            if (!rows.length) {
+                tbody.innerHTML = '<tr><td colspan="4" style="color:#666; padding: 6px 0;">Noch keine Daten.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = rows.map(r => {
+                const avgCt = (r.eur !== null && r.kwh > 0.001) ? (r.eur / r.kwh * 100) : null;
+                const valColor = r.isForecast ? '#ffdb00' : '#fff';
+                return `
+                    <tr style="border-top: 1px solid rgba(255,255,255,0.06);">
+                        <td style="padding: 4px 4px 4px 0; color:#aaa; ${r.isForecast ? 'font-style:italic;' : ''}">${r.label}</td>
+                        <td style="padding: 4px; text-align:right; color:${valColor};">${r.kwh.toFixed(1)}</td>
+                        <td style="padding: 4px; text-align:right; color:#aaa;">${avgCt !== null ? avgCt.toFixed(1) : '--'}</td>
+                        <td style="padding: 4px 0 4px 4px; text-align:right; font-weight:700; color:${valColor};">${r.eur !== null ? r.eur.toFixed(2) + ' €' : '--'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function initPvEuroToggle() {
+            const btn = document.getElementById('pvEuroToggle');
+            const body = document.getElementById('pvEuroBody');
+            const chevron = document.getElementById('pvEuroChevron');
+            if (!btn || !body) return;
+            btn.addEventListener('click', () => {
+                const wasExpanded = body.style.display !== 'none';
+                body.style.display = wasExpanded ? 'none' : 'block';
+                if (chevron) chevron.innerText = wasExpanded ? '▸' : '▾';
+                if (!wasExpanded) renderEuroTable();
+            });
         }
 
         function renderPvHistoryChart(history) {
@@ -2536,6 +2663,8 @@
             const forecast = computePvForecast();
             pvChartState.forecast = forecast ? forecast.points : null;
             updatePvForecastSummaryUI(forecast);
+            const euroBody = document.getElementById('pvEuroBody');
+            if (euroBody && euroBody.style.display !== 'none') renderEuroTable();
 
             const dataFullStart = points[0].t, dataFullEnd = points[points.length - 1].t;
             const newFullStart = dataFullStart;
@@ -4333,6 +4462,7 @@
             });
         }
         initPvHistoryChartInteraction();
+        initPvEuroToggle();
 
         // INIT
         if (typeof tempMetadata !== 'undefined' && tempMetadata.nx < 1440) {
@@ -4344,12 +4474,17 @@
         switchLayer('temp');
         loadPvData();
         loadPvForecastLog().then(() => { if (livePvData) updatePvDashboardUI(); });
+        loadPriceData().then(() => {
+            const euroBody = document.getElementById('pvEuroBody');
+            if (euroBody && euroBody.style.display !== 'none') renderEuroTable();
+        });
         animate();
         detectUserLocationAndFly();
         checkWeatherUpdate();
         setInterval(checkWeatherUpdate, 15 * 60 * 1000);
         setInterval(loadPvData, 60 * 1000); // FoxESS Daten alle 60 Sek. aktualisieren
         setInterval(loadPvForecastLog, 30 * 60 * 1000); // Log wächst nur stündlich, seltener nachladen reicht
+        setInterval(loadPriceData, 30 * 60 * 1000); // Preise ändern sich ebenfalls nur stündlich/täglich
 
     </script>
 </body>
