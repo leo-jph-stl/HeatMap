@@ -591,6 +591,65 @@
             border-top-right-radius: 16px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
+
+        /* FOXESS HISTORISCHE DETAILANALYSE (SIDE-BY-SIDE CONTAINER) */
+        #pv-history-container {
+            position: absolute;
+            top: 76px;
+            left: 366px;
+            width: 420px;
+            max-width: calc(100vw - 390px);
+            max-height: calc(100vh - 96px);
+            overflow-y: auto;
+            overflow-x: hidden;
+            overscroll-behavior: contain;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(0, 229, 255, 0.25) transparent;
+            z-index: 46;
+            background: rgba(18, 18, 24, 0.95);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(0, 229, 255, 0.35);
+            border-radius: 16px;
+            padding: 14px 16px;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.8), 0 0 24px rgba(0, 229, 255, 0.12);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+            color: #fff;
+            display: none;
+            transition: opacity 0.25s ease;
+        }
+        #pv-history-container::-webkit-scrollbar {
+            width: 4px;
+        }
+        #pv-history-container::-webkit-scrollbar-button {
+            display: none;
+            width: 0;
+            height: 0;
+        }
+        #pv-history-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #pv-history-container::-webkit-scrollbar-thumb {
+            background: rgba(0, 229, 255, 0.25);
+            border-radius: 4px;
+        }
+        #pv-history-container::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 229, 255, 0.5);
+        }
+        #pv-history-container .forecast-header {
+            position: sticky;
+            top: -14px;
+            margin: -14px -16px 8px -16px;
+            padding: 12px 16px 6px 16px;
+            background: rgba(18, 18, 24, 0.98);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            z-index: 10;
+            border-top-left-radius: 16px;
+            border-top-right-radius: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
         .pv-badge-btn {
             background: rgba(255, 215, 0, 0.15);
             border: 1px solid rgba(255, 215, 0, 0.4);
@@ -644,6 +703,24 @@
                 border-radius: 14px;
             }
             #pv-container .forecast-header {
+                top: -10px;
+                margin: -10px -12px 6px -12px;
+                padding: 10px 12px 6px 12px;
+                border-top-left-radius: 14px;
+                border-top-right-radius: 14px;
+            }
+            #pv-history-container {
+                top: 60px;
+                left: 12px;
+                right: 12px;
+                width: auto;
+                max-width: none;
+                max-height: calc(100vh - 76px);
+                padding: 10px 12px;
+                border-radius: 14px;
+                z-index: 50;
+            }
+            #pv-history-container .forecast-header {
                 top: -10px;
                 margin: -10px -12px 6px -12px;
                 padding: 10px 12px 6px 12px;
@@ -884,6 +961,12 @@
                                         <span style="color: #888;">%</span>
                                     </div>
                                 </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.06);">
+                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #bbb;">
+                                        <input id="pvSelfProtectToggle" type="checkbox" checked style="cursor: pointer; accent-color: #00ff88;">
+                                        <span>Eigenverbrauchs-Schutz (Nacht-Puffer)</span>
+                                    </label>
+                                </div>
                                 <div style="font-size: 8px; color: #777; margin-top: 4px; line-height: 1.2;">
                                     Puffert Mittags-Tiefpreise (bis Kapazitäts- &amp; AC-Limit) und speist in Abend-Hochpreisstunden ein.
                                 </div>
@@ -909,6 +992,10 @@
                             <tfoot id="pvEuroTableFoot"></tfoot>
                         </table>
                     </div>
+
+                    <button id="pvOpenHistoryBtn" type="button" style="width: 100%; background: rgba(0, 229, 255, 0.10); border: 1px solid rgba(0, 229, 255, 0.3); color: #00e5ff; border-radius: 6px; padding: 5px 8px; font-size: 10px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 7px; transition: all 0.15s ease;">
+                        <span>📊 Historische Detailanalyse öffnen</span>
+                    </button>
                 </div>
             </div>
 
@@ -956,6 +1043,81 @@
             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #aaa;">
                 <span id="pvCumulativeYield" style="color: #888;"></span>
                 <span id="pvLastUpdated" style="color: #888;">Live</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- FoxESS Historische Detailanalyse (Side-by-Side Companion Container) -->
+    <div id="pv-history-container">
+        <div class="forecast-header">
+            <div class="forecast-title-box">
+                <div class="forecast-place" style="color: #00e5ff; display: flex; align-items: center; gap: 6px;">
+                    📊 FoxESS Historie &amp; Bilanz
+                </div>
+                <div id="pvHistorySubtitle" class="forecast-sub">Tagesauswertung &amp; stündliche Energieflüsse</div>
+            </div>
+            <div class="forecast-btn-group">
+                <button id="pvHistoryCloseBtn" class="forecast-action-btn" title="Schließen">✕</button>
+            </div>
+        </div>
+
+        <div id="pvHistoryBody">
+            <!-- Tages-Auswahl Reiter -->
+            <div id="pvHistoryDayPills" style="display: flex; gap: 5px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 9px; scrollbar-width: none;"></div>
+
+            <!-- Tages-KPIs Energiebilanz (4 Boxen) -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px;">
+                <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 8px;">
+                    <div style="font-size: 9.5px; color: #888;">PV-Erzeugung</div>
+                    <div id="pvHistKpiYield" style="font-size: 13px; font-weight: 700; color: #ffdb00;">-- kWh</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 8px;">
+                    <div style="font-size: 9.5px; color: #888;">Eigenverbrauch</div>
+                    <div id="pvHistKpiSelf" style="font-size: 13px; font-weight: 700; color: #00ff88;">-- kWh</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 8px;">
+                    <div style="font-size: 9.5px; color: #888;">Netzeinspeisung</div>
+                    <div id="pvHistKpiFeedin" style="font-size: 13px; font-weight: 700; color: #00e5ff;">-- kWh</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 8px;">
+                    <div style="font-size: 9.5px; color: #888;">Netzbezug · Autarkie</div>
+                    <div id="pvHistKpiAutarky" style="font-size: 13px; font-weight: 700; color: #ff9100;">-- %</div>
+                </div>
+            </div>
+
+            <!-- 24-Stunden Energiefluss & Börsenpreis Chart -->
+            <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 9px; margin-bottom: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+                    <span style="font-size: 10px; color: #888;">24h Energiefluss (kWh) &amp; Börsenpreis</span>
+                    <span id="pvHistChartDate" style="font-size: 9px; color: #aaa;"></span>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 8.5px; color: #aaa; margin-bottom: 5px;">
+                    <span style="display:inline-flex; align-items:center; gap:3px;"><span style="display:inline-block; width:8px; height:8px; background:#ffdb00; border-radius:2px;"></span>Erzeugung</span>
+                    <span style="display:inline-flex; align-items:center; gap:3px;"><span style="display:inline-block; width:8px; height:8px; background:#00e5ff; border-radius:2px;"></span>Einspeisung</span>
+                    <span style="display:inline-flex; align-items:center; gap:3px;"><span style="display:inline-block; width:8px; height:8px; background:#ff9100; border-radius:2px;"></span>Haus</span>
+                    <span style="display:inline-flex; align-items:center; gap:3px;"><span style="display:inline-block; width:10px; height:2px; background:#00e5ff;"></span>Börsenpreis</span>
+                </div>
+                <svg id="pvHistory24hChart" viewBox="0 0 380 95" preserveAspectRatio="none" style="width:100%; height:95px; display:block; overflow:visible;"></svg>
+            </div>
+
+            <!-- Stündliche Tabelle -->
+            <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 7px 8px;">
+                <div style="font-size: 10px; font-weight: 600; color: #bbb; margin-bottom: 5px;">Stündliche Abrechnungsdetails</div>
+                <div style="max-height: 150px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(0,229,255,0.2) transparent;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 9.5px;">
+                        <thead>
+                            <tr style="color: #888; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                <th style="text-align: left; padding: 2px 3px;">Uhr</th>
+                                <th style="padding: 2px 3px;">PV</th>
+                                <th style="padding: 2px 3px;">Haus</th>
+                                <th style="padding: 2px 3px;">Einspeis.</th>
+                                <th style="padding: 2px 3px;">Börse</th>
+                                <th style="padding: 2px 3px;">Erlös</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pvHistHourlyTableBody"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -2577,9 +2739,19 @@
         }
 
         async function loadPvData() {
+            function refreshHistoryIfOpen() {
+                if (typeof renderPvHistoryContainer === 'function' && typeof currentHistoryDateKey !== 'undefined' && currentHistoryDateKey) {
+                    const c = document.getElementById('pv-history-container');
+                    if (c && c.style.display === 'block') {
+                        renderPvHistoryContainer(currentHistoryDateKey);
+                    }
+                }
+            }
+
             if (typeof window !== 'undefined' && window.foxessPvData) {
                 livePvData = window.foxessPvData;
                 updatePvDashboardUI();
+                refreshHistoryIfOpen();
             }
             try {
                 const res = await fetch('pv_data.json?_t=' + Date.now());
@@ -2587,6 +2759,7 @@
                     const data = await res.json();
                     livePvData = data;
                     updatePvDashboardUI();
+                    refreshHistoryIfOpen();
                     return;
                 }
             } catch(e) {}
@@ -2599,6 +2772,7 @@
                 if (typeof window !== 'undefined' && window.foxessPvData) {
                     livePvData = window.foxessPvData;
                     updatePvDashboardUI();
+                    refreshHistoryIfOpen();
                 }
             };
             if (oldScript && oldScript.parentNode) {
@@ -2890,6 +3064,7 @@
             eegRateCt: 8.20,           // Individueller EEG-Vergütungssatz in ct/kWh
             applySolarSpitzen: true,   // § 51 EEG: 0 ct/kWh bei negativem EPEX-Börsenpreis
             batteryShift: false,       // Batterie-Lastverschiebung aktivieren
+            selfProtect: true,         // Eigenverbrauchs-Schutz (Nacht-Puffer)
             shiftCapKwh: 8.0,          // Batterie Speicherkapazität in kWh (theoretisch anpassbar)
             inverterAcKw: 5.0,         // Wechselrichter AC-Leistung in kW (max. Lade/Entlade-Limit pro Stunde)
             efficiencyPct: 90          // Rundenwirkungsgrad in % (η)
@@ -2921,6 +3096,60 @@
                 return Math.min(1, Math.max(0, livePvData.today_feedin / livePvData.today_yield));
             }
             return 0.65; // realistischer Standardwert, falls Live-Zähler noch nicht vorliegen
+        }
+
+        // Berechnet den typischen Haus-Energiebedarf für Abend, Nacht und frühen Morgen (18:00 - 07:00 Uhr)
+        // basierend auf den FoxESS Ist-Lastprofilen (daily_reports) unter Berücksichtigung von
+        // Wochentag/Wochenende und der PV-Ertragsprognose des Folgetags.
+        function getTypicalNightReserveKwh(targetTime) {
+            const reports = (livePvData && livePvData.daily_reports) ? Object.values(livePvData.daily_reports) : [];
+            let nightLoadSum = 0;
+            let reportCount = 0;
+            const nightHours = [18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6];
+
+            if (reports.length > 0) {
+                for (const rep of reports) {
+                    if (rep && Array.isArray(rep.loads) && rep.loads.length === 24) {
+                        let dayNightKwh = 0;
+                        for (const h of nightHours) {
+                            dayNightKwh += (rep.loads[h] || 0);
+                        }
+                        if (dayNightKwh > 0.5) {
+                            nightLoadSum += dayNightKwh;
+                            reportCount++;
+                        }
+                    }
+                }
+            }
+
+            // Fallback auf 5.5 kWh, falls noch keine Historiendaten vorliegen
+            let baseReserve = (reportCount > 0) ? (nightLoadSum / reportCount) : 5.5;
+
+            // Wochentag vs. Wochenende: Sa/So erfahrungsgemäß ca. 10% mehr Abend-/Nachtverbrauch
+            const targetDate = targetTime ? new Date(targetTime) : new Date();
+            const dayOfWeek = targetDate.getDay();
+            if (dayOfWeek === 0 || dayOfWeek === 6) {
+                baseReserve *= 1.10;
+            }
+
+            // Folgetags-Solar-Konfidenz: Wenn morgen viel Sonne prognostiziert wird (>= 25 kWh),
+            // wird der Speicher morgens schnell nachgeladen -> Puffer kann um 30% entspannt werden.
+            // Bei trübem Wetter (< 12 kWh) bleibt die Reserve voll gelockt (+5% Sicherheit).
+            let tomorrowYieldEstimate = 20;
+            try {
+                const checkpoints = computeForecastCheckpoints();
+                if (checkpoints && checkpoints.length > 0) {
+                    tomorrowYieldEstimate = checkpoints[0].rawKwh !== undefined ? checkpoints[0].rawKwh : checkpoints[0].kwh;
+                }
+            } catch(e) {}
+
+            if (tomorrowYieldEstimate >= 25) {
+                baseReserve *= 0.70;
+            } else if (tomorrowYieldEstimate < 12) {
+                baseReserve *= 1.05;
+            }
+
+            return Math.min(pvRevenueConfig.shiftCapKwh, Math.max(1.0, baseReserve));
         }
 
         // Erlös (€) für eine Leistungs-Zeitreihe im Intervall [fromT, toT):
@@ -2986,7 +3215,9 @@
                 return { t: r.t, endT: r.endT, kwh, ctKwh: r.ctKwh, shiftedOut: 0, shiftedIn: 0 };
             });
 
-            const shiftCap = Math.max(0, pvRevenueConfig.shiftCapKwh || 8.0);
+            const fullShiftCap = Math.max(0, pvRevenueConfig.shiftCapKwh || 8.0);
+            const nightReserve = (pvRevenueConfig.selfProtect !== false) ? getTypicalNightReserveKwh(fromT) : 0;
+            const shiftCap = Math.max(0, fullShiftCap - nightReserve);
             const inverterKw = Math.max(0.1, pvRevenueConfig.inverterAcKw || 5.0);
             const efficiency = Math.min(1, Math.max(0.1, (pvRevenueConfig.efficiencyPct || 90) / 100));
 
@@ -3049,8 +3280,10 @@
                         if (rawKwh >= 0.05) {
                             const kwh = rawKwh * basisFactor;
                             const eur = estimateRevenueEur(data, segStart, dayEnd);
-                            const label = (dayStart + dayMs >= now) ? 'Heute' : new Date(dayStart).toLocaleDateString('de-DE', { weekday: 'short' });
-                            rows.push({ label, kwh, rawKwh, eur, isForecast: false });
+                            const d = new Date(dayStart);
+                            const dateKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                            const label = (dayStart + dayMs >= now) ? 'Heute' : d.toLocaleDateString('de-DE', { weekday: 'short' });
+                            rows.push({ label, dateKey, kwh, rawKwh, eur, isForecast: false });
                         }
                     }
                     dayStart += dayMs;
@@ -3089,7 +3322,7 @@
                 } else {
                     const basisText = isFeedin ? `Option A: Netzeinspeisung (~${feedinRatioPct} %)` : 'Option B: 100 % Gesamterzeugung';
                     const batText = pvRevenueConfig.batteryShift
-                        ? `Batterie-Verschiebung aktiv (${pvRevenueConfig.shiftCapKwh} kWh, WR ${pvRevenueConfig.inverterAcKw} kW, η=${pvRevenueConfig.efficiencyPct}%).`
+                        ? `Batterie-Verschiebung (${pvRevenueConfig.shiftCapKwh} kWh, WR ${pvRevenueConfig.inverterAcKw} kW, η=${pvRevenueConfig.efficiencyPct}%, ${pvRevenueConfig.selfProtect ? 'Schutz aktiv' : 'ohne Puffer'}).`
                         : 'Ohne Batterie-Verschiebung.';
                     hintEl.innerHTML = `Direktvermarktung (EPEX Day-Ahead) · ${basisText} · ${batText}`;
                 }
@@ -3107,9 +3340,12 @@
                 const valColor = r.isForecast ? '#ffdb00' : '#fff';
                 const labelColor = (r.label === 'Heute') ? '#00e5ff' : (r.isForecast ? '#ffdb00' : '#aaa');
                 const fontStyle = r.isForecast ? 'font-style:italic;' : (r.label === 'Heute' ? 'font-weight:600;' : '');
+                const clickAttr = (!r.isForecast && r.dateKey) ? `onclick="showPvHistory('${r.dateKey}')" style="cursor:pointer;" title="24h-Detailanalyse für ${r.label} anzeigen"` : '';
                 return `
-                    <tr style="border-top: 1px solid rgba(255,255,255,0.06);">
-                        <td style="padding: 4px 4px 4px 0; color:${labelColor}; ${fontStyle}">${r.label}</td>
+                    <tr style="border-top: 1px solid rgba(255,255,255,0.06);" ${clickAttr}>
+                        <td style="padding: 4px 4px 4px 0; color:${labelColor}; ${fontStyle}">
+                            ${r.label}${!r.isForecast ? ' <span style="font-size:9px; opacity:0.6;">📊</span>' : ''}
+                        </td>
                         <td style="padding: 4px; text-align:right; color:${valColor};">${r.kwh.toFixed(1)}</td>
                         <td style="padding: 4px; text-align:right; color:#aaa;">${avgCt !== null ? avgCt.toFixed(1) : '--'}</td>
                         <td style="padding: 4px 0 4px 4px; text-align:right; font-weight:700; color:${valColor};">${r.eur !== null ? r.eur.toFixed(2) + ' €' : '--'}</td>
@@ -3149,6 +3385,7 @@
             const eegRateInput = document.getElementById('pvEegRateInput');
             const solarSpitzenToggle = document.getElementById('pvSolarSpitzenToggle');
             const batteryShiftToggle = document.getElementById('pvBatteryShiftToggle');
+            const selfProtectToggle = document.getElementById('pvSelfProtectToggle');
             const theoreticalParams = document.getElementById('pvTheoreticalParams');
             const shiftCapInput = document.getElementById('pvShiftCapInput');
             const inverterKwInput = document.getElementById('pvInverterKwInput');
@@ -3168,10 +3405,317 @@
             if (eegRateInput) eegRateInput.value = pvRevenueConfig.eegRateCt;
             if (solarSpitzenToggle) solarSpitzenToggle.checked = !!pvRevenueConfig.applySolarSpitzen;
             if (batteryShiftToggle) batteryShiftToggle.checked = !!pvRevenueConfig.batteryShift;
+            if (selfProtectToggle) selfProtectToggle.checked = pvRevenueConfig.selfProtect !== false;
             if (theoreticalParams) theoreticalParams.style.display = pvRevenueConfig.batteryShift ? 'block' : 'none';
             if (shiftCapInput) shiftCapInput.value = pvRevenueConfig.shiftCapKwh;
             if (inverterKwInput) inverterKwInput.value = pvRevenueConfig.inverterAcKw;
             if (efficiencyInput) efficiencyInput.value = pvRevenueConfig.efficiencyPct;
+        }
+
+        // --- FoxESS Historische Detailanalyse (Companion Container) ---
+        let currentHistoryDateKey = null;
+
+        function getAvailableHistoryDateKeys() {
+            if (livePvData && livePvData.daily_reports) {
+                return Object.keys(livePvData.daily_reports).sort();
+            }
+            return [];
+        }
+
+        function showPvHistory(dateKey) {
+            const container = document.getElementById('pv-history-container');
+            if (!container) return;
+            container.style.display = 'block';
+
+            const available = getAvailableHistoryDateKeys();
+            if (dateKey && available.includes(dateKey)) {
+                currentHistoryDateKey = dateKey;
+            } else if (!currentHistoryDateKey || !available.includes(currentHistoryDateKey)) {
+                currentHistoryDateKey = available.length ? available[available.length - 1] : null;
+            }
+            renderPvHistoryContainer(currentHistoryDateKey);
+        }
+
+        function closePvHistory() {
+            const container = document.getElementById('pv-history-container');
+            if (container) {
+                container.style.display = 'none';
+            }
+        }
+
+        function renderPvHistoryContainer(activeDateKey) {
+            const container = document.getElementById('pv-history-container');
+            if (!container) return;
+
+            const available = getAvailableHistoryDateKeys();
+            if (!available.length) {
+                const sub = document.getElementById('pvHistorySubtitle');
+                if (sub) sub.innerText = 'Keine historischen Berichte verfügbar';
+                return;
+            }
+
+            if (!activeDateKey || !available.includes(activeDateKey)) {
+                activeDateKey = available[available.length - 1];
+            }
+            currentHistoryDateKey = activeDateKey;
+
+            const dayPillsEl = document.getElementById('pvHistoryDayPills');
+            const subEl = document.getElementById('pvHistorySubtitle');
+            const kpiYieldEl = document.getElementById('pvHistKpiYield');
+            const kpiSelfEl = document.getElementById('pvHistKpiSelf');
+            const kpiFeedEl = document.getElementById('pvHistKpiFeedin');
+            const kpiAutarkyEl = document.getElementById('pvHistKpiAutarky');
+            const chartSvg = document.getElementById('pvHistory24hChart');
+            const chartDateEl = document.getElementById('pvHistChartDate');
+            const tableBody = document.getElementById('pvHistHourlyTableBody');
+
+            const nowD = new Date();
+            const todayKey = nowD.getFullYear() + '-' + String(nowD.getMonth() + 1).padStart(2, '0') + '-' + String(nowD.getDate()).padStart(2, '0');
+
+            // 1. Day Selector Pills
+            if (dayPillsEl) {
+                dayPillsEl.innerHTML = available.map(k => {
+                    const isActive = (k === activeDateKey);
+                    const d = new Date(k + 'T12:00:00');
+                    const isToday = (k === todayKey);
+                    const label = isToday ? 'Heute' : d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+                    const bg = isActive ? 'linear-gradient(135deg, #00e5ff, #0099ff)' : 'rgba(255,255,255,0.06)';
+                    const color = isActive ? '#0a0a0f' : '#bbb';
+                    const border = isActive ? '1px solid #00e5ff' : '1px solid rgba(255,255,255,0.1)';
+                    const weight = isActive ? '700' : '500';
+                    return `<button type="button" data-day="${k}" class="pv-hist-pill-btn" style="background:${bg}; color:${color}; border:${border}; font-weight:${weight}; padding:3px 9px; border-radius:12px; font-size:10px; cursor:pointer; white-space:nowrap; transition:all 0.15s ease;">${label}</button>`;
+                }).join('');
+
+                dayPillsEl.querySelectorAll('.pv-hist-pill-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const day = btn.getAttribute('data-day');
+                        showPvHistory(day);
+                    });
+                });
+            }
+
+            const rep = (livePvData && livePvData.daily_reports) ? livePvData.daily_reports[activeDateKey] : null;
+            if (!rep) return;
+
+            const dActive = new Date(activeDateKey + 'T12:00:00');
+            const fullDateStr = dActive.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+            if (subEl) subEl.innerText = fullDateStr;
+            if (chartDateEl) chartDateEl.innerText = fullDateStr;
+
+            // 2. KPIs
+            const genArr = rep.generation || [];
+            const feedArr = rep.feedin || [];
+            const loadArr = rep.loads || [];
+            const gridArr = rep.gridConsumption || [];
+
+            const sumArr = arr => arr.reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
+            const totals = rep.totals || {};
+            const genKwh = (typeof totals.generation === 'number') ? totals.generation : sumArr(genArr);
+            const feedKwh = (typeof totals.feedin === 'number') ? totals.feedin : sumArr(feedArr);
+            const loadKwh = (typeof totals.loads === 'number') ? totals.loads : sumArr(loadArr);
+            const gridKwh = (typeof totals.gridConsumption === 'number') ? totals.gridConsumption : sumArr(gridArr);
+
+            const selfKwh = Math.max(0, genKwh - feedKwh);
+            const selfPct = (genKwh > 0.05) ? Math.min(100, Math.round((selfKwh / genKwh) * 100)) : 0;
+            const feedPct = (genKwh > 0.05) ? Math.min(100, Math.round((feedKwh / genKwh) * 100)) : 0;
+            const autarkyPct = (loadKwh > 0.05) ? Math.min(100, Math.max(0, Math.round(((loadKwh - gridKwh) / loadKwh) * 100))) : 100;
+
+            if (kpiYieldEl) kpiYieldEl.innerText = genKwh.toFixed(1) + ' kWh';
+            if (kpiSelfEl) kpiSelfEl.innerHTML = `${selfKwh.toFixed(1)} kWh <span style="font-size:9.5px; font-weight:normal; color:#888;">(${selfPct} %)</span>`;
+            if (kpiFeedEl) kpiFeedEl.innerHTML = `${feedKwh.toFixed(1)} kWh <span style="font-size:9.5px; font-weight:normal; color:#888;">(${feedPct} %)</span>`;
+            if (kpiAutarkyEl) kpiAutarkyEl.innerHTML = `${gridKwh.toFixed(1)} kWh <span style="font-size:9.5px; font-weight:normal; color:#888;">· ${autarkyPct} %</span>`;
+
+            // 3. Stündliche Börsenpreise finden
+            const dayStart = new Date(activeDateKey + 'T00:00:00').getTime();
+            const dayEnd = dayStart + 24 * 3600 * 1000;
+            const dayPrices = (priceData || []).filter(p => p.endT > dayStart && p.t < dayEnd);
+            const hourlyPrices = [];
+            for (let h = 0; h < 24; h++) {
+                const slotT = dayStart + h * 3600 * 1000 + 1800 * 1000;
+                const match = dayPrices.find(p => p.t <= slotT && p.endT > slotT);
+                hourlyPrices.push(match ? match.ctKwh : null);
+            }
+
+            // 4. 24h SVG Chart
+            if (chartSvg) {
+                const W = 380, H = 95;
+                const PAD_L = 22, PAD_R = 28, PAD_T = 8, PAD_B = 18;
+                const plotW = W - PAD_L - PAD_R;
+                const plotH = H - PAD_T - PAD_B;
+                const slotW = plotW / 24;
+
+                let maxEnergy = 0.5;
+                for (let h = 0; h < 24; h++) {
+                    maxEnergy = Math.max(maxEnergy, genArr[h] || 0, loadArr[h] || 0, feedArr[h] || 0);
+                }
+                maxEnergy = Math.max(1.0, Math.ceil(maxEnergy * 1.15 * 2) / 2);
+
+                const validPrices = hourlyPrices.filter(p => p !== null);
+                let minP = 0, maxP = 20;
+                if (validPrices.length > 0) {
+                    minP = Math.floor(Math.min(...validPrices, 0));
+                    maxP = Math.ceil(Math.max(...validPrices, 10));
+                    if (maxP === minP) maxP = minP + 10;
+                }
+
+                let barsSvg = '';
+                const barWidth = 3.0;
+
+                for (let h = 0; h < 24; h++) {
+                    const cx = PAD_L + (h + 0.5) * slotW;
+                    const g = genArr[h] || 0;
+                    const l = loadArr[h] || 0;
+                    const f = feedArr[h] || 0;
+
+                    // PV Bar (Gelb)
+                    if (g > 0) {
+                        const bh = Math.min(plotH, (g / maxEnergy) * plotH);
+                        const by = PAD_T + plotH - bh;
+                        barsSvg += `<rect x="${(cx - 3.4).toFixed(1)}" y="${by.toFixed(1)}" width="${barWidth}" height="${bh.toFixed(1)}" rx="1" fill="#ffdb00" opacity="0.9"/>`;
+                    }
+                    // Hauslast Bar (Orange)
+                    if (l > 0) {
+                        const bh = Math.min(plotH, (l / maxEnergy) * plotH);
+                        const by = PAD_T + plotH - bh;
+                        barsSvg += `<rect x="${cx.toFixed(1)}" y="${by.toFixed(1)}" width="${barWidth}" height="${bh.toFixed(1)}" rx="1" fill="#ff9100" opacity="0.85"/>`;
+                    }
+                    // Netzeinspeisung Bar (Cyan)
+                    if (f > 0) {
+                        const bh = Math.min(plotH, (f / maxEnergy) * plotH);
+                        const by = PAD_T + plotH - bh;
+                        barsSvg += `<rect x="${(cx + 3.4).toFixed(1)}" y="${by.toFixed(1)}" width="${barWidth}" height="${bh.toFixed(1)}" rx="1" fill="#00e5ff" opacity="0.9"/>`;
+                    }
+                }
+
+                // Börsenpreis Linie
+                let priceLineSvg = '';
+                const pricePts = [];
+                for (let h = 0; h < 24; h++) {
+                    const p = hourlyPrices[h];
+                    if (p !== null) {
+                        const cx = PAD_L + (h + 0.5) * slotW;
+                        const cy = PAD_T + plotH * (1 - (p - minP) / (maxP - minP));
+                        pricePts.push(`${cx.toFixed(1)},${cy.toFixed(1)}`);
+                    }
+                }
+                if (pricePts.length > 1) {
+                    priceLineSvg = `<polyline points="${pricePts.join(' ')}" fill="none" stroke="#00e5ff" stroke-width="1.4" stroke-dasharray="2.5,2.5" opacity="0.8"/>`;
+                }
+
+                // Nulllinie für Börsenpreis, falls negative Preise vorhanden
+                let zeroLineSvg = '';
+                if (minP < 0 && maxP > 0) {
+                    const y0 = PAD_T + plotH * (1 - (0 - minP) / (maxP - minP));
+                    zeroLineSvg = `<line x1="${PAD_L}" y1="${y0.toFixed(1)}" x2="${(PAD_L + plotW).toFixed(1)}" y2="${y0.toFixed(1)}" stroke="rgba(255,80,80,0.4)" stroke-dasharray="2,2"/>`;
+                }
+
+                // Achsen-Beschriftung
+                const hourTicks = [0, 6, 12, 18, 23];
+                let xLabelsSvg = '';
+                hourTicks.forEach(h => {
+                    const cx = PAD_L + (h + 0.5) * slotW;
+                    const text = (h < 10 ? '0' : '') + h;
+                    xLabelsSvg += `<text x="${cx.toFixed(1)}" y="${H - 4}" font-size="7.5" fill="#777" text-anchor="middle">${text}</text>`;
+                });
+
+                // Y-Achsenticks
+                const yAxisSvg = `
+                    <text x="${PAD_L - 3}" y="${PAD_T + 6}" font-size="7" fill="#888" text-anchor="end">${maxEnergy.toFixed(1)}k</text>
+                    <text x="${PAD_L - 3}" y="${PAD_T + plotH}" font-size="7" fill="#555" text-anchor="end">0</text>
+                    <text x="${W - PAD_R + 3}" y="${PAD_T + 6}" font-size="7" fill="#00e5ff" text-anchor="start">${maxP}ct</text>
+                    <text x="${W - PAD_R + 3}" y="${PAD_T + plotH}" font-size="7" fill="#00e5ff" text-anchor="start">${minP}ct</text>
+                `;
+
+                // Interaktive Hover-Slots
+                let hoverSlotsSvg = '';
+                for (let h = 0; h < 24; h++) {
+                    const x = PAD_L + h * slotW;
+                    hoverSlotsSvg += `<rect class="pv-hist-hover-rect" data-h="${h}" x="${x.toFixed(1)}" y="${PAD_T}" width="${slotW.toFixed(1)}" height="${plotH}" fill="transparent" style="cursor:crosshair;"></rect>`;
+                }
+
+                chartSvg.innerHTML = `
+                    ${zeroLineSvg}
+                    ${barsSvg}
+                    ${priceLineSvg}
+                    ${xLabelsSvg}
+                    ${yAxisSvg}
+                    ${hoverSlotsSvg}
+                `;
+
+                chartSvg.querySelectorAll('.pv-hist-hover-rect').forEach(rect => {
+                    rect.addEventListener('mouseenter', () => {
+                        const h = parseInt(rect.getAttribute('data-h'), 10);
+                        const g = genArr[h] || 0;
+                        const l = loadArr[h] || 0;
+                        const f = feedArr[h] || 0;
+                        const p = hourlyPrices[h];
+                        const pStr = (p !== null) ? `${(p >= 0 ? '+' : '')}${p.toFixed(1)} ct` : '--';
+                        if (chartDateEl) {
+                            chartDateEl.innerHTML = `<b style="color:#fff;">${String(h).padStart(2, '0')}:00 Uhr:</b> PV <span style="color:#ffdb00;">${g.toFixed(2)}</span> · Haus <span style="color:#ff9100;">${l.toFixed(2)}</span> · Einspeisung <span style="color:#00e5ff;">${f.toFixed(2)}</span> · Börse <span style="color:#00e5ff;">${pStr}</span>`;
+                        }
+                    });
+                    rect.addEventListener('mouseleave', () => {
+                        if (chartDateEl) chartDateEl.innerText = fullDateStr;
+                    });
+                });
+            }
+
+            // 5. Stündliche Abrechnungstabelle
+            if (tableBody) {
+                let totalEur = 0;
+                const rowsHtml = [];
+
+                for (let h = 0; h < 24; h++) {
+                    const g = genArr[h] || 0;
+                    const l = loadArr[h] || 0;
+                    const f = feedArr[h] || 0;
+                    const p = hourlyPrices[h];
+
+                    let eur = 0;
+                    if (pvRevenueConfig.mode === 'eeg') {
+                        const effectiveRate = (pvRevenueConfig.applySolarSpitzen && p !== null && p < 0) ? 0 : (pvRevenueConfig.eegRateCt || 8.20);
+                        eur = f * (effectiveRate / 100);
+                    } else {
+                        // Direktvermarktung
+                        eur = (p !== null) ? (f * (p / 100)) : (f * ((pvRevenueConfig.eegRateCt || 8.20) / 100));
+                    }
+                    totalEur += eur;
+
+                    const pColor = (p !== null && p < 0) ? '#ff5252' : '#aaa';
+                    const pStr = (p !== null) ? `${(p >= 0 ? '+' : '')}${p.toFixed(1)} ct` : '--';
+                    const gColor = (g > 0.01) ? '#ffdb00' : '#666';
+                    const fColor = (f > 0.01) ? '#00e5ff' : '#666';
+                    const eurColor = (eur > 0.005) ? '#00ff88' : (eur < -0.005 ? '#ff5252' : '#777');
+
+                    rowsHtml.push(`
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+                            <td style="padding: 3px; color: #888;">${String(h).padStart(2, '0')}:00</td>
+                            <td style="padding: 3px; text-align: right; color: ${gColor};">${g.toFixed(2)}</td>
+                            <td style="padding: 3px; text-align: right; color: #ff9100;">${l.toFixed(2)}</td>
+                            <td style="padding: 3px; text-align: right; color: ${fColor};">${f.toFixed(2)}</td>
+                            <td style="padding: 3px; text-align: right; color: ${pColor};">${pStr}</td>
+                            <td style="padding: 3px; text-align: right; font-weight: 600; color: ${eurColor};">${eur.toFixed(2)} €</td>
+                        </tr>
+                    `);
+                }
+
+                // Summenzeile am Ende der Tabelle
+                const validPrices = hourlyPrices.filter(p => p !== null);
+                const avgPrice = (validPrices.length > 0) ? (validPrices.reduce((a, b) => a + b, 0) / validPrices.length) : null;
+                const avgPriceStr = (avgPrice !== null) ? `${(avgPrice >= 0 ? '+' : '')}${avgPrice.toFixed(1)} ct` : '--';
+                rowsHtml.push(`
+                    <tr style="border-top: 1.5px solid rgba(255,255,255,0.15); font-weight: 700;">
+                        <td style="padding: 4px 3px; color: #fff;">Gesamt</td>
+                        <td style="padding: 4px 3px; text-align: right; color: #ffdb00;">${genKwh.toFixed(1)}</td>
+                        <td style="padding: 4px 3px; text-align: right; color: #ff9100;">${loadKwh.toFixed(1)}</td>
+                        <td style="padding: 4px 3px; text-align: right; color: #00e5ff;">${feedKwh.toFixed(1)}</td>
+                        <td style="padding: 4px 3px; text-align: right; color: #aaa;">${avgPriceStr}</td>
+                        <td style="padding: 4px 3px; text-align: right; color: #00ff88;">${totalEur.toFixed(2)} €</td>
+                    </tr>
+                `);
+
+                tableBody.innerHTML = rowsHtml.join('');
+            }
         }
 
         function initPvEuroToggle() {
@@ -3186,9 +3730,12 @@
             const eegRateInput = document.getElementById('pvEegRateInput');
             const solarSpitzenToggle = document.getElementById('pvSolarSpitzenToggle');
             const batteryShiftToggle = document.getElementById('pvBatteryShiftToggle');
+            const selfProtectToggle = document.getElementById('pvSelfProtectToggle');
             const shiftCapInput = document.getElementById('pvShiftCapInput');
             const inverterKwInput = document.getElementById('pvInverterKwInput');
             const efficiencyInput = document.getElementById('pvEfficiencyInput');
+            const openHistBtn = document.getElementById('pvOpenHistoryBtn');
+            const closeHistBtn = document.getElementById('pvHistoryCloseBtn');
 
             updatePvRevenueControlsUI();
 
@@ -3198,6 +3745,7 @@
                     saveRevenueConfig();
                     updatePvRevenueControlsUI();
                     renderEuroTable();
+                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
                 });
             }
             if (directBtn) {
@@ -3206,6 +3754,7 @@
                     saveRevenueConfig();
                     updatePvRevenueControlsUI();
                     renderEuroTable();
+                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
                 });
             }
             if (feedinBasisSelect) {
@@ -3213,6 +3762,7 @@
                     pvRevenueConfig.feedinBasis = e.target.value;
                     saveRevenueConfig();
                     renderEuroTable();
+                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
                 });
             }
             if (eegRateInput) {
@@ -3222,6 +3772,7 @@
                         pvRevenueConfig.eegRateCt = val;
                         saveRevenueConfig();
                         renderEuroTable();
+                        if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
                     }
                 });
             }
@@ -3230,6 +3781,7 @@
                     pvRevenueConfig.applySolarSpitzen = e.target.checked;
                     saveRevenueConfig();
                     renderEuroTable();
+                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
                 });
             }
             if (batteryShiftToggle) {
@@ -3238,6 +3790,15 @@
                     saveRevenueConfig();
                     updatePvRevenueControlsUI();
                     renderEuroTable();
+                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                });
+            }
+            if (selfProtectToggle) {
+                selfProtectToggle.addEventListener('change', (e) => {
+                    pvRevenueConfig.selfProtect = e.target.checked;
+                    saveRevenueConfig();
+                    renderEuroTable();
+                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
                 });
             }
             if (shiftCapInput) {
@@ -3247,6 +3808,7 @@
                         pvRevenueConfig.shiftCapKwh = val;
                         saveRevenueConfig();
                         renderEuroTable();
+                        if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
                     }
                 });
             }
@@ -3257,6 +3819,7 @@
                         pvRevenueConfig.inverterAcKw = val;
                         saveRevenueConfig();
                         renderEuroTable();
+                        if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
                     }
                 });
             }
@@ -3267,7 +3830,19 @@
                         pvRevenueConfig.efficiencyPct = val;
                         saveRevenueConfig();
                         renderEuroTable();
+                        if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
                     }
+                });
+            }
+
+            if (openHistBtn) {
+                openHistBtn.addEventListener('click', () => {
+                    showPvHistory();
+                });
+            }
+            if (closeHistBtn) {
+                closeHistBtn.addEventListener('click', () => {
+                    closePvHistory();
                 });
             }
 
@@ -3719,6 +4294,9 @@
             const pvContainer = document.getElementById('pv-container');
             if (pvContainer) {
                 pvContainer.style.display = 'none';
+            }
+            if (typeof closePvHistory === 'function') {
+                closePvHistory();
             }
         }
 
