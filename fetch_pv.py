@@ -232,9 +232,15 @@ if api_key and not metrics:
                         return None
                     return data
                 print(f"OpenAPI HTTP {r.status_code} (GET) für {path}: {r.text[:200]}")
-                return None
-
-            now = datetime.utcnow()
+            # Lokale Zeitzone der FoxESS-Anlage in Deutschland (Europe/Berlin):
+            # Verhindert, dass zwischen 00:00 und 02:00 MESZ das falsche Datum (UTC-Versatz) abgefragt wird
+            try:
+                from zoneinfo import ZoneInfo
+                tz_plant = ZoneInfo("Europe/Berlin")
+                now = datetime.now(tz_plant)
+            except Exception:
+                from datetime import timezone, timedelta
+                now = datetime.now(timezone(timedelta(hours=2)))
 
             time.sleep(1.1)
             detail_res = call_fox_openapi_get("/op/v1/device/detail", {"sn": sn})
