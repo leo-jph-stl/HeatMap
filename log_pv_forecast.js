@@ -58,10 +58,16 @@ function getValueAtStep(step, lat, lng) {
          + (d[i01] * scale) * (1 - dx) * dy + (d[i11] * scale) * dx * dy;
 }
 
-// Lineare Interpolation zwischen den umgebenden 3h-Schritten - identisch zu interpSolarAtTime() in index.html.
+// Lineare Interpolation zwischen den umgebenden 3h-Schritten. Bewusst KEIN Clamp-Fallback auf den
+// ältesten verfügbaren Schritt für Zeitpunkte davor (anders als die gleichnamige Funktion in
+// index.html, wo ein grober Nachtwert für die Live-Anzeige unkritisch ist): ein persistiertes Log
+// würde einen erfundenen Wert für immer festschreiben. Bug gefunden am 2026-09-10 beim ersten
+// Befüllen von pv_forecast_log.json, als solar_data.js erst 24h Rückblick hatte - ältere PV-Stunden
+// wurden auf den einen frühesten Wert "geklemmt" (z.B. 213 W/m² auch nachts), was 25 von 74
+// Kalibrierpaaren mit einer physikalisch unmöglichen, konstanten Einstrahlung verfälscht hat.
 function interpSolarAtTime(solarData, tMs) {
     if (!solarData || !solarData.length) return null;
-    if (tMs <= solarData[0].timeMs) return Math.max(0, getValueAtStep(solarData[0], PV_LAT, PV_LNG));
+    if (tMs < solarData[0].timeMs) return null; // keine Abdeckung -> lieber gar nicht loggen als raten
     for (let i = 0; i < solarData.length - 1; i++) {
         const a = solarData[i], b = solarData[i + 1];
         if (tMs >= a.timeMs && tMs <= b.timeMs) {
