@@ -16,8 +16,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
-  cancel-in-progress: true
+  group: "pv-fetch"
+  cancel-in-progress: false
 
 jobs:
   update-pv:
