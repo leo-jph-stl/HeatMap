@@ -1078,7 +1078,7 @@
                 </div>
                 <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 8px;">
                     <div style="font-size: 9.5px; color: #888;">Netzeinspeisung</div>
-                    <div id="pvHistKpiFeedin" style="font-size: 13px; font-weight: 700; color: #00e5ff;">-- kWh</div>
+                    <div id="pvHistKpiFeedin" style="font-size: 13px; font-weight: 700; color: #b388ff;">-- kWh</div>
                 </div>
                 <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 8px;">
                     <div style="font-size: 9.5px; color: #888;">Netzbezug · Autarkie</div>
@@ -1095,14 +1095,14 @@
                             <span style="color: #ffdb00; display: inline-flex; align-items: center; gap: 3px;">
                                 <span style="display:inline-block; width:8px; height:2px; background:#ffdb00;"></span>PV-Erzeugung
                             </span>
-                            <span style="color: #00e5ff; display: inline-flex; align-items: center; gap: 3px;">
-                                <span style="display:inline-block; width:8px; height:2px; background:#00e5ff;"></span>Einspeisung
+                            <span style="color: #b388ff; display: inline-flex; align-items: center; gap: 3px;">
+                                <span style="display:inline-block; width:8px; height:2px; background:#b388ff;"></span>Einspeisung
                             </span>
                             <span style="color: #ff9100; display: inline-flex; align-items: center; gap: 3px;">
                                 <span style="display:inline-block; width:8px; height:2px; background:#ff9100;"></span>Haus
                             </span>
-                            <span style="color: #b388ff; display: inline-flex; align-items: center; gap: 3px;">
-                                <span style="display:inline-block; width:8px; height:0; border-top:1.8px dashed #b388ff;"></span>Börsenpreis
+                            <span style="color: #00e5ff; display: inline-flex; align-items: center; gap: 3px;">
+                                <span style="display:inline-block; width:8px; height:0; border-top:1.8px dashed #00e5ff;"></span>Börsenpreis
                             </span>
                         </div>
                     </div>
@@ -1120,15 +1120,15 @@
                 <!-- Dynamisches Modell-Badge für EEG / Direktvermarktung & Optionen -->
                 <div id="pvHistModelBadge" style="margin-bottom: 5px;"></div>
                 <div id="pvHistTableContainer" style="max-height: 190px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(0,229,255,0.2) transparent;">
-                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; font-size: 9.5px;">
+                    <table style="width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 9.5px;">
                         <thead id="pvHistHourlyTableHead" style="position: sticky; top: 0; z-index: 5;">
                             <tr style="color: #888; text-align: right;">
-                                <th style="text-align: left; padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Zeitraum</th>
-                                <th style="padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">PV</th>
-                                <th style="padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Haus</th>
-                                <th id="pvHistColBasis" style="padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Einspeis.</th>
-                                <th id="pvHistColRate" style="padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Vergütung</th>
-                                <th style="padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Erlös</th>
+                                <th style="width: 72px; text-align: left; padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Zeitraum</th>
+                                <th style="width: 34px; padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">PV</th>
+                                <th style="width: 34px; padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Haus</th>
+                                <th id="pvHistColBasis" style="width: 44px; padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Einspeis.</th>
+                                <th id="pvHistColRate" style="width: 90px; padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Vergütung</th>
+                                <th style="width: 44px; padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Erlös</th>
                             </tr>
                         </thead>
                         <tbody id="pvHistHourlyTableBody"></tbody>
@@ -3760,17 +3760,17 @@
 
                 if (priceStepPts.length > 0) {
                     priceSvgElements = `
-                        <polyline points="${priceStepPts.join(' ')}" fill="none" stroke="#b388ff" stroke-width="1.3" stroke-dasharray="3,2" stroke-linecap="square" opacity="0.85"/>
+                        <polyline points="${priceStepPts.join(' ')}" fill="none" stroke="#00e5ff" stroke-width="1.3" stroke-dasharray="3,2" stroke-linecap="square" opacity="0.9"/>
                     `;
                 }
 
                 [priceMin, (priceMin + priceMax) / 2, priceMax].forEach((v) => {
                     const yy = yP(v);
-                    yAxisPriceSvg += `<text x="${W - PAD_R + 3}" y="${(yy + 2.4).toFixed(1)}" font-size="7" fill="#b388ff" opacity="0.85" text-anchor="start">${Math.round(v)}</text>`;
+                    yAxisPriceSvg += `<text x="${W - PAD_R + 3}" y="${(yy + 2.4).toFixed(1)}" font-size="7" fill="#00e5ff" opacity="0.85" text-anchor="start">${Math.round(v)}</text>`;
                 });
-                yAxisPriceSvg += `<text x="${W - PAD_R + 3}" y="${PAD_T + 4}" font-size="6" fill="#b388ff" opacity="0.85" text-anchor="start">ct</text>`;
+                yAxisPriceSvg += `<text x="${W - PAD_R + 3}" y="${PAD_T + 4}" font-size="6" fill="#00e5ff" opacity="0.85" text-anchor="start">ct</text>`;
 
-                dotPriceSvg = `<circle id="pvHistDotPrice" cx="0" cy="0" r="2.5" fill="#b388ff" stroke="#000" stroke-width="0.6"/>`;
+                dotPriceSvg = `<circle id="pvHistDotPrice" cx="0" cy="0" r="2.5" fill="#00e5ff" stroke="#000" stroke-width="0.6"/>`;
             }
 
             let gridEnergySvg = '';
@@ -3804,17 +3804,17 @@
                     <!-- Flachenfüllungen -->
                     <polygon points="${loadAreaPts}" fill="rgba(255,145,0,0.08)"/>
                     <polygon points="${genAreaPts}" fill="rgba(255,219,0,0.18)"/>
-                    <polygon points="${feedAreaPts}" fill="rgba(0,229,255,0.14)"/>
+                    <polygon points="${feedAreaPts}" fill="rgba(179,136,255,0.14)"/>
                     <!-- Linienzüge -->
                     ${priceSvgElements}
                     <polyline points="${loadPts.join(' ')}" fill="none" stroke="#ff9100" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
-                    <polyline points="${feedPts.join(' ')}" fill="none" stroke="#00e5ff" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+                    <polyline points="${feedPts.join(' ')}" fill="none" stroke="#b388ff" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
                     <polyline points="${genPts.join(' ')}" fill="none" stroke="#ffdb00" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
                     <!-- Fadenkreuz-Cursor -->
                     <g id="pvHistEnergyCursor" style="display:none; pointer-events:none;">
                         <line id="pvHistEnergyCursorLine" x1="0" y1="${PAD_T}" x2="0" y2="${H - PAD_B}" stroke="rgba(255,255,255,0.35)" stroke-width="1" stroke-dasharray="2,2"/>
                         <circle id="pvHistDotGen" cx="0" cy="0" r="2.5" fill="#ffdb00" stroke="#000" stroke-width="0.6"/>
-                        <circle id="pvHistDotFeed" cx="0" cy="0" r="2.5" fill="#00e5ff" stroke="#000" stroke-width="0.6"/>
+                        <circle id="pvHistDotFeed" cx="0" cy="0" r="2.5" fill="#b388ff" stroke="#000" stroke-width="0.6"/>
                         <circle id="pvHistDotLoad" cx="0" cy="0" r="2.5" fill="#ff9100" stroke="#000" stroke-width="0.6"/>
                         ${dotPriceSvg}
                     </g>
@@ -3851,7 +3851,7 @@
                         : '<span style="color:#aaa;">Ohne Solar-Spitzen (§ 51)</span>';
                     const basisBadge = isGrossOptionB
                         ? '<span style="color:#ffdb00; font-weight:600;">Option B (100% Gesamterzeugung)</span>'
-                        : '<span style="color:#00e5ff; font-weight:600;">Option A (Netzeinspeisung)</span>';
+                        : '<span style="color:#b388ff; font-weight:600;">Option A (Netzeinspeisung)</span>';
                     modelBadgeEl.innerHTML = `
                         <div style="display:flex; flex-wrap:wrap; align-items:center; gap:5px; font-size:8.5px; background:rgba(255,219,0,0.08); border:1px solid rgba(255,219,0,0.22); border-radius:6px; padding:3px 7px; color:#ccc;">
                             <span style="color:#ffdb00; font-weight:700;">☀️ EEG: ${eegRate.toFixed(2)} ct/kWh</span>
@@ -3864,7 +3864,7 @@
                 } else {
                     const basisBadge = isGrossOptionB
                         ? '<span style="color:#ffdb00; font-weight:600;">Option B (100% Gesamterzeugung)</span>'
-                        : '<span style="color:#00e5ff; font-weight:600;">Option A (Netzeinspeisung)</span>';
+                        : '<span style="color:#b388ff; font-weight:600;">Option A (Netzeinspeisung)</span>';
                     const shiftBadge = pvRevenueConfig.batteryShift
                         ? `<span style="color:#00ff88; font-weight:600;">Batterie-Shift aktiv (${pvRevenueConfig.shiftCapKwh || 8} kWh, WR ${pvRevenueConfig.inverterAcKw || 5} kW, η=${pvRevenueConfig.efficiencyPct || 90}%)</span>`
                         : '<span style="color:#aaa;">Echtzeit-Einspeisung (ohne Shift)</span>';
@@ -3974,9 +3974,10 @@
                         : (p !== null ? `${(p >= 0 ? '+' : '')}${p.toFixed(1)} ct` : '--');
                     const eurCol = (eur > 0.005) ? '#00ff88' : (eur < -0.005 ? '#ff5252' : (isSolarSpitzenActive ? '#ff5252' : '#888'));
                     const basisName = isGrossOptionB ? 'Erzeug.' : 'Einsp.';
+                    const basisCol = isGrossOptionB ? '#ffdb00' : '#b388ff';
 
                     if (energyValEl) {
-                        energyValEl.innerHTML = `<b style="color:#ddd;">${timeRange}:</b> PV <span style="color:#ffdb00;">${g.toFixed(2)}</span> · Haus <span style="color:#ff9100;">${l.toFixed(2)}</span> · ${basisName} <span style="color:#00e5ff;">${basisKwh.toFixed(2)} kWh</span> · <span style="color:#ffdb00;">${rateStr}</span> · <span style="color:${eurCol}; font-weight:700;">${eur.toFixed(2)} €</span>`;
+                        energyValEl.innerHTML = `<b style="color:#ddd;">${timeRange}:</b> PV <span style="color:#ffdb00;">${g.toFixed(2)}</span> · Haus <span style="color:#ff9100;">${l.toFixed(2)}</span> · ${basisName} <span style="color:${basisCol}; font-weight:600;">${basisKwh.toFixed(2)} kWh</span> · <span style="color:#00e5ff;">${rateStr}</span> · <span style="color:${eurCol}; font-weight:700;">${eur.toFixed(2)} €</span>`;
                     }
                 });
 
@@ -4012,36 +4013,38 @@
                         if (hasSolarSpitzen && p !== null && p < 0) {
                             rate = 0.0;
                             isSolarSpitzenActive = true;
-                            rateHtml = `<span style="color:#ff5252; font-weight:700;">0.00 ct</span> <span style="font-size:7.5px; color:#ff8080;" title="Solar-Spitzen § 51: Börsenpreis ${p.toFixed(1)} ct führt zu 0 ct Vergütung">(§51)</span>`;
+                            rateHtml = `<span style="color:#ff5252; font-weight:700; font-variant-numeric:tabular-nums;">0.00 ct</span> <span style="display:inline-block; width:34px; text-align:right; font-size:7.5px; color:#ff8080;" title="Solar-Spitzen § 51: Börsenpreis ${p.toFixed(1)} ct führt zu 0 ct Vergütung">(§51)</span>`;
                         } else {
                             rate = eegRate;
-                            const pRef = (p !== null) ? `<span style="font-size:7.5px; color:#666;">(${p >= 0 ? '+' : ''}${p.toFixed(1)})</span>` : '';
-                            rateHtml = `<span style="color:#ffdb00; font-weight:600;">${rate.toFixed(2)} ct</span> ${pRef}`;
+                            const pRef = (p !== null) 
+                                ? `<span style="display:inline-block; width:34px; text-align:right; font-size:7.5px; color:#666; font-variant-numeric:tabular-nums; font-family:monospace;">(${p >= 0 ? '+' : ''}${p.toFixed(1)})</span>` 
+                                : '<span style="display:inline-block; width:34px;"></span>';
+                            rateHtml = `<span style="color:#ffdb00; font-weight:600; font-variant-numeric:tabular-nums;">${rate.toFixed(2)} ct</span> ${pRef}`;
                         }
                     } else {
                         // Direktvermarktung
                         rate = (p !== null) ? p : eegRate;
                         const pColor = (rate < 0) ? '#ff5252' : '#00e5ff';
-                        rateHtml = `<span style="color:${pColor}; font-weight:600;">${(rate >= 0 ? '+' : '')}${rate.toFixed(1)} ct</span>`;
+                        rateHtml = `<span style="color:${pColor}; font-weight:600; font-variant-numeric:tabular-nums;">${(rate >= 0 ? '+' : '')}${rate.toFixed(1)} ct</span> <span style="display:inline-block; width:34px;"></span>`;
                     }
 
                     const eur = basisKwh * (rate / 100);
                     totalEur += eur;
 
                     const gColor = (g > 0.01) ? '#ffdb00; font-weight:600;' : '#555;';
-                    const fColor = (basisKwh > 0.01) ? (isGrossOptionB ? '#ffdb00; font-weight:600;' : '#00e5ff; font-weight:600;') : '#555;';
+                    const fColor = (basisKwh > 0.01) ? (isGrossOptionB ? '#ffdb00; font-weight:600;' : '#b388ff; font-weight:600;') : '#555;';
                     const lColor = (l > 0.01) ? '#ff9100;' : '#555;';
                     const eurColor = (eur > 0.005) ? '#00ff88; font-weight:600;' : (eur < -0.005 ? '#ff5252; font-weight:600;' : (isSolarSpitzenActive ? '#ff5252;' : '#666;'));
 
                     const slotLabel = `${String(h).padStart(2, '0')}:00 - ${String(h + 1).padStart(2, '0')}:00`;
                     rowsHtml.push(`
                         <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
-                            <td style="padding: 3.5px 4px; color: #888;">${slotLabel}</td>
-                            <td style="padding: 3.5px 4px; text-align: right; color: ${gColor}">${g.toFixed(2)}</td>
-                            <td style="padding: 3.5px 4px; text-align: right; color: ${lColor}">${l.toFixed(2)}</td>
-                            <td style="padding: 3.5px 4px; text-align: right; color: ${fColor}">${basisKwh.toFixed(2)}</td>
-                            <td style="padding: 3.5px 4px; text-align: right;">${rateHtml}</td>
-                            <td style="padding: 3.5px 4px; text-align: right; color: ${eurColor}">${eur.toFixed(2)} €</td>
+                            <td style="padding: 3.5px 4px; color: #888; font-variant-numeric:tabular-nums;">${slotLabel}</td>
+                            <td style="padding: 3.5px 4px; text-align: right; color: ${gColor}; font-variant-numeric:tabular-nums;">${g.toFixed(2)}</td>
+                            <td style="padding: 3.5px 4px; text-align: right; color: ${lColor}; font-variant-numeric:tabular-nums;">${l.toFixed(2)}</td>
+                            <td style="padding: 3.5px 4px; text-align: right; color: ${fColor}; font-variant-numeric:tabular-nums;">${basisKwh.toFixed(2)}</td>
+                            <td style="padding: 3.5px 4px; text-align: right; white-space: nowrap;">${rateHtml}</td>
+                            <td style="padding: 3.5px 4px; text-align: right; color: ${eurColor}; font-variant-numeric:tabular-nums;">${eur.toFixed(2)} €</td>
                         </tr>
                     `);
                 }
@@ -4051,7 +4054,7 @@
                 if (tableFoot) {
                     const avgRate = (totalBasisKwh > 0.001) ? (totalEur / totalBasisKwh * 100) : (isEeg ? eegRate : 0);
                     const basisColTotal = isGrossOptionB ? genKwh : feedKwh;
-                    const basisColColor = isGrossOptionB ? '#ffdb00' : '#00e5ff';
+                    const basisColColor = isGrossOptionB ? '#ffdb00' : '#b388ff';
                     const eurColor = (totalEur > 0.005) ? '#00ff88' : (totalEur < -0.005 ? '#ff5252' : '#aaa');
                     tableFoot.innerHTML = `
                         <tr style="font-weight: 700; background: #151821;">
@@ -4059,7 +4062,7 @@
                             <td style="padding: 5px 4px; text-align: right; color: #ffdb00; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">${genKwh.toFixed(1)}</td>
                             <td style="padding: 5px 4px; text-align: right; color: #ff9100; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">${loadKwh.toFixed(1)}</td>
                             <td style="padding: 5px 4px; text-align: right; color: ${basisColColor}; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">${basisColTotal.toFixed(1)}</td>
-                            <td style="padding: 5px 4px; text-align: right; color: #aaa; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">Ø ${avgRate.toFixed(1)} ct</td>
+                            <td style="padding: 5px 4px; text-align: right; color: #00e5ff; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2); white-space: nowrap;">Ø ${avgRate.toFixed(1)} ct <span style="display:inline-block; width:34px;"></span></td>
                             <td style="padding: 5px 4px; text-align: right; color: ${eurColor}; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">${totalEur.toFixed(2)} €</td>
                         </tr>
                     `;
@@ -4223,7 +4226,7 @@
                 if (rangeEl) rangeEl.innerText = '';
                 const resetBtn = document.getElementById('pvHistoryResetBtn');
                 if (resetBtn) resetBtn.style.display = 'none';
-                updatePvForecastSummaryUI(null);
+                updatePvForecastLegend(null);
                 return;
             }
 
