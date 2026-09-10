@@ -351,28 +351,22 @@ if api_key and not metrics:
 
             extra_data["daily_reports"] = daily_reports
 
-            time.sleep(1.1)
-            now_ms = int(time.time() * 1000)
-            begin_ms = now_ms - (3 * 24 * 3600 * 1000)
-            history_vars = ["pvPower", "feedinPower", "loadsPower"]
-            
+            # Bestehenden Verlauf als Fallback laden, falls API vorübergehend keine History liefert
+            existing_history_3d = []
+            if os.path.exists("pv_data.json"):
+                try:
+                    with open("pv_data.json", "r", encoding="utf-8") as f:
+                        old_d = json.load(f)
+                        existing_history_3d = old_d.get("history_3d", [])
+                except Exception:
+                    pass
+
             datas = []
-            history_res = call_fox_openapi("/op/v0/device/history/query", {
-                "sn": sn, "variables": history_vars, "begin": begin_ms, "end": now_ms
-            })
-            if history_res and history_res.get("result"):
-                datas = history_res.get("result", [])[0].get("datas", [])
-            
-            # Manche FoxESS OpenAPI Versionen liefern nur 1 Variable pro Query.
-            # Falls Variablen fehlen, frage diese einzeln ab:
-            returned_vars = {d.get("variable") for d in datas if d.get("variable")}
-            for mv in [v for v in history_vars if v not in returned_vars]:
+            for vname in ["pvPower", "feedinPower", "loadsPower"]:
                 time.sleep(1.1)
-                single_res = call_fox_openapi("/op/v0/device/history/query", {
-                    "sn": sn, "variables": [mv], "begin": begin_ms, "end": now_ms
-                })
-                if single_res and single_res.get("result"):
-                    s_datas = single_res.get("result", [])[0].get("datas", [])
+                res = call_fox_openapi("/op/v0/device/history/query", {"sn": sn, "variables": [vname]})
+                if res and res.get("result"):
+                    s_datas = res.get("result", [])[0].get("datas", [])
                     if s_datas:
                         datas.extend(s_datas)
 
@@ -414,6 +408,10 @@ if api_key and not metrics:
                 if history_3d:
                     extra_data["history_3d"] = history_3d
                     print(f"3-Tage-Verlauf: {len(history_3d)} synchrone Datenpunkte (PV, Feedin, Loads)")
+
+            if "history_3d" not in extra_data and existing_history_3d:
+                extra_data["history_3d"] = existing_history_3d
+                print(f"Bestehenden 3-Tage-Verlauf aus Cache erhalten ({len(existing_history_3d)} Datenpunkte)")
     except Exception as e:
         print(f"OpenAPI Abruf fehlgeschlagen: {e}")
         traceback.print_exc()
