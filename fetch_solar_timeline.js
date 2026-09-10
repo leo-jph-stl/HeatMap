@@ -22,7 +22,11 @@ const argv = Object.fromEntries(process.argv.slice(2).map(a => {
 }));
 
 const STRIDE = parseInt(argv.stride || '1', 10);      // 1 = volle 0.25°-Auflösung, 2 = 0.5°, 4 = 1.0° ...
-const NUM_STEPS = parseInt(argv.steps || '33', 10);    // Standard wie fetch_gfs_0p25.js: -24h bis +72h
+// 36 statt 33 Schritte: -24h bis +81h. Die 9h Extra-Puffer über die im UI beworbenen +72h hinaus
+// gleichen aus, dass der Abruf nur alle 6h läuft - kurz vor dem nächsten Pull wäre das Array sonst
+// nur noch "+66h ab jetzt" statt "+72h ab jetzt" (das Fenster ist am Abrufzeitpunkt verankert, nicht
+// am Anzeigezeitpunkt). Siehe auch timeSlider-Anpassung in index.html (dynamisches max).
+const NUM_STEPS = parseInt(argv.steps || '36', 10);
 const BACK_STEPS = parseInt(argv.back || '8', 10);     // 8*3h = 24h zurück
 
 const FULL_NX = 1440, FULL_NY = 721;

@@ -817,7 +817,7 @@
         <div class="time-labels">
             <span>-24h</span>
             <span>Live</span>
-            <span>+72h</span>
+            <span id="timeLabelMax">+72h</span>
         </div>
         <div id="layer-toggles-visible">
             <button id="btn-temp-vis" class="layer-toggle-btn active" onclick="switchLayer('temp')">🌡️ Temperatur</button>
@@ -3747,8 +3747,35 @@
             updatePopupContent();
         }
 
+        // Die Fetch-Skripte verankern "-24h..+72h" am Abrufzeitpunkt, nicht am Anzeigezeitpunkt -
+        // je länger der letzte Pull her ist (bis zu 6h zwischen den Abrufen), desto weniger echte
+        // Zukunft ist ab JETZT tatsächlich noch im Array übrig (siehe NUM_STEPS-Kommentar in den
+        // fetch_*.js-Skripten für den +9h-Puffer, der das im Normalfall bereits abfängt). Diese
+        // Funktion kappt den Regler ehrlich auf das, was wirklich verfügbar ist, statt bei Staleness
+        // (z.B. nach einem verpassten Abruf) stillschweigend auf den letzten Schritt zu klemmen und
+        // dabei ein falsches "+72h" anzuzeigen.
+        function updateSliderBounds() {
+            if (typeof tempData === 'undefined' || tempData.length === 0) return;
+            const lastStep = tempData[tempData.length - 1];
+            if (!lastStep || !lastStep.timeMs) return;
+            const hoursAvailable = (lastStep.timeMs - Date.now()) / 3600000;
+            const newMax = Math.max(24, Math.min(72, Math.floor(hoursAvailable / 3) * 3));
+            const slider = document.getElementById('timeSlider');
+            if (!slider || parseInt(slider.max, 10) === newMax) return;
+
+            slider.max = newMax;
+            const maxLabelEl = document.getElementById('timeLabelMax');
+            if (maxLabelEl) maxLabelEl.innerText = `+${newMax}h`;
+            if (currentHourOffset > newMax) {
+                currentHourOffset = newMax;
+                slider.value = newMax;
+                updateActiveData();
+            }
+        }
+
         // Live-Uhrzeit alle 60 Sekunden prüfen und bei Live-Stellung aktualisieren
         setInterval(() => {
+            updateSliderBounds();
             if (currentHourOffset === 0) {
                 updateActiveData();
             }
@@ -3828,7 +3855,7 @@
                 playBtn.innerText = '⏸ Pause';
                 playInterval = setInterval(() => {
                     let val = parseInt(timeSlider.value) + 1;
-                    if (val > 72) val = -24;
+                    if (val > parseInt(timeSlider.max, 10)) val = -24; // dynamisches Max, siehe updateSliderBounds()
                     timeSlider.value = val;
                     timeSlider.dispatchEvent(new Event('input'));
                 }, 150); // 1h-Schritte, GPU blendet zwischen den 3h-GFS-Stützstellen weich über
@@ -3977,6 +4004,7 @@
             console.warn('Veralteter 0.5° Browser-Cache festgestellt! Aktualisiere sofort auf 0.25° GFS Modell...');
             reloadWeatherData();
         }
+        updateSliderBounds();
         updateActiveData();
         switchLayer('temp');
         loadPvData();
