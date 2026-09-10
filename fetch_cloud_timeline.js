@@ -1,15 +1,24 @@
-// Globale Gesamtwolkenbedeckung (%) aus GFS 0.25°, für die Nachtseite der Einstrahlungs-Karte:
-// Sonneneinstrahlung sagt nachts nichts über Bewölkung aus (überall ~0), daher wird dort separat
-// echte Wolkendeckung eingeblendet. Nutzt dieselbe THREDDS-"time"-Dimension wie fetch_gfs_0p25.js
-// (Temperature_height_above_ground und Total_cloud_cover_entire_atmosphere teilen sich exakt
-// dieselbe Zeitachse), Referenzdatum wird dynamisch gelesen statt hartkodiert.
+// Wolkenwassergehalt (kg/m^2, integriert über die ganze Atmosphärensäule) aus GFS 0.25°, für die
+// Nachtseite der Einstrahlungs-Karte: Sonneneinstrahlung sagt nachts nichts über Bewölkung aus
+// (überall ~0), daher wird dort separat echte Bewölkung eingeblendet.
+//
+// Bewusst NICHT "Total_cloud_cover_entire_atmosphere" (Bedeckungsgrad in %): dessen Verteilung ist
+// stark bimodal (>50% der Erde meldet 90-100%, da schon dünner hoher Cirrus als "bedeckt" zählt),
+// was die Nachtseite bei linearer Abbildung massiv überzeichnet wirken lässt. Der Wasser-/Eisgehalt
+// korreliert dagegen direkt mit der optischen Dicke - genau das, was tagsüber als Einstrahlungs-
+// Einbruch sichtbar ist - und ist kontinuierlich rechtsschief verteilt (Median ~0.006 kg/m²,
+// P95 ~0.5, P99 ~1.1), wodurch dichte Sturmsysteme sich klar von dünnem Dunst absetzen.
+//
+// Nutzt dieselbe THREDDS-"time"-Dimension wie fetch_gfs_0p25.js (Temperature_height_above_ground
+// und Cloud_water_entire_atmosphere_single_layer teilen sich exakt dieselbe Zeitachse),
+// Referenzdatum wird dynamisch gelesen statt hartkodiert.
 //
 // CLI-Override für schnelle Tests: `node fetch_cloud_timeline.js --steps=3 --stride=4`
 const fs = require('fs');
 const https = require('https');
 
 const BASE_URL = 'https://thredds.ucar.edu/thredds/dodsC/grib/NCEP/GFS/Global_0p25deg/Best';
-const VAR = 'Total_cloud_cover_entire_atmosphere';
+const VAR = 'Cloud_water_entire_atmosphere_single_layer';
 
 const argv = Object.fromEntries(process.argv.slice(2).map(a => {
     const m = a.match(/^--([^=]+)=(.*)$/);
@@ -74,10 +83,21 @@ async function fetchTimeIndices() {
     return steps;
 }
 
+async function fetchTextWithRetry(url, retries = 2) {
+    for (let attempt = 0; ; attempt++) {
+        try {
+            return await fetchText(url);
+        } catch (e) {
+            if (attempt >= retries) throw e;
+            console.warn(`  Verbindungsfehler (${e.message}), Versuch ${attempt + 2}/${retries + 1}...`);
+        }
+    }
+}
+
 async function fetchSingleStep(threddsIdx, stepNumber, totalSteps) {
     const t0 = Date.now();
     const url = `${BASE_URL}.ascii?${VAR}[${threddsIdx}][${LAT_IDX}][${LON_IDX}]`;
-    const text = await fetchText(url);
+    const text = await fetchTextWithRetry(url);
 
     const marker = `${VAR}.${VAR}`;
     const parts = text.split(marker);
@@ -92,8 +112,8 @@ async function fetchSingleStep(threddsIdx, stepNumber, totalSteps) {
         for (const p of parts2) {
             const v = parseFloat(p.trim());
             if (isNaN(v) || count >= PTS_PER_STEP) continue;
-            const clamped = Math.max(0, Math.min(100, v)); // Prozent, 0-100 klemmen
-            int16Array[count++] = Math.round(clamped * 10); // 0.1% Genauigkeit
+            const clamped = Math.max(0, Math.min(20, v)); // kg/m^2, 20 als großzügige Sicherheitsobergrenze
+            int16Array[count++] = Math.round(clamped * 1000); // 0.001 kg/m^2 Genauigkeit
         }
     }
 
@@ -138,12 +158,12 @@ async function run() {
             nx: NX, ny: NY,
             dx: 0.25 * STRIDE, dy: 0.25 * STRIDE,
             la1: 90, lo1: 0,
-            scale: 0.1,
-            unit: '%',
+            scale: 0.001,
+            unit: 'kg/m^2',
             steps: steps.map(s => ({ hour: s.hour, timestamp: s.timestamp, timeMs: s.timeMs }))
         };
 
-        const fileContent = `// Globale Gesamtwolkenbedeckung (%) aus GFS 0.25°.
+        const fileContent = `// Globaler Wolkenwassergehalt (kg/m^2, Säule) aus GFS 0.25°.
 // Automatisch generiert von fetch_cloud_timeline.js
 const cloudMetadata = ${JSON.stringify(metadata)};
 const cloudB64 = "${base64Str}";

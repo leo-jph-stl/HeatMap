@@ -1075,8 +1075,12 @@
         // Größenordnung als die instantane Live-Leistung in W/m^2 - eigene Skala nötig.
         const minSolarClimRange = 0.0;
         const maxSolarClimRange = 8.0;
+        // Wolkenwassergehalt (kg/m^2, Säule) statt Bedeckungsgrad in % - siehe fetch_cloud_timeline.js
+        // für die Begründung. Werteverteilung ist stark rechtsschief (Median ~0.006, P95 ~0.5,
+        // P99 ~1.1 kg/m^2); 0.8 als "volle Intensität" zeigt dichte Sturmsysteme klar hervorgehoben,
+        // während dünner Dunst (die Mehrheit der Fläche) im Nachtbild kaum auffällt.
         const minCloudRange = 0.0;
-        const maxCloudRange = 100.0;
+        const maxCloudRange = 0.8;
         // Ab welcher Einstrahlung (W/m^2) die Nachtseite (Wolken-Ansicht) in die Tag-Farbrampe
         // übergeht. Als Zone statt scharfer Schwelle: die Dämmerung blendet über diesen Bereich
         // weich zwischen beiden Darstellungen über (siehe Fragment-Shader, u_nightThreshold).
