@@ -2191,6 +2191,17 @@
 
         let livePvData = (typeof window !== 'undefined' && window.foxessPvData) ? window.foxessPvData : null;
 
+        // Wachsendes Log aus (Ist-Leistung, Einstrahlungsprognose)-Paaren, von log_pv_forecast.js bei
+        // jedem PV-Fetch fortgeschrieben (siehe dort). Ersetzt mit der Zeit die reine 24h-Kalibrierung
+        // in computePvForecast() durch eine über Wochen gemittelte, robustere Basis.
+        let pvForecastLog = [];
+        async function loadPvForecastLog() {
+            try {
+                const res = await fetch('pv_forecast_log.json?_t=' + Date.now());
+                if (res.ok) pvForecastLog = await res.json();
+            } catch (e) {}
+        }
+
         async function loadPvData() {
             if (typeof window !== 'undefined' && window.foxessPvData) {
                 livePvData = window.foxessPvData;
@@ -2354,32 +2365,61 @@
             return Math.max(0, getTempAtStep(last, lat, lng));
         }
 
+        // Wie weit das über log_pv_forecast.js gewachsene Log für die Kalibrierung zurückreichen darf.
+        // ~4 Wochen als Kompromiss: genug verschiedene Wetterlagen für einen robusten Faktor, aber nicht
+        // so alt, dass saisonale Sonnenstand-/Verschattungseffekte den Faktor verzerren.
+        const PV_FORECAST_LOG_MAX_AGE_MS = 30 * 24 * 3600 * 1000;
+
         // Schätzt die PV-Leistung für den verfügbaren Prognose-Horizont (bis zu +72h): kalibriert
-        // einen Anlagen-Wirkungsgradfaktor (kW je W/m² Einstrahlung) aus den letzten 24h echter
-        // Leistungsdaten gegen die GFS-Einstrahlungsprognose für denselben Zeitraum/Ort, und wendet
-        // diesen Faktor auf die Einstrahlungsprognose der kommenden Stunden an. Bewusst kein fest
-        // angenommener Wirkungsgrad: die Anlage selbst zeigt am zuverlässigsten (über ihre jüngste
-        // reale Antwort auf reale Einstrahlung), wie viel kW sie liefert - inklusive Ausrichtung,
-        // Verschattung, Verschmutzung und Degradation, die ein generischer Schätzwert nicht kennt.
+        // einen Anlagen-Wirkungsgradfaktor (kW je W/m² Einstrahlung) aus echten Leistungsdaten gegen
+        // die GFS-Einstrahlungsprognose für denselben Zeitraum/Ort, und wendet diesen Faktor auf die
+        // Einstrahlungsprognose der kommenden Stunden an. Bewusst kein fest angenommener Wirkungsgrad:
+        // die Anlage selbst zeigt am zuverlässigsten (über ihre reale Antwort auf reale Einstrahlung),
+        // wie viel kW sie liefert - inklusive Ausrichtung, Verschattung, Verschmutzung und Degradation,
+        // die ein generischer Schätzwert nicht kennt.
+        //
+        // Bevorzugte Quelle ist das von log_pv_forecast.js über Wochen/Monate angesammelte Log (siehe
+        // pvForecastLog) - robuster als nur der letzte Tag, weil es mehr Wetterlagen abdeckt. Solange
+        // dieses Log noch zu jung ist (frisch installiertes Feature, oder Backend-Log noch nicht
+        // nachgeladen), fällt die Funktion auf die letzten 24h der gerade geladenen Live-Historie zurück,
+        // damit die Prognose von Anfang an funktioniert und sich mit der Zeit von selbst verbessert.
         function computePvForecast() {
             const actual = pvChartState.data;
             if (!actual.length || typeof solarData === 'undefined' || !solarData.length) return null;
 
             const now = Date.now();
-            const calibWindowStart = now - 24 * 3600 * 1000;
-            const pairs = [];
-            for (const p of actual) {
-                if (p.t < calibWindowStart || p.t > now) continue;
-                const ghi = interpSolarAtTime(p.t);
-                if (ghi === null) continue;
-                pairs.push({ pv: p.pv, ghi });
-            }
 
             // Mittleres Einstrahlungsband bevorzugt: sehr niedrige Werte (Dämmerung) sind verrauscht,
             // sehr hohe Werte laufen Gefahr, durch die Wechselrichter-Leistungsgrenze (Clipping)
             // verfälscht zu sein - beides würde den linearen Faktor verzerren.
-            let calibPairs = pairs.filter(pr => pr.ghi >= 50 && pr.ghi <= 700);
-            if (calibPairs.length < 5) calibPairs = pairs.filter(pr => pr.ghi >= 30);
+            const pickCalibPairs = (pairs) => {
+                let filtered = pairs.filter(pr => pr.ghi >= 50 && pr.ghi <= 700);
+                if (filtered.length < 5) filtered = pairs.filter(pr => pr.ghi >= 30);
+                return filtered;
+            };
+
+            const logWindowStart = now - PV_FORECAST_LOG_MAX_AGE_MS;
+            const logPairs = pvForecastLog
+                .filter(r => r.t >= logWindowStart && r.t <= now && typeof r.pv === 'number' && typeof r.ghi === 'number')
+                .map(r => ({ pv: r.pv, ghi: r.ghi }));
+
+            let calibPairs = pickCalibPairs(logPairs);
+            let calibSource = 'log', calibDays = Math.round(PV_FORECAST_LOG_MAX_AGE_MS / 86400000);
+
+            if (calibPairs.length < 5) {
+                // Log noch zu jung/dünn: letzte 24h direkt aus der Live-Historie kalibrieren
+                const calibWindowStart = now - 24 * 3600 * 1000;
+                const livePairs = [];
+                for (const p of actual) {
+                    if (p.t < calibWindowStart || p.t > now) continue;
+                    const ghi = interpSolarAtTime(p.t);
+                    if (ghi === null) continue;
+                    livePairs.push({ pv: p.pv, ghi });
+                }
+                calibPairs = pickCalibPairs(livePairs);
+                calibSource = '24h';
+                calibDays = 1;
+            }
             if (calibPairs.length < 5) return null; // zu wenig verwertbare Datenpunkte für eine seriöse Schätzung
 
             const ratios = calibPairs.map(pr => pr.pv / pr.ghi).sort((a, b) => a - b);
@@ -2403,7 +2443,7 @@
             }
             if (points.length < 2) return null;
 
-            return { points, medianRatio, sampleCount: calibPairs.length, capKw };
+            return { points, medianRatio, sampleCount: calibPairs.length, capKw, calibSource, calibDays };
         }
 
         // Trapez-Integration der Prognoseleistung zwischen fromT und toT (ms) -> kWh.
@@ -2445,6 +2485,11 @@
             if (labelEl) labelEl.innerText = horizonHours + 'h';
             summaryEl.style.display = 'block';
             if (legendEl) legendEl.style.display = 'inline';
+
+            const basisStr = forecast.calibSource === 'log'
+                ? `${forecast.sampleCount} Messwerten aus bis zu ${forecast.calibDays} Tagen`
+                : `${forecast.sampleCount} Messwerten der letzten 24h (Log noch im Aufbau)`;
+            summaryEl.title = `Geschätzt aus der GFS-Einstrahlungsprognose, kalibriert auf ${basisStr} dieser Anlage.`;
         }
 
         function renderPvHistoryChart(history) {
@@ -4279,11 +4324,13 @@
         updateActiveData();
         switchLayer('temp');
         loadPvData();
+        loadPvForecastLog().then(() => { if (livePvData) updatePvDashboardUI(); });
         animate();
         detectUserLocationAndFly();
         checkWeatherUpdate();
         setInterval(checkWeatherUpdate, 15 * 60 * 1000);
         setInterval(loadPvData, 60 * 1000); // FoxESS Daten alle 60 Sek. aktualisieren
+        setInterval(loadPvForecastLog, 30 * 60 * 1000); // Log wächst nur stündlich, seltener nachladen reicht
 
     </script>
 </body>
