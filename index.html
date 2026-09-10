@@ -2617,16 +2617,25 @@
             const now = Date.now();
             const dayMs = 24 * 3600 * 1000;
             const horizonEnd = forecast[forecast.length - 1].t;
+
+            // Kalendertag-Fenster (UTC-Mitternacht, dieselbe Grenze wie die Tagesgrenzen/Wochentag-
+            // Labels im Chart) statt rollierender 24h-Fenster ab "jetzt". Rollierende Fenster
+            // vermischen die zweite Hälfte eines Tages mit der ersten Hälfte des nächsten und
+            // verwischen dadurch echte Tag-zu-Tag-Unterschiede - z.B. sahen "Tag +2" und "Tag +3"
+            // trotz klar unterschiedlicher Einstrahlungsprognose fast identisch aus, weil beide
+            // Fenster je zur Hälfte einen besseren und einen schlechteren Tag anschnitten. Am
+            // 2026-09-10 real gemessen: rollierend 14.4/14.3 kWh, kalendertagsgenau 14.8/17.7 kWh
+            // (der dritte Tag war zusätzlich deutlich schlechter: 4.2 kWh statt der beschönigten
+            // rollierenden 14.3 kWh).
             const checkpoints = [];
-            for (let i = 0; i < 3; i++) {
-                const fromT = now + i * dayMs;
-                if (fromT >= horizonEnd) break;
-                const toT = Math.min(fromT + dayMs, horizonEnd);
+            let dayStart = Math.floor(now / dayMs) * dayMs + dayMs; // nächste UTC-Mitternacht nach jetzt
+            for (let i = 0; i < 3 && dayStart < horizonEnd; i++, dayStart += dayMs) {
+                const toT = Math.min(dayStart + dayMs, horizonEnd);
                 checkpoints.push({
                     label: `Tag +${i + 1}`,
-                    fromT, toT,
-                    kwh: integrateKwh(forecast, fromT, toT),
-                    eur: estimateRevenueEur(forecast, fromT, toT)
+                    fromT: dayStart, toT,
+                    kwh: integrateKwh(forecast, dayStart, toT),
+                    eur: estimateRevenueEur(forecast, dayStart, toT)
                 });
             }
             return checkpoints;
