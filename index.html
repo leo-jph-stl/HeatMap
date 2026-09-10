@@ -879,14 +879,13 @@
             ])
             .clamp(true);
 
-        // Sonneneinstrahlung (GHI, W/m^2): "inferno"-Farbskala (Schwarz -> Violett -> Rot ->
-        // Orange -> Gelb), eine wissenschaftlich validierte, wahrnehmungsgleichmäßige
-        // Sequential-Skala (eine Farbfamilie, durchgängig steigende Helligkeit in gleichmäßigen
-        // Schritten) - dadurch sind Intensitätsstufen klarer unterscheidbar als bei der vorigen,
-        // ungleichmäßig gestuften Version.
+        // Sonneneinstrahlung (GHI, W/m^2): "viridis"-Farbskala (dunkles Indigo -> Petrol -> Grün
+        // -> helles Gelbgrün) - wahrnehmungsgleichmäßig wie inferno, aber eine komplett andere
+        // Farbfamilie (durchläuft Blau-/Grüntöne statt Schwarz/Orange), dadurch visuell klar von
+        // jedem "Hitze"-Verlauf unterscheidbar.
         const colorScaleSolar = d3.scaleLinear()
             .domain([0, 122, 244, 367, 489, 611, 733, 856, 978, 1100])
-            .range(['#000004', '#1b0c41', '#4a0c6b', '#781c6d', '#a52c60', '#cf4446', '#ed6925', '#fb9a06', '#f7d03c', '#fcffa4'])
+            .range(['#440154', '#482878', '#3e4989', '#31688e', '#26828e', '#1f9e89', '#35b779', '#6ece58', '#b5de2b', '#fde725'])
             .clamp(true);
 
         function getInterpolatedData(lat, lng) {
@@ -3711,7 +3710,7 @@
                 dataMaterial.uniforms.u_maxVal.value = useFloat ? maxTempRange : 1.0;
                 if (dataMaterial.uniforms.u_texSize) dataMaterial.uniforms.u_texSize.value.set(1441.0, 721.0);
             } else if (mode === 'solar') {
-                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #000004 0%, #1b0c41 11.1%, #4a0c6b 22.2%, #781c6d 33.3%, #a52c60 44.4%, #cf4446 55.6%, #ed6925 66.7%, #fb9a06 77.8%, #f7d03c 88.9%, #fcffa4 100%)';
+                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #440154 0%, #482878 11.1%, #3e4989 22.2%, #31688e 33.3%, #26828e 44.4%, #1f9e89 55.6%, #35b779 66.7%, #6ece58 77.8%, #b5de2b 88.9%, #fde725 100%)';
                 dataMaterial.uniforms.u_colorRamp.value = colorRampSolarTex;
                 applySolarRangeAndLegend();
             } else {
