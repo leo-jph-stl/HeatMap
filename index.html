@@ -1342,15 +1342,28 @@
                         // Einstrahlung sagt nachts nichts über Bewölkung aus (überall ~0) - dort
                         // stattdessen echte Wolkendeckung zeigen. dayFactor blendet weich über die
                         // Dämmerungszone (0..u_nightThreshold W/m^2), statt hart am Terminator zu
-                        // schneiden. Hardware-bilineare Sample reicht für Wolken (kein Catmull-Rom
-                        // nötig, spart pro Pixel 32 Texturzugriffe).
+                        // schneiden.
+                        //
+                        // WICHTIG: für die Tag/Nacht-Entscheidung NICHT den Catmull-Rom-geglätteten
+                        // "val" nehmen - an der scharfen Einstrahlungs-Kante (Nachtseite ~0, direkt
+                        // daneben teils >300 W/m² nur 1-2 Gitterzellen weiter) kann eine Spline
+                        // überschießen und einen höheren Wert liefern als jeder echte Nachbarpunkt.
+                        // Das reichte, um die Nachtschwelle fälschlich zu überschreiten und weite
+                        // Teile der echten Nachtseite als "Tag" zu rendern. Bilineares Hardware-
+                        // Sampling ist mathematisch eine Konvexkombination der 4 Nachbarwerte und
+                        // kann per Definition nicht überschießen - dafür (und für die Wolken, die
+                        // ohnehin kein scharfes Muster brauchen) reicht es.
+                        float valSafeA = texture2D(u_dataA, vUv).r;
+                        float valSafeB = texture2D(u_dataB, vUv).r;
+                        float valSafe = mix(valSafeA, valSafeB, u_blend);
+
                         float cloudA = texture2D(u_cloudA, vUv).r;
                         float cloudB = texture2D(u_cloudB, vUv).r;
                         float cloud = clamp(mix(cloudA, cloudB, u_blend) / u_cloudMax, 0.0, 1.0);
                         vec3 nightClear = vec3(0.03, 0.035, 0.06);
                         vec3 nightCloud = vec3(0.5, 0.52, 0.56);
                         vec3 nightColor = mix(nightClear, nightCloud, cloud);
-                        float dayFactor = smoothstep(0.0, u_nightThreshold, val);
+                        float dayFactor = smoothstep(0.0, u_nightThreshold, valSafe);
                         vec3 col = mix(nightColor, dayColor, dayFactor);
                         gl_FragColor = vec4(col, u_opacity);
                         return;
@@ -1371,7 +1384,10 @@
                 u_cloudA: { value: cloudTextures[0] || null },
                 u_cloudB: { value: cloudTextures[0] || null },
                 u_showNightClouds: { value: 0.0 },
-                u_nightThreshold: { value: nightCloudThreshold },
+                // Im Uint8-Fallback (kein WebGL2) ist die Textur bereits auf 0..1 normalisiert
+                // (siehe buildTempDataTexture) - die Schwelle muss dort in derselben 0..1-Skala
+                // vorliegen wie valSafe, sonst würde sie nie (oder immer) greifen.
+                u_nightThreshold: { value: useFloat ? nightCloudThreshold : nightCloudThreshold / maxSolarRange },
                 u_cloudMax: { value: useFloat ? maxCloudRange : 1.0 }
             },
             transparent: true,
