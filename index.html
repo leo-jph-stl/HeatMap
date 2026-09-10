@@ -3271,18 +3271,46 @@
 
             if (data.length) {
                 const dataStart = data[0].t;
-                let dayStart = Math.floor(dataStart / dayMs) * dayMs;
+                const dFirst = new Date(dataStart);
+                // Lokaler Mitternachtsbeginn der Anlage (vermeidet UTC-Verschiebung um 2 Stunden):
+                let dayStart = new Date(dFirst.getFullYear(), dFirst.getMonth(), dFirst.getDate()).getTime();
                 while (dayStart < now) {
+                    const dayEnd = dayStart + dayMs;
                     const segStart = Math.max(dayStart, dataStart);
-                    const dayEnd = Math.min(dayStart + dayMs, now);
-                    if (dayEnd > segStart) {
-                        const rawKwh = integrateKwh(data, segStart, dayEnd);
+                    const segEnd = Math.min(dayEnd, now);
+                    if (segEnd > segStart) {
+                        const d = new Date(dayStart);
+                        const dateKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                        const isToday = (dayEnd >= now);
+                        const label = isToday ? 'Heute' : d.toLocaleDateString('de-DE', { weekday: 'short' });
+
+                        // Falls der offizielle FoxESS-Zählerstand vorliegt, diesen bevorzugen:
+                        let rawKwh = null;
+                        let kwh = null;
+                        if (isToday && livePvData && typeof livePvData.today_yield === 'number' && livePvData.today_yield > 0) {
+                            rawKwh = livePvData.today_yield;
+                            if (pvRevenueConfig.feedinBasis === 'feedin' && typeof livePvData.today_feedin === 'number') {
+                                kwh = livePvData.today_feedin;
+                            }
+                        } else if (livePvData && livePvData.daily_reports && livePvData.daily_reports[dateKey] && livePvData.daily_reports[dateKey].totals) {
+                            const repTotals = livePvData.daily_reports[dateKey].totals;
+                            if (typeof repTotals.generation === 'number' && repTotals.generation > 0) {
+                                rawKwh = repTotals.generation;
+                                if (pvRevenueConfig.feedinBasis === 'feedin' && typeof repTotals.feedin === 'number') {
+                                    kwh = repTotals.feedin;
+                                }
+                            }
+                        }
+
+                        if (rawKwh === null) {
+                            rawKwh = integrateKwh(data, segStart, segEnd);
+                        }
+                        if (kwh === null) {
+                            kwh = rawKwh * basisFactor;
+                        }
+
                         if (rawKwh >= 0.05) {
-                            const kwh = rawKwh * basisFactor;
-                            const eur = estimateRevenueEur(data, segStart, dayEnd);
-                            const d = new Date(dayStart);
-                            const dateKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-                            const label = (dayStart + dayMs >= now) ? 'Heute' : d.toLocaleDateString('de-DE', { weekday: 'short' });
+                            const eur = estimateRevenueEur(data, segStart, segEnd);
                             rows.push({ label, dateKey, kwh, rawKwh, eur, isForecast: false });
                         }
                     }
