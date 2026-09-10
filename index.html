@@ -3095,7 +3095,7 @@
                 && typeof livePvData.today_feedin === 'number' && livePvData.today_feedin >= 0) {
                 return Math.min(1, Math.max(0, livePvData.today_feedin / livePvData.today_yield));
             }
-            return 0.65; // realistischer Standardwert, falls Live-Zähler noch nicht vorliegen
+            return 1.0;
         }
 
         // Berechnet den typischen Haus-Energiebedarf für Abend, Nacht und frühen Morgen (18:00 - 07:00 Uhr)
@@ -3114,7 +3114,7 @@
                         for (const h of nightHours) {
                             dayNightKwh += (rep.loads[h] || 0);
                         }
-                        if (dayNightKwh > 0.5) {
+                        if (dayNightKwh > 0.1) {
                             nightLoadSum += dayNightKwh;
                             reportCount++;
                         }
@@ -3122,8 +3122,9 @@
                 }
             }
 
-            // Fallback auf 5.5 kWh, falls noch keine Historiendaten vorliegen
-            let baseReserve = (reportCount > 0) ? (nightLoadSum / reportCount) : 5.5;
+            // Ohne echte Messdaten -> 0 (keine künstlichen Schein-Annahmen)
+            if (reportCount === 0) return 0;
+            let baseReserve = nightLoadSum / reportCount;
 
             // Wochentag vs. Wochenende: Sa/So erfahrungsgemäß ca. 10% mehr Abend-/Nachtverbrauch
             const targetDate = targetTime ? new Date(targetTime) : new Date();
@@ -3478,7 +3479,23 @@
             const available = getAvailableHistoryDateKeys();
             if (!available.length) {
                 const sub = document.getElementById('pvHistorySubtitle');
-                if (sub) sub.innerText = 'Keine historischen Berichte verfügbar';
+                if (sub) sub.innerText = 'Noch keine archivierten Tagesberichte verfügbar';
+                const dayPillsEl = document.getElementById('pvHistoryDayPills');
+                if (dayPillsEl) dayPillsEl.innerHTML = '<span style="color:#777; font-size:10px; font-style:italic; padding:4px 0;">Keine archivierten Tage im Speicher</span>';
+                const kpiYieldEl = document.getElementById('pvHistKpiYield');
+                const kpiSelfEl = document.getElementById('pvHistKpiSelf');
+                const kpiFeedEl = document.getElementById('pvHistKpiFeedin');
+                const kpiAutarkyEl = document.getElementById('pvHistKpiAutarky');
+                if (kpiYieldEl) kpiYieldEl.innerText = '-- kWh';
+                if (kpiSelfEl) kpiSelfEl.innerText = '-- kWh';
+                if (kpiFeedEl) kpiFeedEl.innerText = '-- kWh';
+                if (kpiAutarkyEl) kpiAutarkyEl.innerText = '-- %';
+                const chartSvg = document.getElementById('pvHistory24hChart');
+                if (chartSvg) chartSvg.innerHTML = '<text x="190" y="52" fill="#777" font-size="10.5" text-anchor="middle">Keine stündlichen 24h-Messwerte vorhanden</text>';
+                const chartDateEl = document.getElementById('pvHistChartDate');
+                if (chartDateEl) chartDateEl.innerText = 'Keine Daten';
+                const tableBody = document.getElementById('pvHistHourlyTableBody');
+                if (tableBody) tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#666; padding:22px 0; font-style:italic;">Keine stündlichen Abrechnungsdaten verfügbar. Sobald FoxESS-Tagesberichte empfangen werden, erscheinen sie hier.</td></tr>';
                 return;
             }
 
