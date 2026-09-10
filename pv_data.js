@@ -5,9 +5,9 @@ window.foxessPvData = {
     "lng": 8.35
   },
   "solar_power": 0.0,
-  "house_load": 0.22,
+  "house_load": 0.37,
   "battery_soc": 66,
-  "battery_power": 0.17,
+  "battery_power": 0.37,
   "grid_feed_in": 0.0,
   "today_yield": 0.2,
   "device_status": "online",
@@ -790,5 +790,5 @@ window.foxessPvData = {
     }
   },
   "status": "online",
-  "last_updated": "2026-09-10T23:23:17.862514Z"
+  "last_updated": "2026-09-10T23:25:44.827099Z"
 };
