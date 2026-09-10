@@ -2811,10 +2811,14 @@
             const areaPts = plotPoints.length ? `${x(plotPoints[0].t).toFixed(1)},${H - PAD_B} ` + linePts + ` ${x(plotPoints[plotPoints.length - 1].t).toFixed(1)},${H - PAD_B}` : '';
             const forecastLinePts = fPlotPoints.map(p => `${x(p.t).toFixed(1)},${y(p.pv, pvMax).toFixed(1)}`).join(' ');
 
-            // Tagesgrenzen (Mitternacht) als dezente vertikale Linien + Wochentag-Label, nur im sichtbaren Fenster
-            let dayLines = '', dayLabels = '';
+            // Tagesgrenzen (Mitternacht) als dezente vertikale Linien + Wochentag-Label, nur im sichtbaren Fenster.
+            // Für bereits (teilweise) vergangene Tage kommt in derselben unteren Zeile wie die
+            // Prognose-Checkpoints zusätzlich die tatsächliche Tagesproduktion dazu - echte Messwerte,
+            // deshalb mit Nachkommastelle und ohne "≈", im Gegensatz zu den geschätzten Prognosezahlen.
+            let dayLines = '', dayLabels = '', actualDayLabels = '';
             const dayMs = 24 * 60 * 60 * 1000;
             const span = viewEnd - viewStart;
+            const nowForDays = Date.now();
             let dayStart = Math.ceil(viewStart / dayMs) * dayMs;
             for (; dayStart < viewEnd; dayStart += dayMs) {
                 const dxPos = x(dayStart).toFixed(1);
@@ -2822,19 +2826,31 @@
                 if (dayStart - viewStart > span * 0.07 && viewEnd - dayStart > span * 0.07) {
                     const wd = new Date(dayStart).toLocaleDateString('de-DE', { weekday: 'short' });
                     dayLabels += `<text x="${dxPos}" y="${PV_CHART_WEEKDAY_ROW_Y}" font-size="7" fill="#888" text-anchor="middle">${wd}</text>`;
+
+                    if (dayStart < nowForDays && data.length) {
+                        const segStart = Math.max(dayStart, data[0].t);
+                        const segEnd = Math.min(dayStart + dayMs, nowForDays);
+                        if (segEnd > segStart) {
+                            const actualKwh = integrateKwh(data, segStart, segEnd);
+                            const labelCx = x((segStart + segEnd) / 2).toFixed(1);
+                            actualDayLabels += `<text x="${labelCx}" y="${PV_CHART_FORECAST_ROW_Y}" font-size="7" fill="#fff" text-anchor="middle" opacity="0.85">${actualKwh.toFixed(1)} kWh</text>`;
+                        }
+                    }
                 }
             }
 
             // Prognose-Checkpoints (Tag +1/+2/+3): kumulierte kWh direkt unter dem jeweiligen
             // Zeitfenster im Chart platziert, in einer eigenen Zeile unterhalb der Wochentage, damit
-            // sich beide Beschriftungen nie überlappen.
+            // sich beide Beschriftungen nie überlappen. Mit "≈" und ohne Nachkommastelle, weil es sich
+            // um eine Schätzung handelt - eine Nachkommastelle würde eine Genauigkeit vortäuschen, die
+            // die Prognose nicht hat.
             let forecastCheckpointLabels = '';
             if (forecast) {
                 computeForecastCheckpoints().forEach(cp => {
                     const centerT = (cp.fromT + cp.toT) / 2;
                     if (centerT < viewStart || centerT > viewEnd) return;
                     const cx = x(centerT).toFixed(1);
-                    forecastCheckpointLabels += `<text x="${cx}" y="${PV_CHART_FORECAST_ROW_Y}" font-size="7" fill="#ffdb00" text-anchor="middle" opacity="0.85">${cp.kwh.toFixed(1)} kWh</text>`;
+                    forecastCheckpointLabels += `<text x="${cx}" y="${PV_CHART_FORECAST_ROW_Y}" font-size="7" fill="#ffdb00" text-anchor="middle" opacity="0.85">≈${Math.round(cp.kwh)} kWh</text>`;
                 });
             }
 
@@ -2896,6 +2912,7 @@
                 <polyline points="${forecastLinePts}" fill="none" stroke="#ffdb00" stroke-width="1.5" stroke-dasharray="3,2.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.6"></polyline>
                 ${dayLabels}
                 ${xAxis}
+                ${actualDayLabels}
                 ${forecastCheckpointLabels}
                 ${selectedSvg}
             `;
