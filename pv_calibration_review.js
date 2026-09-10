@@ -11,6 +11,7 @@ const fs = require('fs');
 
 const LOG_FILE = 'pv_forecast_log.json';
 const HISTORY_FILE = 'pv_calibration_history.json';
+const FORECAST_SOLAR_LOG_FILE = 'forecast_solar_log.json';
 const TZ_OFFSET_MS = 2 * 3600 * 1000; // Europe/Berlin, September = CEST (UTC+2)
 
 function median(arr) {
@@ -92,6 +93,28 @@ function weeklyFitCheck(rows, medianRatio, capKw) {
 
 function round2(v) { return Math.round(v * 100) / 100; }
 
+// Reichert die Wochen-Fit-Tage um forecast.solar als zweite, UNABHÄNGIGE Prognosequelle an
+// (10 kWp/35°/Süd-Referenzsystem - siehe fetch_forecast_solar.js). Anders als "modeledKwh" (unser
+// eigener In-Sample-Fit gegen die schon bekannte Einstrahlung) ist das hier eine echte, VOR dem
+// jeweiligen Tag abgegebene Prognose, da wir für jeden Tag die zeitlich letzte Momentaufnahme
+// nehmen, die noch VOR dessen Beginn abgerufen wurde. Kein 1:1-Vergleich mit unserem Modell also
+// (unseres ist In-Sample, forecast.solar ist echtes Day-Ahead) - im Bericht klar auseinanderhalten.
+function attachForecastSolarComparison(days) {
+    if (!fs.existsSync(FORECAST_SOLAR_LOG_FILE)) return days;
+    let fsLog;
+    try { fsLog = JSON.parse(fs.readFileSync(FORECAST_SOLAR_LOG_FILE, 'utf8')); } catch (e) { return days; }
+    if (!Array.isArray(fsLog) || !fsLog.length) return days;
+
+    return days.map(d => {
+        const dayStartMs = Date.parse(d.date + 'T00:00:00Z');
+        const candidates = fsLog.filter(e => e.targetDate === d.date && e.fetchedAt < dayStartMs);
+        if (!candidates.length) return { ...d, forecastSolarKwh: null, forecastSolarPctError: null };
+        const best = candidates.reduce((a, b) => (b.fetchedAt > a.fetchedAt ? b : a));
+        const pctError = d.actualKwh > 0.01 ? round2(((best.kwh - d.actualKwh) / d.actualKwh) * 100) : null;
+        return { ...d, forecastSolarKwh: best.kwh, forecastSolarPctError: pctError };
+    });
+}
+
 function run() {
     if (!fs.existsSync(LOG_FILE)) {
         console.log(`${LOG_FILE} nicht gefunden - noch keine Kalibrierdaten vorhanden.`);
@@ -107,6 +130,7 @@ function run() {
     const flags = findDataQualityFlags(rows);
     const capKw = Math.max(...rows.map(r => r.pv)) * 1.05;
     const fit = calib ? weeklyFitCheck(rows, calib.medianRatio, capKw) : null;
+    if (fit) fit.days = attachForecastSolarComparison(fit.days);
 
     let history = [];
     if (fs.existsSync(HISTORY_FILE)) {
@@ -154,15 +178,26 @@ function run() {
     }
     lines.push('');
     if (fit && fit.days.length) {
-        lines.push('**Wochen-Fit-Check (In-Sample – misst, wie gut das Modell zu den Daten passt, aus denen es selbst kalibriert wurde; KEIN Test echter Vorhersagegüte, da keine im Voraus gespeicherten Prognosen existieren):**');
+        lines.push('**Wochen-Fit-Check:**');
+        lines.push('- "Modell (unser)" ist ein **In-Sample-Fit**: misst, wie gut unsere Kalibrierung zu den Daten passt, aus denen sie selbst berechnet wurde - KEIN Test echter Vorhersagegüte, da wir keine im Voraus gespeicherten eigenen Prognosen archivieren.');
+        lines.push('- "forecast.solar" ist dagegen eine ECHTE, vor dem jeweiligen Tag abgerufene Vergleichsprognose (10 kWp/35°/Süd-Referenzsystem, siehe fetch_forecast_solar.js) - nicht zwingend identisch mit der echten Anlage, aber ein unabhängiger externer Anhaltspunkt.');
         lines.push('');
-        lines.push('| Tag | Ist (kWh) | Modell (kWh) | Abweichung |');
-        lines.push('|---|---|---|---|');
+        lines.push('| Tag | Ist (kWh) | Modell (unser, kWh) | Abw. unser | forecast.solar (kWh) | Abw. forecast.solar |');
+        lines.push('|---|---|---|---|---|---|');
         fit.days.forEach(d => {
-            lines.push(`| ${d.date} | ${d.actualKwh.toFixed(1)} | ${d.modeledKwh.toFixed(1)} | ${d.pctError !== null ? d.pctError.toFixed(1) + '%' : '–'} |`);
+            const fsKwh = d.forecastSolarKwh !== undefined && d.forecastSolarKwh !== null ? d.forecastSolarKwh.toFixed(1) : '–';
+            const fsErr = d.forecastSolarPctError !== undefined && d.forecastSolarPctError !== null ? d.forecastSolarPctError.toFixed(1) + '%' : '–';
+            lines.push(`| ${d.date} | ${d.actualKwh.toFixed(1)} | ${d.modeledKwh.toFixed(1)} | ${d.pctError !== null ? d.pctError.toFixed(1) + '%' : '–'} | ${fsKwh} | ${fsErr} |`);
         });
         lines.push('');
-        lines.push(`Mittlerer absoluter Fehler diese Woche: ${fit.meanAbsPctError !== null ? fit.meanAbsPctError.toFixed(1) + '%' : 'n/a'}`);
+        lines.push(`Mittlerer absoluter Fehler diese Woche (unser Modell, In-Sample): ${fit.meanAbsPctError !== null ? fit.meanAbsPctError.toFixed(1) + '%' : 'n/a'}`);
+        const fsErrors = fit.days.filter(d => d.forecastSolarPctError !== null && d.forecastSolarPctError !== undefined);
+        if (fsErrors.length) {
+            const fsMeanAbs = round2(fsErrors.reduce((s, d) => s + Math.abs(d.forecastSolarPctError), 0) / fsErrors.length);
+            lines.push(`Mittlerer absoluter Fehler diese Woche (forecast.solar, echtes Day-Ahead): ${fsMeanAbs.toFixed(1)}%`);
+        } else {
+            lines.push('forecast.solar: noch keine Vergleichswerte für diese Woche vorhanden (Log wächst erst seit heute).');
+        }
     } else {
         lines.push('**Wochen-Fit-Check:** keine vollständigen Tage in den letzten 7 Tagen im Log.');
     }
