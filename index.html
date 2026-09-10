@@ -1086,7 +1086,7 @@
                 </div>
             </div>
 
-            <!-- 1. 24h Energiefluss (PV-Erzeugung, Einspeisung, Hausverbrauch) Liniendiagramm (wie links) -->
+            <!-- 1. 24h Energiefluss (PV-Erzeugung hochauflösend, Einspeisung, Hausverbrauch) -->
             <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 9px; margin-bottom: 7px;">
                 <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
                     <div style="font-size: 10px; color: #888; display: flex; align-items: center; gap: 6px;">
@@ -1105,37 +1105,29 @@
                     </div>
                     <span id="pvHistEnergyVal" style="font-size: 9px; color: #aaa;"></span>
                 </div>
-                <svg id="pvHistEnergyChart" viewBox="0 0 380 78" preserveAspectRatio="none" style="width:100%; height:78px; display:block; overflow:visible; cursor:crosshair; user-select:none;"></svg>
+                <svg id="pvHistEnergyChart" viewBox="0 0 380 100" preserveAspectRatio="none" style="width:100%; height:100px; display:block; overflow:visible; cursor:crosshair; user-select:none;"></svg>
             </div>
 
-            <!-- 2. 24h Strompreis (Day-Ahead) Liniendiagramm (wie links) -->
-            <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 9px; margin-bottom: 7px;">
-                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
-                    <div style="font-size: 10px; color: #888;">
-                        <span>Strompreis (Day-Ahead)</span>
-                        <span style="font-size: 8.5px; color: #666; margin-left: 4px;">EPEX Spotmarkt (aWATTar)</span>
-                    </div>
-                    <span id="pvHistPriceVal" style="font-size: 9px; color: #00e5ff; font-weight: 600;"></span>
-                </div>
-                <svg id="pvHistPriceChart" viewBox="0 0 380 70" preserveAspectRatio="none" style="width:100%; height:70px; display:block; overflow:visible; cursor:crosshair; user-select:none;"></svg>
-            </div>
-
-            <!-- Stündliche Tabelle -->
+            <!-- Stündliche Abrechnungstabelle mit EPEX-Börsenpreis & Erlös nach Vorbild links -->
             <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 7px 8px;">
-                <div style="font-size: 10px; font-weight: 600; color: #bbb; margin-bottom: 5px;">Stündliche Abrechnungsdetails</div>
-                <div style="max-height: 150px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(0,229,255,0.2) transparent;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    <div style="font-size: 10px; font-weight: 600; color: #bbb;">Stündliche Abrechnungsdetails</div>
+                    <div style="font-size: 8.5px; color: #777;">EPEX Day-Ahead Vergütung</div>
+                </div>
+                <div style="max-height: 190px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(0,229,255,0.2) transparent;">
                     <table style="width: 100%; border-collapse: collapse; font-size: 9.5px;">
                         <thead>
                             <tr style="color: #888; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                                <th style="text-align: left; padding: 2px 3px;">Uhr</th>
-                                <th style="padding: 2px 3px;">PV</th>
-                                <th style="padding: 2px 3px;">Haus</th>
-                                <th style="padding: 2px 3px;">Einspeis.</th>
-                                <th style="padding: 2px 3px;">Börse</th>
-                                <th style="padding: 2px 3px;">Erlös</th>
+                                <th style="text-align: left; padding: 3px 4px;">Zeitraum</th>
+                                <th style="padding: 3px 4px;">PV</th>
+                                <th style="padding: 3px 4px;">Haus</th>
+                                <th style="padding: 3px 4px;">Einspeis.</th>
+                                <th style="padding: 3px 4px;">Börse (Ø)</th>
+                                <th style="padding: 3px 4px;">Erlös</th>
                             </tr>
                         </thead>
                         <tbody id="pvHistHourlyTableBody"></tbody>
+                        <tfoot id="pvHistHourlyTableFoot"></tfoot>
                     </table>
                 </div>
             </div>
@@ -3527,15 +3519,13 @@
                 if (kpiFeedEl) kpiFeedEl.innerText = '-- kWh';
                 if (kpiAutarkyEl) kpiAutarkyEl.innerText = '-- %';
                 const energySvg = document.getElementById('pvHistEnergyChart');
-                const priceSvg = document.getElementById('pvHistPriceChart');
-                if (energySvg) energySvg.innerHTML = '<text x="190" y="42" fill="#777" font-size="10" text-anchor="middle">Keine stündlichen 24h-Messwerte vorhanden</text>';
-                if (priceSvg) priceSvg.innerHTML = '<text x="190" y="38" fill="#777" font-size="10" text-anchor="middle">Keine Preisdaten vorhanden</text>';
+                if (energySvg) energySvg.innerHTML = '<text x="190" y="52" fill="#777" font-size="10" text-anchor="middle">Keine stündlichen 24h-Messwerte vorhanden</text>';
                 const energyValEl = document.getElementById('pvHistEnergyVal');
-                const priceValEl = document.getElementById('pvHistPriceVal');
                 if (energyValEl) energyValEl.innerText = '--';
-                if (priceValEl) priceValEl.innerText = '--';
                 const tableBody = document.getElementById('pvHistHourlyTableBody');
+                const tableFoot = document.getElementById('pvHistHourlyTableFoot');
                 if (tableBody) tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#666; padding:22px 0; font-style:italic;">Keine stündlichen Abrechnungsdaten verfügbar. Sobald FoxESS-Tagesberichte empfangen werden, erscheinen sie hier.</td></tr>';
+                if (tableFoot) tableFoot.innerHTML = '';
                 return;
             }
 
@@ -3551,10 +3541,9 @@
             const kpiFeedEl = document.getElementById('pvHistKpiFeedin');
             const kpiAutarkyEl = document.getElementById('pvHistKpiAutarky');
             const energySvg = document.getElementById('pvHistEnergyChart');
-            const priceSvg = document.getElementById('pvHistPriceChart');
             const energyValEl = document.getElementById('pvHistEnergyVal');
-            const priceValEl = document.getElementById('pvHistPriceVal');
             const tableBody = document.getElementById('pvHistHourlyTableBody');
+            const tableFoot = document.getElementById('pvHistHourlyTableFoot');
 
             const nowD = new Date();
             const todayKey = nowD.getFullYear() + '-' + String(nowD.getMonth() + 1).padStart(2, '0') + '-' + String(nowD.getDate()).padStart(2, '0');
@@ -3588,15 +3577,46 @@
             const fullDateStr = dActive.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
             if (subEl) subEl.innerText = fullDateStr;
 
-            // 2. KPIs
-            const genArr = rep.generation || [];
+            // 2. Echte Solar-Erzeugung und hochauflösende 5-Minuten-Telemetrie prüfen
+            const dayStart = new Date(activeDateKey + 'T00:00:00').getTime();
+            const dayEnd = dayStart + 24 * 3600 * 1000;
+
+            const history3d = (livePvData && livePvData.history_3d) ? livePvData.history_3d : [];
+            const dayPts = history3d.filter(p => {
+                const pt = new Date(p.t).getTime();
+                return pt >= dayStart && pt < dayEnd;
+            });
+
             const feedArr = rep.feedin || [];
             const loadArr = rep.loads || [];
             const gridArr = rep.gridConsumption || [];
 
+            let genArr = [];
+            if (dayPts.length >= 10) {
+                // Echte 5-Minuten-Solartelemetrie zu exakten Stunden-kWh integrieren (nachts physikalisch exakt 0.00 kWh)
+                const hourlySolarKwh = new Array(24).fill(0);
+                const hourlySolarCounts = new Array(24).fill(0);
+                dayPts.forEach(p => {
+                    const hour = new Date(p.t).getHours();
+                    if (hour >= 0 && hour < 24) {
+                        hourlySolarKwh[hour] += (typeof p.pv === 'number' ? p.pv : 0);
+                        hourlySolarCounts[hour]++;
+                    }
+                });
+                genArr = hourlySolarKwh.map((sum, h) => {
+                    const count = hourlySolarCounts[h];
+                    return count > 0 ? (sum / count) : 0;
+                });
+            } else {
+                // Fallback für ältere Berichte: Nachtstunden (0-5 Uhr & 21-23 Uhr) auf 0 klemmen,
+                // da FoxESS Inverter-Batterieentladung fälschlich als "generation" deklariert
+                const rawGen = rep.generation || [];
+                genArr = rawGen.map((v, h) => (h < 6 || h > 20 ? 0.0 : (typeof v === 'number' ? v : 0)));
+            }
+
             const sumArr = arr => arr.reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
             const totals = rep.totals || {};
-            const genKwh = (typeof totals.generation === 'number') ? totals.generation : sumArr(genArr);
+            const genKwh = sumArr(genArr);
             const feedKwh = (typeof totals.feedin === 'number') ? totals.feedin : sumArr(feedArr);
             const loadKwh = (typeof totals.loads === 'number') ? totals.loads : sumArr(loadArr);
             const gridKwh = (typeof totals.gridConsumption === 'number') ? totals.gridConsumption : sumArr(gridArr);
@@ -3612,8 +3632,6 @@
             if (kpiAutarkyEl) kpiAutarkyEl.innerHTML = `${gridKwh.toFixed(1)} kWh <span style="font-size:9.5px; font-weight:normal; color:#888;">· ${autarkyPct} %</span>`;
 
             // 3. Stündliche Börsenpreise finden
-            const dayStart = new Date(activeDateKey + 'T00:00:00').getTime();
-            const dayEnd = dayStart + 24 * 3600 * 1000;
             const dayPrices = (priceData || []).filter(p => p.endT > dayStart && p.t < dayEnd);
             const hourlyPrices = [];
             for (let h = 0; h < 24; h++) {
@@ -3622,42 +3640,61 @@
                 hourlyPrices.push(match ? match.ctKwh : null);
             }
 
-            // 4. Dual SVG Charts (24h Energiefluss + 24h Strompreis Day-Ahead)
-            const W = 380, PAD_L = 26, PAD_R = 14;
+            // 4. 24h Energiefluss SVG Chart (Detailgetreu wie links)
+            const W = 380, H = 100;
+            const PAD_L = 26, PAD_R = 14, PAD_T = 10, PAD_B = 18;
             const plotW = W - PAD_L - PAD_R;
+            const plotH = H - PAD_T - PAD_B;
             const slotW = plotW / 24;
             const hourTicks = [0, 6, 12, 18, 24];
 
-            // --- Chart A: 24h Energiefluss (H = 78) ---
-            const H_E = 78, PAD_T_E = 8, PAD_B_E = 16;
-            const plotH_E = H_E - PAD_T_E - PAD_B_E;
-
-            let maxEnergy = 0.5;
+            let maxEnergy = 1.0;
             for (let h = 0; h < 24; h++) {
                 maxEnergy = Math.max(maxEnergy, genArr[h] || 0, feedArr[h] || 0, loadArr[h] || 0);
             }
+            if (dayPts.length >= 10) {
+                for (const p of dayPts) maxEnergy = Math.max(maxEnergy, p.pv);
+            }
             maxEnergy = Math.max(1.0, Math.ceil(maxEnergy * 1.15 * 2) / 2);
-            const yE = (v) => (H_E - PAD_B_E) - Math.min(1, Math.max(0, (v || 0) / maxEnergy)) * plotH_E;
+            const yE = (v) => (H - PAD_B) - Math.min(1, Math.max(0, (v || 0) / maxEnergy)) * plotH;
 
-            const genPts = [], feedPts = [], loadPts = [];
+            // PV-Kurve: Hochauflösende 5-Minuten-Punkte (wie links im Hauptgraphen)
+            let genPts = [];
+            let genAreaPts = '';
+            if (dayPts.length >= 10) {
+                const sortedPts = [...dayPts].sort((a, b) => new Date(a.t).getTime() - new Date(b.t).getTime());
+                genPts = sortedPts.map(p => {
+                    const ptTime = new Date(p.t).getTime();
+                    const frac = Math.max(0, Math.min(1, (ptTime - dayStart) / (24 * 3600 * 1000)));
+                    const px = (PAD_L + frac * plotW).toFixed(1);
+                    const py = yE(p.pv).toFixed(1);
+                    return `${px},${py}`;
+                });
+                genAreaPts = `${PAD_L},${H - PAD_B} ` + genPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
+            } else {
+                for (let h = 0; h < 24; h++) {
+                    const cx = (PAD_L + (h + 0.5) * slotW).toFixed(1);
+                    genPts.push(`${cx},${yE(genArr[h] || 0).toFixed(1)}`);
+                }
+                genAreaPts = `${PAD_L},${H - PAD_B} ` + genPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
+            }
+
+            const feedPts = [], loadPts = [];
             for (let h = 0; h < 24; h++) {
                 const cx = (PAD_L + (h + 0.5) * slotW).toFixed(1);
-                genPts.push(`${cx},${yE(genArr[h] || 0).toFixed(1)}`);
                 feedPts.push(`${cx},${yE(feedArr[h] || 0).toFixed(1)}`);
                 loadPts.push(`${cx},${yE(loadArr[h] || 0).toFixed(1)}`);
             }
-
-            const genAreaPts = `${PAD_L},${H_E - PAD_B_E} ` + genPts.join(' ') + ` ${W - PAD_R},${H_E - PAD_B_E}`;
-            const feedAreaPts = `${PAD_L},${H_E - PAD_B_E} ` + feedPts.join(' ') + ` ${W - PAD_R},${H_E - PAD_B_E}`;
-            const loadAreaPts = `${PAD_L},${H_E - PAD_B_E} ` + loadPts.join(' ') + ` ${W - PAD_R},${H_E - PAD_B_E}`;
+            const feedAreaPts = `${PAD_L},${H - PAD_B} ` + feedPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
+            const loadAreaPts = `${PAD_L},${H - PAD_B} ` + loadPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
 
             let gridEnergySvg = '';
             hourTicks.forEach(h => {
                 const tx = (h === 24) ? (W - PAD_R) : (PAD_L + (h / 24) * plotW);
-                gridEnergySvg += `<line x1="${tx.toFixed(1)}" y1="${PAD_T_E}" x2="${tx.toFixed(1)}" y2="${H_E - PAD_B_E}" stroke="rgba(255,255,255,0.08)" stroke-width="1" stroke-dasharray="2,2"/>`;
+                gridEnergySvg += `<line x1="${tx.toFixed(1)}" y1="${PAD_T}" x2="${tx.toFixed(1)}" y2="${H - PAD_B}" stroke="rgba(255,255,255,0.08)" stroke-width="1" stroke-dasharray="2,2"/>`;
                 const anchor = (h === 0) ? 'start' : ((h === 24) ? 'end' : 'middle');
                 const labelText = (h === 24) ? '24:00' : (String(h).padStart(2, '0') + ':00');
-                gridEnergySvg += `<text x="${tx.toFixed(1)}" y="${H_E - 3}" font-size="7" fill="#666" text-anchor="${anchor}">${labelText}</text>`;
+                gridEnergySvg += `<text x="${tx.toFixed(1)}" y="${H - 3}" font-size="7" fill="#666" text-anchor="${anchor}">${labelText}</text>`;
             });
 
             let yAxisEnergySvg = '';
@@ -3666,26 +3703,29 @@
                 yAxisEnergySvg += `<line x1="${PAD_L}" y1="${yy.toFixed(1)}" x2="${W - PAD_R}" y2="${yy.toFixed(1)}" stroke="rgba(255,255,255,${i === 2 ? 0.14 : 0.07})" stroke-width="1"/>`;
                 yAxisEnergySvg += `<text x="${PAD_L - 4}" y="${(yy + 2.4).toFixed(1)}" font-size="7" fill="#666" text-anchor="end">${v.toFixed(1)}</text>`;
             });
-            yAxisEnergySvg += `<text x="${PAD_L - 4}" y="${PAD_T_E + 4}" font-size="6" fill="#555" text-anchor="end">kWh</text>`;
+            yAxisEnergySvg += `<text x="${PAD_L - 4}" y="${PAD_T + 4}" font-size="6" fill="#555" text-anchor="end">kW</text>`;
 
             let hoverEnergySlots = '';
             for (let h = 0; h < 24; h++) {
                 const sx = PAD_L + h * slotW;
-                hoverEnergySlots += `<rect class="pv-hist-sync-hover" data-h="${h}" x="${sx.toFixed(1)}" y="0" width="${slotW.toFixed(1)}" height="${H_E}" fill="transparent" style="cursor:crosshair;"></rect>`;
+                hoverEnergySlots += `<rect class="pv-hist-sync-hover" data-h="${h}" x="${sx.toFixed(1)}" y="0" width="${slotW.toFixed(1)}" height="${H}" fill="transparent" style="cursor:crosshair;"></rect>`;
             }
 
             if (energySvg) {
                 energySvg.innerHTML = `
                     ${gridEnergySvg}
                     ${yAxisEnergySvg}
+                    <!-- Flachenfüllungen -->
                     <polygon points="${loadAreaPts}" fill="rgba(255,145,0,0.08)"/>
                     <polygon points="${genAreaPts}" fill="rgba(255,219,0,0.18)"/>
                     <polygon points="${feedAreaPts}" fill="rgba(0,229,255,0.14)"/>
+                    <!-- Linienzüge -->
                     <polyline points="${loadPts.join(' ')}" fill="none" stroke="#ff9100" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
                     <polyline points="${feedPts.join(' ')}" fill="none" stroke="#00e5ff" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
                     <polyline points="${genPts.join(' ')}" fill="none" stroke="#ffdb00" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
+                    <!-- Fadenkreuz-Cursor -->
                     <g id="pvHistEnergyCursor" style="display:none; pointer-events:none;">
-                        <line id="pvHistEnergyCursorLine" x1="0" y1="${PAD_T_E}" x2="0" y2="${H_E - PAD_B_E}" stroke="rgba(255,255,255,0.35)" stroke-width="1" stroke-dasharray="2,2"/>
+                        <line id="pvHistEnergyCursorLine" x1="0" y1="${PAD_T}" x2="0" y2="${H - PAD_B}" stroke="rgba(255,255,255,0.35)" stroke-width="1" stroke-dasharray="2,2"/>
                         <circle id="pvHistDotGen" cx="0" cy="0" r="2.5" fill="#ffdb00" stroke="#000" stroke-width="0.6"/>
                         <circle id="pvHistDotFeed" cx="0" cy="0" r="2.5" fill="#00e5ff" stroke="#000" stroke-width="0.6"/>
                         <circle id="pvHistDotLoad" cx="0" cy="0" r="2.5" fill="#ff9100" stroke="#000" stroke-width="0.6"/>
@@ -3694,88 +3734,7 @@
                 `;
             }
 
-            // --- Chart B: 24h Strompreis Day-Ahead (H = 70) ---
-            const H_P = 70, PAD_T_P = 8, PAD_B_P = 16;
-            const plotH_P = H_P - PAD_T_P - PAD_B_P;
-
-            const validPrices = hourlyPrices.filter(p => p !== null && !isNaN(p));
-            let minP = 0, maxP = 20;
-            if (validPrices.length > 0) {
-                minP = Math.floor(Math.min(...validPrices, 0));
-                maxP = Math.ceil(Math.max(...validPrices, 10));
-                if (maxP === minP) maxP = minP + 10;
-            }
-            const pRange = (maxP - minP) || 1;
-            const yP = (v) => (H_P - PAD_B_P) - ((v - minP) / pRange) * plotH_P;
-            const zeroY = Math.max(PAD_T_P, Math.min(H_P - PAD_B_P, yP(0))).toFixed(1);
-
-            const stepPts = [];
-            for (let h = 0; h < 24; h++) {
-                const p = hourlyPrices[h];
-                const x0 = (PAD_L + h * slotW).toFixed(1);
-                const x1 = (PAD_L + (h + 1) * slotW).toFixed(1);
-                if (p !== null && !isNaN(p)) {
-                    const yy = yP(p).toFixed(1);
-                    stepPts.push(`${x0},${yy}`);
-                    stepPts.push(`${x1},${yy}`);
-                }
-            }
-
-            let priceAreaSvg = '', priceLineSvg = '';
-            if (stepPts.length > 0) {
-                const priceAreaPts = `${PAD_L},${zeroY} ` + stepPts.join(' ') + ` ${W - PAD_R},${zeroY}`;
-                priceAreaSvg = `<polygon points="${priceAreaPts}" fill="rgba(0,229,255,0.15)"/>`;
-                priceLineSvg = `<polyline points="${stepPts.join(' ')}" fill="none" stroke="#00e5ff" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>`;
-            }
-
-            let zeroLineSvg = '';
-            if (minP < 0 && maxP > 0) {
-                zeroLineSvg = `
-                    <line x1="${PAD_L}" y1="${zeroY}" x2="${W - PAD_R}" y2="${zeroY}" stroke="rgba(255,80,80,0.5)" stroke-width="1" stroke-dasharray="2,2"/>
-                    <text x="${W - PAD_R}" y="${(parseFloat(zeroY) - 2).toFixed(1)}" font-size="6" fill="#ff5050" text-anchor="end">0 ct</text>
-                `;
-            }
-
-            let gridPriceSvg = '';
-            hourTicks.forEach(h => {
-                const tx = (h === 24) ? (W - PAD_R) : (PAD_L + (h / 24) * plotW);
-                gridPriceSvg += `<line x1="${tx.toFixed(1)}" y1="${PAD_T_P}" x2="${tx.toFixed(1)}" y2="${H_P - PAD_B_P}" stroke="rgba(255,255,255,0.08)" stroke-width="1" stroke-dasharray="2,2"/>`;
-                const anchor = (h === 0) ? 'start' : ((h === 24) ? 'end' : 'middle');
-                const labelText = (h === 24) ? '24:00' : (String(h).padStart(2, '0') + ':00');
-                gridPriceSvg += `<text x="${tx.toFixed(1)}" y="${H_P - 3}" font-size="7" fill="#666" text-anchor="${anchor}">${labelText}</text>`;
-            });
-
-            let yAxisPriceSvg = '';
-            const midP = Math.round((minP + maxP) / 2);
-            [minP, midP, maxP].forEach((v, i) => {
-                const yy = yP(v);
-                yAxisPriceSvg += `<line x1="${PAD_L}" y1="${yy.toFixed(1)}" x2="${W - PAD_R}" y2="${yy.toFixed(1)}" stroke="rgba(255,255,255,${i === 2 ? 0.14 : 0.07})" stroke-width="1"/>`;
-                yAxisPriceSvg += `<text x="${PAD_L - 4}" y="${(yy + 2.4).toFixed(1)}" font-size="7" fill="#666" text-anchor="end">${v}</text>`;
-            });
-            yAxisPriceSvg += `<text x="${PAD_L - 4}" y="${PAD_T_P + 4}" font-size="6" fill="#555" text-anchor="end">ct</text>`;
-
-            let hoverPriceSlots = '';
-            for (let h = 0; h < 24; h++) {
-                const sx = PAD_L + h * slotW;
-                hoverPriceSlots += `<rect class="pv-hist-sync-hover" data-h="${h}" x="${sx.toFixed(1)}" y="0" width="${slotW.toFixed(1)}" height="${H_P}" fill="transparent" style="cursor:crosshair;"></rect>`;
-            }
-
-            if (priceSvg) {
-                priceSvg.innerHTML = `
-                    ${gridPriceSvg}
-                    ${yAxisPriceSvg}
-                    ${zeroLineSvg}
-                    ${priceAreaSvg}
-                    ${priceLineSvg}
-                    <g id="pvHistPriceCursor" style="display:none; pointer-events:none;">
-                        <line id="pvHistPriceCursorLine" x1="0" y1="${PAD_T_P}" x2="0" y2="${H_P - PAD_B_P}" stroke="rgba(0,229,255,0.45)" stroke-width="1" stroke-dasharray="2,2"/>
-                        <circle id="pvHistDotPrice" cx="0" cy="0" r="2.5" fill="#00e5ff" stroke="#000" stroke-width="0.6"/>
-                    </g>
-                    ${hoverPriceSlots}
-                `;
-            }
-
-            // --- Synchronized Crosshairs & Value Inspection ---
+            // --- Crosshair & Hover-Werteinspektion ---
             const syncHoverEls = container.querySelectorAll('.pv-hist-sync-hover');
             syncHoverEls.forEach(el => {
                 el.addEventListener('mouseenter', () => {
@@ -3785,6 +3744,14 @@
                     const l = loadArr[h] || 0;
                     const f = feedArr[h] || 0;
                     const p = hourlyPrices[h];
+
+                    let eur = 0;
+                    if (pvRevenueConfig.mode === 'eeg') {
+                        const effectiveRate = (pvRevenueConfig.applySolarSpitzen && p !== null && p < 0) ? 0 : (pvRevenueConfig.eegRateCt || 8.20);
+                        eur = f * (effectiveRate / 100);
+                    } else {
+                        eur = (p !== null) ? (f * (p / 100)) : (f * ((pvRevenueConfig.eegRateCt || 8.20) / 100));
+                    }
 
                     const curE = document.getElementById('pvHistEnergyCursor');
                     const lineE = document.getElementById('pvHistEnergyCursorLine');
@@ -3803,44 +3770,24 @@
                         dotL.setAttribute('cy', yE(l).toFixed(1));
                     }
 
-                    const curP = document.getElementById('pvHistPriceCursor');
-                    const lineP = document.getElementById('pvHistPriceCursorLine');
-                    const dotP = document.getElementById('pvHistDotPrice');
-                    if (curP && lineP && dotP) {
-                        curP.style.display = '';
-                        lineP.setAttribute('x1', cx.toFixed(1));
-                        lineP.setAttribute('x2', cx.toFixed(1));
-                        if (p !== null && !isNaN(p)) {
-                            dotP.style.display = '';
-                            dotP.setAttribute('cx', cx.toFixed(1));
-                            dotP.setAttribute('cy', yP(p).toFixed(1));
-                        } else {
-                            dotP.style.display = 'none';
-                        }
-                    }
-
                     const timeRange = `${String(h).padStart(2, '0')}:00 - ${String(h + 1).padStart(2, '0')}:00`;
+                    const pStr = (p !== null && !isNaN(p)) ? `${(p >= 0 ? '+' : '')}${p.toFixed(1)} ct` : '--';
+                    const pCol = (p !== null && p < 0) ? '#ff5252' : '#00e5ff';
+                    const eurCol = (eur > 0.005) ? '#00ff88' : (eur < -0.005 ? '#ff5252' : '#888');
+
                     if (energyValEl) {
-                        energyValEl.innerHTML = `<b style="color:#ddd;">${timeRange}:</b> <span style="color:#ffdb00;">${g.toFixed(2)}</span> · <span style="color:#00e5ff;">${f.toFixed(2)}</span> · <span style="color:#ff9100;">${l.toFixed(2)} kWh</span>`;
-                    }
-                    if (priceValEl) {
-                        const pStr = (p !== null && !isNaN(p)) ? `${(p >= 0 ? '+' : '')}${p.toFixed(2)} ct/kWh` : '-- ct/kWh';
-                        const pCol = (p !== null && p < 0) ? '#ff5252' : '#00e5ff';
-                        priceValEl.innerHTML = `<b style="color:#ddd;">${timeRange}:</b> <span style="color:${pCol};">${pStr}</span>`;
+                        energyValEl.innerHTML = `<b style="color:#ddd;">${timeRange}:</b> PV <span style="color:#ffdb00;">${g.toFixed(2)}</span> · Haus <span style="color:#ff9100;">${l.toFixed(2)}</span> · Einsp. <span style="color:#00e5ff;">${f.toFixed(2)}</span> · Börse <span style="color:${pCol};">${pStr}</span> · <span style="color:${eurCol}; font-weight:700;">${eur.toFixed(2)} €</span>`;
                     }
                 });
 
                 el.addEventListener('mouseleave', () => {
                     const curE = document.getElementById('pvHistEnergyCursor');
-                    const curP = document.getElementById('pvHistPriceCursor');
                     if (curE) curE.style.display = 'none';
-                    if (curP) curP.style.display = 'none';
                     if (energyValEl) energyValEl.innerHTML = '';
-                    if (priceValEl) priceValEl.innerHTML = '';
                 });
             });
 
-            // 5. Stündliche Abrechnungstabelle
+            // 5. Stündliche Abrechnungstabelle (nach Vorbild der Erlöse-Tabelle links)
             if (tableBody) {
                 let totalEur = 0;
                 const rowsHtml = [];
@@ -3856,45 +3803,47 @@
                         const effectiveRate = (pvRevenueConfig.applySolarSpitzen && p !== null && p < 0) ? 0 : (pvRevenueConfig.eegRateCt || 8.20);
                         eur = f * (effectiveRate / 100);
                     } else {
-                        // Direktvermarktung
                         eur = (p !== null) ? (f * (p / 100)) : (f * ((pvRevenueConfig.eegRateCt || 8.20) / 100));
                     }
                     totalEur += eur;
 
-                    const pColor = (p !== null && p < 0) ? '#ff5252' : '#aaa';
+                    const pColor = (p !== null && p < 0) ? '#ff5252' : '#00e5ff';
                     const pStr = (p !== null) ? `${(p >= 0 ? '+' : '')}${p.toFixed(1)} ct` : '--';
-                    const gColor = (g > 0.01) ? '#ffdb00' : '#666';
-                    const fColor = (f > 0.01) ? '#00e5ff' : '#666';
-                    const eurColor = (eur > 0.005) ? '#00ff88' : (eur < -0.005 ? '#ff5252' : '#777');
+                    const gColor = (g > 0.01) ? '#ffdb00; font-weight:600;' : '#555;';
+                    const fColor = (f > 0.01) ? '#00e5ff; font-weight:600;' : '#555;';
+                    const lColor = (l > 0.01) ? '#ff9100;' : '#555;';
+                    const eurColor = (eur > 0.005) ? '#00ff88; font-weight:600;' : (eur < -0.005 ? '#ff5252; font-weight:600;' : '#666;');
 
+                    const slotLabel = `${String(h).padStart(2, '0')}:00 - ${String(h + 1).padStart(2, '0')}:00`;
                     rowsHtml.push(`
                         <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
-                            <td style="padding: 3px; color: #888;">${String(h).padStart(2, '0')}:00</td>
-                            <td style="padding: 3px; text-align: right; color: ${gColor};">${g.toFixed(2)}</td>
-                            <td style="padding: 3px; text-align: right; color: #ff9100;">${l.toFixed(2)}</td>
-                            <td style="padding: 3px; text-align: right; color: ${fColor};">${f.toFixed(2)}</td>
-                            <td style="padding: 3px; text-align: right; color: ${pColor};">${pStr}</td>
-                            <td style="padding: 3px; text-align: right; font-weight: 600; color: ${eurColor};">${eur.toFixed(2)} €</td>
+                            <td style="padding: 3px 4px; color: #888;">${slotLabel}</td>
+                            <td style="padding: 3px 4px; text-align: right; color: ${gColor}">${g.toFixed(2)}</td>
+                            <td style="padding: 3px 4px; text-align: right; color: ${lColor}">${l.toFixed(2)}</td>
+                            <td style="padding: 3px 4px; text-align: right; color: ${fColor}">${f.toFixed(2)}</td>
+                            <td style="padding: 3px 4px; text-align: right; color: ${pColor};">${pStr}</td>
+                            <td style="padding: 3px 4px; text-align: right; color: ${eurColor}">${eur.toFixed(2)} €</td>
                         </tr>
                     `);
                 }
 
-                // Summenzeile am Ende der Tabelle
-                const validPrices = hourlyPrices.filter(p => p !== null);
-                const avgPrice = (validPrices.length > 0) ? (validPrices.reduce((a, b) => a + b, 0) / validPrices.length) : null;
-                const avgPriceStr = (avgPrice !== null) ? `${(avgPrice >= 0 ? '+' : '')}${avgPrice.toFixed(1)} ct` : '--';
-                rowsHtml.push(`
-                    <tr style="border-top: 1.5px solid rgba(255,255,255,0.15); font-weight: 700;">
-                        <td style="padding: 4px 3px; color: #fff;">Gesamt</td>
-                        <td style="padding: 4px 3px; text-align: right; color: #ffdb00;">${genKwh.toFixed(1)}</td>
-                        <td style="padding: 4px 3px; text-align: right; color: #ff9100;">${loadKwh.toFixed(1)}</td>
-                        <td style="padding: 4px 3px; text-align: right; color: #00e5ff;">${feedKwh.toFixed(1)}</td>
-                        <td style="padding: 4px 3px; text-align: right; color: #aaa;">${avgPriceStr}</td>
-                        <td style="padding: 4px 3px; text-align: right; color: #00ff88;">${totalEur.toFixed(2)} €</td>
-                    </tr>
-                `);
-
                 tableBody.innerHTML = rowsHtml.join('');
+
+                if (tableFoot) {
+                    const validPrices = hourlyPrices.filter(p => p !== null);
+                    const avgPrice = (validPrices.length > 0) ? (validPrices.reduce((a, b) => a + b, 0) / validPrices.length) : null;
+                    const avgPriceStr = (avgPrice !== null) ? `${(avgPrice >= 0 ? '+' : '')}${avgPrice.toFixed(1)} ct` : '--';
+                    tableFoot.innerHTML = `
+                        <tr style="border-top: 1.5px solid rgba(255,255,255,0.18); font-weight: 700; background: rgba(0,0,0,0.2);">
+                            <td style="padding: 5px 4px; color: #fff;">Gesamt (24h)</td>
+                            <td style="padding: 5px 4px; text-align: right; color: #ffdb00;">${genKwh.toFixed(1)}</td>
+                            <td style="padding: 5px 4px; text-align: right; color: #ff9100;">${loadKwh.toFixed(1)}</td>
+                            <td style="padding: 5px 4px; text-align: right; color: #00e5ff;">${feedKwh.toFixed(1)}</td>
+                            <td style="padding: 5px 4px; text-align: right; color: #00e5ff;">${avgPriceStr}</td>
+                            <td style="padding: 5px 4px; text-align: right; color: #00ff88;">${totalEur.toFixed(2)} €</td>
+                        </tr>
+                    `;
+                }
             }
         }
 
