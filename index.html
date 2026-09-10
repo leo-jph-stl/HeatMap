@@ -683,21 +683,21 @@
                 <div class="forecast-temp-group">
                     <span id="forecastCurrentIcon" class="forecast-weather-icon">☀️</span>
                     <span id="forecastCurrentTemp" class="forecast-big-temp">16°</span>
-                    <span class="forecast-unit">C</span>
+                    <span id="forecastUnit" class="forecast-unit">C</span>
                 </div>
                 <div class="forecast-stats">
-                    <div class="forecast-stat-item">
-                        <span class="forecast-stat-label">Wind</span>
+                    <div class="forecast-stat-item" id="forecastWindRow">
+                        <span id="forecastStatLabel1" class="forecast-stat-label">Wind</span>
                         <span id="forecastCurrentWind" class="forecast-stat-val">14 km/h</span>
                     </div>
                     <div class="forecast-stat-item">
-                        <span class="forecast-stat-label">Min / Max</span>
+                        <span id="forecastStatLabel2" class="forecast-stat-label">Min / Max</span>
                         <span id="forecastMinMax" class="forecast-stat-val">9° / 19°</span>
                     </div>
                 </div>
             </div>
-            
-            <div class="forecast-timeline-title">24h / 48h Wettertrend (GFS Modell)</div>
+
+            <div id="forecastTimelineTitle" class="forecast-timeline-title">24h / 48h Wettertrend (GFS Modell)</div>
             <div id="forecastTimeline" class="forecast-timeline-scroll"></div>
         </div>
     </div>
@@ -3165,6 +3165,34 @@
                 countryEl.innerText = `${countryPart}🕒 ${localTimeStr} Uhr (Ortszeit)`;
             }
 
+            if (currentMode === 'solar') {
+                renderSolarForecastBody(lat, lng, tz);
+            } else {
+                renderTempForecastBody(lat, lng, tz);
+            }
+
+            if (forecastContainer) forecastContainer.style.display = 'block';
+        }
+
+        function getSolarIcon(wm2) {
+            if (wm2 < 10) return '🌙';
+            if (wm2 < 300) return '⛅';
+            if (wm2 < 600) return '🌤️';
+            return '☀️';
+        }
+
+        function renderTempForecastBody(lat, lng, tz) {
+            const windRowEl = document.getElementById('forecastWindRow');
+            const label1El = document.getElementById('forecastStatLabel1');
+            const label2El = document.getElementById('forecastStatLabel2');
+            const unitEl = document.getElementById('forecastUnit');
+            const timelineTitleEl = document.getElementById('forecastTimelineTitle');
+            if (windRowEl) windRowEl.style.display = '';
+            if (label1El) label1El.innerText = 'Wind';
+            if (label2El) label2El.innerText = 'Min / Max';
+            if (unitEl) unitEl.innerText = 'C';
+            if (timelineTitleEl) timelineTitleEl.innerText = '24h / 48h Wettertrend (GFS Modell)';
+
             if (typeof tempData === 'undefined' || tempData.length === 0) return;
 
             const liveIdx = getLiveStepIndex();
@@ -3237,8 +3265,136 @@
                     });
                 });
             }
+        }
 
-            if (forecastContainer) forecastContainer.style.display = 'block';
+        function renderSolarForecastBody(lat, lng, tz) {
+            const windRowEl = document.getElementById('forecastWindRow');
+            const label2El = document.getElementById('forecastStatLabel2');
+            const unitEl = document.getElementById('forecastUnit');
+            const timelineTitleEl = document.getElementById('forecastTimelineTitle');
+            const iconEl = document.getElementById('forecastCurrentIcon');
+            const valEl = document.getElementById('forecastCurrentTemp');
+            const minMaxEl = document.getElementById('forecastMinMax');
+            const timelineEl = document.getElementById('forecastTimeline');
+            const miniIconEl = document.getElementById('forecastMiniIcon');
+            const miniTempEl = document.getElementById('forecastMiniTemp');
+
+            if (windRowEl) windRowEl.style.display = 'none'; // Wind ist hier nicht der Fokus
+
+            if (solarClimSelection === 'live') {
+                if (label2El) label2El.innerText = 'Min / Max (48h)';
+                if (unitEl) unitEl.innerText = 'W/m²';
+                if (timelineTitleEl) timelineTitleEl.innerText = '24h / 48h Einstrahlungstrend (GFS Modell)';
+
+                const real = getInterpolatedData(lat, lng);
+                const curVal = Math.round(real.solar);
+                if (iconEl) iconEl.innerText = getSolarIcon(curVal);
+                if (valEl) valEl.innerText = curVal; // kein Gradzeichen bei W/m²
+                if (miniIconEl) miniIconEl.innerText = getSolarIcon(curVal);
+                if (miniTempEl) miniTempEl.innerText = curVal + ' W/m²';
+
+                if (typeof solarData === 'undefined' || solarData.length === 0) {
+                    if (timelineEl) timelineEl.innerHTML = '';
+                    return;
+                }
+
+                const liveIdx = getLiveStepIndex();
+                const futureSteps = [];
+                let minS = Infinity, maxS = -Infinity;
+                const maxSteps = Math.min(solarData.length, liveIdx + 17);
+                for (let i = liveIdx; i < maxSteps; i++) {
+                    const step = solarData[i];
+                    const s = Math.max(0, getTempAtStep(step, lat, lng));
+                    if (s < minS) minS = s;
+                    if (s > maxS) maxS = s;
+                    futureSteps.push({ step, s, hourOffset: (i - liveIdx) * 3 });
+                }
+                if (minMaxEl) minMaxEl.innerText = `${Math.round(minS)} / ${Math.round(maxS)} W/m²`;
+
+                if (timelineEl) {
+                    let html = '';
+                    futureSteps.forEach((item, idx) => {
+                        const d = item.step.timestamp ? new Date(item.step.timestamp) : new Date(Date.now() + item.hourOffset * 3600000);
+                        let timeLabel = formatLocationHourCard(d, tz, lat, lng, idx === 0);
+                        if (idx > 0 && d.getHours() === 0) timeLabel = d.toLocaleDateString('de-DE', { weekday: 'short' });
+                        const icon = getSolarIcon(item.s);
+                        const activeClass = item.hourOffset === currentHourOffset ? 'active' : '';
+                        html += `
+                            <div class="forecast-hour-card ${activeClass}" data-offset="${item.hourOffset}" title="${d.toLocaleString('de-DE')}: ${Math.round(item.s)} W/m²">
+                                <span class="forecast-hour-time">${timeLabel}</span>
+                                <span class="forecast-hour-icon">${icon}</span>
+                                <span class="forecast-hour-temp">${Math.round(item.s)}</span>
+                            </div>
+                        `;
+                    });
+                    timelineEl.innerHTML = html;
+                    timelineEl.querySelectorAll('.forecast-hour-card').forEach(card => {
+                        card.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const offset = parseInt(card.dataset.offset);
+                            timeSlider.value = offset;
+                            timeSlider.dispatchEvent(new Event('input'));
+                            timelineEl.querySelectorAll('.forecast-hour-card').forEach(c => c.classList.remove('active'));
+                            card.classList.add('active');
+                        });
+                    });
+                }
+            } else {
+                // Klimatologie: Jahresverlauf als 12-Monats-Streifen statt Stunden-Zeitleiste
+                if (label2El) label2El.innerText = 'Jahres-Min / Max';
+                if (unitEl) unitEl.innerText = 'kWh/m²/Tag';
+                if (timelineTitleEl) timelineTitleEl.innerText = 'Jahresverlauf (NASA POWER Klimatologie, 2001-2020)';
+
+                const real = getInterpolatedData(lat, lng);
+                const curVal = real.solar;
+                if (iconEl) iconEl.innerText = getSolarIcon(curVal * 100); // grobe Skalierung fürs Icon
+                if (valEl) valEl.innerText = curVal.toFixed(1);
+                if (miniIconEl) miniIconEl.innerText = '☀️';
+                if (miniTempEl) miniTempEl.innerText = curVal.toFixed(1) + ' kWh/m²';
+
+                if (typeof solarClimatologyData === 'undefined') { if (timelineEl) timelineEl.innerHTML = ''; return; }
+
+                const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+                const monthNames = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+                let minS = Infinity, maxS = -Infinity;
+                const monthVals = months.map(label => {
+                    const layer = solarClimatologyData.find(l => l.label === label);
+                    const v = layer ? Math.max(0, getTempAtStep(layer, lat, lng)) : 0;
+                    if (v < minS) minS = v;
+                    if (v > maxS) maxS = v;
+                    return v;
+                });
+                if (minMaxEl) minMaxEl.innerText = `${minS.toFixed(1)} / ${maxS.toFixed(1)}`;
+
+                if (timelineEl) {
+                    let html = '';
+                    months.forEach((label, idx) => {
+                        const v = monthVals[idx];
+                        const activeClass = label === solarClimSelection ? 'active' : '';
+                        html += `
+                            <div class="forecast-hour-card ${activeClass}" data-month="${label}" title="${monthNames[idx]}: ${v.toFixed(2)} kWh/m²/Tag">
+                                <span class="forecast-hour-time">${monthNames[idx]}</span>
+                                <span class="forecast-hour-icon">${getSolarIcon(v * 100)}</span>
+                                <span class="forecast-hour-temp">${v.toFixed(1)}</span>
+                            </div>
+                        `;
+                    });
+                    timelineEl.innerHTML = html;
+                    timelineEl.querySelectorAll('.forecast-hour-card').forEach(card => {
+                        card.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const month = card.dataset.month;
+                            setSolarClimSelection(month);
+                            const sel = document.getElementById('solarClimSelect');
+                            if (sel) sel.value = month;
+                            timelineEl.querySelectorAll('.forecast-hour-card').forEach(c => c.classList.remove('active'));
+                            card.classList.add('active');
+                            if (clickedPopupPoint) updatePopupContent();
+                            renderSolarForecastBody(lat, lng, tz);
+                        });
+                    });
+                }
+            }
         }
 
         // UI & EVENT HANDLERS
