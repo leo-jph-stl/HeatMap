@@ -352,21 +352,46 @@ if api_key and not metrics:
             extra_data["daily_reports"] = daily_reports
 
             time.sleep(1.1)
-            history_res = call_fox_openapi("/op/v0/device/history/query", {"sn": sn, "variables": ["pvPower"]})
+            history_res = call_fox_openapi("/op/v0/device/history/query", {
+                "sn": sn, "variables": ["pvPower", "feedinPower", "loadsPower"]
+            })
             if history_res:
                 res_list = history_res.get("result", [])
                 if res_list:
+                    datas = res_list[0].get("datas", [])
+                    pv_list = []
+                    feedin_map = {}
+                    loads_map = {}
+                    for d in datas:
+                        vname = d.get("variable")
+                        for point in d.get("data", []):
+                            t_norm = normalize_fox_time(point.get("time"))
+                            if not t_norm:
+                                continue
+                            try:
+                                val = round(float(point.get("value", 0)), 3)
+                            except (TypeError, ValueError):
+                                continue
+                            if vname == "pvPower":
+                                pv_list.append({"t": t_norm, "pv": val})
+                            elif vname == "feedinPower":
+                                feedin_map[t_norm] = val
+                            elif vname == "loadsPower":
+                                loads_map[t_norm] = val
+
                     history_3d = []
-                    for d in res_list[0].get("datas", []):
-                        if d.get("variable") == "pvPower":
-                            for point in d.get("data", []):
-                                try:
-                                    history_3d.append({"t": normalize_fox_time(point.get("time")), "pv": round(float(point.get("value", 0)), 3)})
-                                except (TypeError, ValueError):
-                                    continue
+                    for item in pv_list:
+                        t = item["t"]
+                        pt = {"t": t, "pv": item["pv"]}
+                        if t in feedin_map:
+                            pt["feedin"] = feedin_map[t]
+                        if t in loads_map:
+                            pt["loads"] = loads_map[t]
+                        history_3d.append(pt)
+
                     if history_3d:
                         extra_data["history_3d"] = history_3d
-                        print(f"3-Tage-Verlauf: {len(history_3d)} Datenpunkte")
+                        print(f"3-Tage-Verlauf: {len(history_3d)} Datenpunkte (PV, Feedin, Loads)")
     except Exception as e:
         print(f"OpenAPI Abruf fehlgeschlagen: {e}")
         traceback.print_exc()
