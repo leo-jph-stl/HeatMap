@@ -751,11 +751,18 @@
 
             <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 9px; margin-bottom: 7px;">
                 <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
-                    <div style="font-size: 10px; color: #888;">PV-Leistung <span id="pvHistoryRange"></span></div>
+                    <div style="font-size: 10px; color: #888;">
+                        PV-Leistung <span id="pvHistoryRange"></span>
+                        <span id="pvForecastLegend" style="display:none; margin-left: 6px; color: #aaa;">— Live &nbsp; ╌ Prognose</span>
+                    </div>
                     <button id="pvHistoryResetBtn" title="Auf 3 Tage zurücksetzen" style="display:none; background: rgba(255,219,0,0.12); border: 1px solid rgba(255,219,0,0.35); color: #ffdb00; border-radius: 6px; font-size: 9px; font-weight: 600; padding: 1px 6px; cursor: pointer;">↺ 3 Tage</button>
                 </div>
-                <svg id="pvHistoryChart" viewBox="0 0 300 56" preserveAspectRatio="none" style="width:100%; height:56px; display:block; overflow: visible; touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none;"></svg>
-                <div style="font-size: 8.5px; color: #666; margin-top: 2px;">Ziehen zum Verschieben, Mausrad/Pinch zum Zoomen</div>
+                <svg id="pvHistoryChart" viewBox="0 0 300 70" preserveAspectRatio="none" style="width:100%; height:70px; display:block; overflow: visible; touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none;"></svg>
+                <div style="font-size: 8.5px; color: #666; margin-top: 2px;">Ziehen zum Verschieben, Mausrad/Pinch zum Zoomen, Tippen für Details</div>
+                <div id="pvForecastSummary" style="display:none; font-size: 9.5px; color: #aaa; margin-top: 5px; padding-top: 5px; border-top: 1px solid rgba(255,255,255,0.08);" title="Geschätzt aus der GFS-Einstrahlungsprognose, kalibriert auf die tatsächliche Leistungsantwort dieser Anlage in den letzten 24h.">
+                    ☀️ Prognose · nächste 24h: <strong id="pvForecast24h" style="color:#fff;">-- kWh</strong>
+                    &nbsp;·&nbsp; nächste <span id="pvForecastHorizonLabel">72h</span>: <strong id="pvForecast72h" style="color:#fff;">-- kWh</strong>
+                </div>
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 7px;">
@@ -2320,10 +2327,125 @@
             return isNaN(d.getTime()) ? NaN : d.getTime();
         }
 
-        // Zoom/Pan-Zustand des 3-Tage-Charts. viewStart/viewEnd grenzen den sichtbaren
-        // Zeitausschnitt ein; fullStart/fullEnd sind die Grenzen der geladenen Rohdaten.
-        const pvChartState = { data: [], fullStart: null, fullEnd: null, viewStart: null, viewEnd: null };
+        // Zoom/Pan-Zustand des Charts. viewStart/viewEnd grenzen den sichtbaren
+        // Zeitausschnitt ein; fullStart/fullEnd sind die Grenzen der geladenen Rohdaten
+        // (bei vorhandener Prognose reicht fullEnd bis ans Ende des Prognose-Horizonts).
+        const pvChartState = { data: [], forecast: null, fullStart: null, fullEnd: null, viewStart: null, viewEnd: null, selected: null };
         const PV_CHART_MIN_SPAN_MS = 20 * 60 * 1000; // näher als 20 Minuten wird nicht reingezoomt
+        const PV_CHART_W = 300, PV_CHART_H = 70;
+        const PV_CHART_PAD_L = 28, PV_CHART_PAD_R = 6, PV_CHART_PAD_T = 6, PV_CHART_PAD_B = 16;
+
+        // Interpoliert die GFS-Einstrahlungsprognose (W/m²) am PV-Standort für einen beliebigen
+        // Zeitpunkt (lineare Interpolation zwischen den umgebenden 3h-Schritten von solarData).
+        function interpSolarAtTime(tMs) {
+            if (typeof solarData === 'undefined' || !solarData.length) return null;
+            const lat = PV_SYSTEM_LOCATION.lat, lng = PV_SYSTEM_LOCATION.lng;
+            if (tMs <= solarData[0].timeMs) return Math.max(0, getTempAtStep(solarData[0], lat, lng));
+            for (let i = 0; i < solarData.length - 1; i++) {
+                const a = solarData[i], b = solarData[i + 1];
+                if (tMs >= a.timeMs && tMs <= b.timeMs) {
+                    const va = Math.max(0, getTempAtStep(a, lat, lng));
+                    const vb = Math.max(0, getTempAtStep(b, lat, lng));
+                    const f = b.timeMs > a.timeMs ? (tMs - a.timeMs) / (b.timeMs - a.timeMs) : 0;
+                    return va + (vb - va) * f;
+                }
+            }
+            const last = solarData[solarData.length - 1];
+            return Math.max(0, getTempAtStep(last, lat, lng));
+        }
+
+        // Schätzt die PV-Leistung für den verfügbaren Prognose-Horizont (bis zu +72h): kalibriert
+        // einen Anlagen-Wirkungsgradfaktor (kW je W/m² Einstrahlung) aus den letzten 24h echter
+        // Leistungsdaten gegen die GFS-Einstrahlungsprognose für denselben Zeitraum/Ort, und wendet
+        // diesen Faktor auf die Einstrahlungsprognose der kommenden Stunden an. Bewusst kein fest
+        // angenommener Wirkungsgrad: die Anlage selbst zeigt am zuverlässigsten (über ihre jüngste
+        // reale Antwort auf reale Einstrahlung), wie viel kW sie liefert - inklusive Ausrichtung,
+        // Verschattung, Verschmutzung und Degradation, die ein generischer Schätzwert nicht kennt.
+        function computePvForecast() {
+            const actual = pvChartState.data;
+            if (!actual.length || typeof solarData === 'undefined' || !solarData.length) return null;
+
+            const now = Date.now();
+            const calibWindowStart = now - 24 * 3600 * 1000;
+            const pairs = [];
+            for (const p of actual) {
+                if (p.t < calibWindowStart || p.t > now) continue;
+                const ghi = interpSolarAtTime(p.t);
+                if (ghi === null) continue;
+                pairs.push({ pv: p.pv, ghi });
+            }
+
+            // Mittleres Einstrahlungsband bevorzugt: sehr niedrige Werte (Dämmerung) sind verrauscht,
+            // sehr hohe Werte laufen Gefahr, durch die Wechselrichter-Leistungsgrenze (Clipping)
+            // verfälscht zu sein - beides würde den linearen Faktor verzerren.
+            let calibPairs = pairs.filter(pr => pr.ghi >= 50 && pr.ghi <= 700);
+            if (calibPairs.length < 5) calibPairs = pairs.filter(pr => pr.ghi >= 30);
+            if (calibPairs.length < 5) return null; // zu wenig verwertbare Datenpunkte für eine seriöse Schätzung
+
+            const ratios = calibPairs.map(pr => pr.pv / pr.ghi).sort((a, b) => a - b);
+            const mid = Math.floor(ratios.length / 2);
+            const medianRatio = ratios.length % 2 ? ratios[mid] : (ratios[mid - 1] + ratios[mid]) / 2;
+            if (!(medianRatio > 0)) return null;
+
+            // Praktische Obergrenze (Wechselrichter-Clipping): etwas über dem höchsten beobachteten
+            // Wert der letzten 3 Tage, damit die Prognose nicht unbegrenzt über die real gezeigte
+            // Anlagenleistung hinausschießt.
+            const capKw = Math.max(1, ...actual.map(p => p.pv), livePvData && typeof livePvData.solar_power === 'number' ? livePvData.solar_power : 0) * 1.05;
+
+            const lastAvailable = solarData[solarData.length - 1].timeMs;
+            const nowGhi = interpSolarAtTime(now);
+            const nowPv = (livePvData && typeof livePvData.solar_power === 'number') ? livePvData.solar_power : Math.min(capKw, (nowGhi || 0) * medianRatio);
+            const points = [{ t: now, pv: Math.max(0, nowPv) }];
+            for (const step of solarData) {
+                if (step.timeMs <= now || step.timeMs > lastAvailable) continue;
+                const ghi = Math.max(0, getTempAtStep(step, PV_SYSTEM_LOCATION.lat, PV_SYSTEM_LOCATION.lng));
+                points.push({ t: step.timeMs, pv: Math.min(capKw, ghi * medianRatio) });
+            }
+            if (points.length < 2) return null;
+
+            return { points, medianRatio, sampleCount: calibPairs.length, capKw };
+        }
+
+        // Trapez-Integration der Prognoseleistung zwischen fromT und toT (ms) -> kWh.
+        function integrateForecastKwh(points, fromT, toT) {
+            let kwh = 0;
+            for (let i = 0; i < points.length - 1; i++) {
+                const a = points[i], b = points[i + 1];
+                if (b.t <= fromT || a.t >= toT || b.t <= a.t) continue;
+                const segStart = Math.max(a.t, fromT), segEnd = Math.min(b.t, toT);
+                if (segEnd <= segStart) continue;
+                const f0 = (segStart - a.t) / (b.t - a.t), f1 = (segEnd - a.t) / (b.t - a.t);
+                const pvStart = a.pv + (b.pv - a.pv) * f0, pvEnd = a.pv + (b.pv - a.pv) * f1;
+                const hours = (segEnd - segStart) / 3600000;
+                kwh += (pvStart + pvEnd) / 2 * hours;
+            }
+            return kwh;
+        }
+
+        function updatePvForecastSummaryUI(forecast) {
+            const summaryEl = document.getElementById('pvForecastSummary');
+            const legendEl = document.getElementById('pvForecastLegend');
+            if (!summaryEl) return;
+            if (!forecast) {
+                summaryEl.style.display = 'none';
+                if (legendEl) legendEl.style.display = 'none';
+                return;
+            }
+            const now = Date.now();
+            const horizonEnd = forecast.points[forecast.points.length - 1].t;
+            const horizonHours = Math.max(0, Math.round((horizonEnd - now) / 3600000));
+            const kwh24 = integrateForecastKwh(forecast.points, now, Math.min(now + 24 * 3600000, horizonEnd));
+            const kwh72 = integrateForecastKwh(forecast.points, now, horizonEnd);
+
+            const el24 = document.getElementById('pvForecast24h');
+            const el72 = document.getElementById('pvForecast72h');
+            const labelEl = document.getElementById('pvForecastHorizonLabel');
+            if (el24) el24.innerText = kwh24.toFixed(1) + ' kWh';
+            if (el72) el72.innerText = kwh72.toFixed(1) + ' kWh';
+            if (labelEl) labelEl.innerText = horizonHours + 'h';
+            summaryEl.style.display = 'block';
+            if (legendEl) legendEl.style.display = 'inline';
+        }
 
         function renderPvHistoryChart(history) {
             const svg = document.getElementById('pvHistoryChart');
@@ -2336,20 +2458,29 @@
             if (!points.length) {
                 svg.innerHTML = '';
                 pvChartState.data = [];
+                pvChartState.forecast = null;
+                pvChartState.selected = null;
                 const rangeEl = document.getElementById('pvHistoryRange');
                 if (rangeEl) rangeEl.innerText = '';
                 const resetBtn = document.getElementById('pvHistoryResetBtn');
                 if (resetBtn) resetBtn.style.display = 'none';
+                updatePvForecastSummaryUI(null);
                 return;
             }
 
             pvChartState.data = points;
-            const newFullStart = points[0].t, newFullEnd = points[points.length - 1].t;
+            const forecast = computePvForecast();
+            pvChartState.forecast = forecast ? forecast.points : null;
+            updatePvForecastSummaryUI(forecast);
+
+            const dataFullStart = points[0].t, dataFullEnd = points[points.length - 1].t;
+            const newFullStart = dataFullStart;
+            const newFullEnd = forecast ? Math.max(dataFullEnd, forecast.points[forecast.points.length - 1].t) : dataFullEnd;
             const hadView = pvChartState.viewStart !== null && pvChartState.viewEnd !== null;
             const wasZoomed = hadView && (pvChartState.viewStart > pvChartState.fullStart + 1000 || pvChartState.viewEnd < pvChartState.fullEnd - 1000);
 
             if (!hadView || !wasZoomed) {
-                // Nicht gezoomt (oder Erstladung): Ansicht mit den Daten auf "volle 3 Tage" mitführen
+                // Nicht gezoomt (oder Erstladung): Ansicht mit den Daten mitführen (inkl. Prognose)
                 pvChartState.viewStart = newFullStart;
                 pvChartState.viewEnd = newFullEnd;
             } else {
@@ -2361,7 +2492,26 @@
             pvChartState.fullStart = newFullStart;
             pvChartState.fullEnd = newFullEnd;
 
+            if (pvChartState.selected && (pvChartState.selected.t < newFullStart || pvChartState.selected.t > newFullEnd)) {
+                pvChartState.selected = null;
+            }
+
             drawPvChart();
+        }
+
+        // Liefert für ein Array von Punkten (aufsteigend nach t) die sichtbaren Punkte plus je
+        // einen Rahmenpunkt links/rechts, damit eine Linie nicht an den Fensterkanten "abgeschnitten" wirkt.
+        function clipPointsToView(arr, viewStart, viewEnd) {
+            if (!arr || !arr.length) return [];
+            const visible = arr.filter(p => p.t >= viewStart && p.t <= viewEnd);
+            let beforeIdx = -1;
+            for (let i = 0; i < arr.length; i++) if (arr[i].t < viewStart) beforeIdx = i;
+            const afterPoint = arr.find(p => p.t > viewEnd);
+            return [
+                ...(beforeIdx >= 0 ? [arr[beforeIdx]] : []),
+                ...visible,
+                ...(afterPoint ? [afterPoint] : [])
+            ];
         }
 
         function drawPvChart() {
@@ -2370,7 +2520,7 @@
             const resetBtn = document.getElementById('pvHistoryResetBtn');
             if (!svg || !pvChartState.data.length) return;
 
-            const { data, fullStart, fullEnd } = pvChartState;
+            const { data, forecast, fullStart, fullEnd } = pvChartState;
             let { viewStart, viewEnd } = pvChartState;
             if (viewEnd - viewStart < PV_CHART_MIN_SPAN_MS) {
                 const mid = (viewStart + viewEnd) / 2;
@@ -2378,40 +2528,92 @@
                 viewEnd = mid + PV_CHART_MIN_SPAN_MS / 2;
             }
 
-            const W = 300, H = 56, PAD = 3;
-            const x = (t) => PAD + (viewEnd > viewStart ? (t - viewStart) / (viewEnd - viewStart) : 0) * (W - 2 * PAD);
-            const y = (pv, pvMax) => (H - PAD) - (pv / pvMax) * (H - 2 * PAD);
+            const W = PV_CHART_W, H = PV_CHART_H;
+            const PAD_L = PV_CHART_PAD_L, PAD_R = PV_CHART_PAD_R, PAD_T = PV_CHART_PAD_T, PAD_B = PV_CHART_PAD_B;
+            const x = (t) => PAD_L + (viewEnd > viewStart ? (t - viewStart) / (viewEnd - viewStart) : 0) * (W - PAD_L - PAD_R);
+            const y = (pv, pvMax) => (H - PAD_B) - (pv / pvMax) * (H - PAD_B - PAD_T);
 
-            // Sichtbare Punkte plus je einen Rahmenpunkt links/rechts, damit die Linie nicht
-            // an den Fensterkanten "abgeschnitten" aussieht
-            const visible = data.filter(p => p.t >= viewStart && p.t <= viewEnd);
-            const beforeIdx = data.findLastIndex ? data.findLastIndex(p => p.t < viewStart) : (() => {
-                let idx = -1; for (let i = 0; i < data.length; i++) if (data[i].t < viewStart) idx = i; return idx;
-            })();
-            const afterPoint = data.find(p => p.t > viewEnd);
-            const plotPoints = [
-                ...(beforeIdx >= 0 ? [data[beforeIdx]] : []),
-                ...visible,
-                ...(afterPoint ? [afterPoint] : [])
-            ];
+            const plotPoints = clipPointsToView(data, viewStart, viewEnd);
+            const fPlotPoints = forecast ? clipPointsToView(forecast, viewStart, viewEnd) : [];
 
-            const pvMax = Math.max(1, ...plotPoints.map(p => p.pv));
+            const pvMax = Math.max(1, ...plotPoints.map(p => p.pv), ...fPlotPoints.map(p => p.pv));
             const linePts = plotPoints.map(p => `${x(p.t).toFixed(1)},${y(p.pv, pvMax).toFixed(1)}`).join(' ');
-            const areaPts = `${PAD},${H - PAD} ` + linePts + ` ${W - PAD},${H - PAD}`;
+            const areaPts = plotPoints.length ? `${x(plotPoints[0].t).toFixed(1)},${H - PAD_B} ` + linePts + ` ${x(plotPoints[plotPoints.length - 1].t).toFixed(1)},${H - PAD_B}` : '';
+            const forecastLinePts = fPlotPoints.map(p => `${x(p.t).toFixed(1)},${y(p.pv, pvMax).toFixed(1)}`).join(' ');
 
-            // Tagesgrenzen (Mitternacht) als dezente vertikale Linien, nur im sichtbaren Fenster
-            let dayLines = '';
+            // Tagesgrenzen (Mitternacht) als dezente vertikale Linien + Wochentag-Label, nur im sichtbaren Fenster
+            let dayLines = '', dayLabels = '';
             const dayMs = 24 * 60 * 60 * 1000;
+            const span = viewEnd - viewStart;
             let dayStart = Math.ceil(viewStart / dayMs) * dayMs;
             for (; dayStart < viewEnd; dayStart += dayMs) {
-                const dx = x(dayStart).toFixed(1);
-                dayLines += `<line x1="${dx}" y1="${PAD}" x2="${dx}" y2="${H - PAD}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2,2"/>`;
+                const dxPos = x(dayStart).toFixed(1);
+                dayLines += `<line x1="${dxPos}" y1="${PAD_T}" x2="${dxPos}" y2="${H - PAD_B}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2,2"/>`;
+                if (dayStart - viewStart > span * 0.07 && viewEnd - dayStart > span * 0.07) {
+                    const wd = new Date(dayStart).toLocaleDateString('de-DE', { weekday: 'short' });
+                    dayLabels += `<text x="${dxPos}" y="${H - 2}" font-size="7" fill="#888" text-anchor="middle">${wd}</text>`;
+                }
+            }
+
+            // "Jetzt"-Markierung, sobald eine Prognose existiert (trennt Messwerte von Schätzung)
+            let nowLine = '';
+            const nowMs = Date.now();
+            if (forecast && nowMs >= viewStart && nowMs <= viewEnd) {
+                const nx = x(nowMs).toFixed(1);
+                nowLine = `<line x1="${nx}" y1="${PAD_T}" x2="${nx}" y2="${H - PAD_B}" stroke="rgba(255,255,255,0.35)" stroke-width="1" stroke-dasharray="1,2"/>`;
+            }
+
+            // Y-Achse: Gitterlinien + Beschriftung bei 0, Mitte, Maximum
+            let yAxis = '';
+            [0, pvMax / 2, pvMax].forEach((v, i) => {
+                const yy = y(v, pvMax);
+                yAxis += `<line x1="${PAD_L}" y1="${yy.toFixed(1)}" x2="${W - PAD_R}" y2="${yy.toFixed(1)}" stroke="rgba(255,255,255,${i === 2 ? 0.14 : 0.07})" stroke-width="1"/>`;
+                yAxis += `<text x="${PAD_L - 3}" y="${(yy + 2.3).toFixed(1)}" font-size="7" fill="#666" text-anchor="end">${v.toFixed(1)}</text>`;
+            });
+            yAxis += `<text x="${(PAD_L - 3).toFixed(1)}" y="${PAD_T + 5}" font-size="6" fill="#555" text-anchor="end">kW</text>`;
+
+            // X-Achse: Start-/Endzeit des sichtbaren Fensters
+            const fmtHM = (t) => new Date(t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+            const xAxis = `
+                <text x="${PAD_L}" y="${H - 2}" font-size="7" fill="#666" text-anchor="start">${fmtHM(viewStart)}</text>
+                <text x="${W - PAD_R}" y="${H - 2}" font-size="7" fill="#666" text-anchor="end">${fmtHM(viewEnd)}</text>
+            `;
+
+            // Ausgewählter Punkt (Tap/Klick): Fadenkreuz + Zeit/Leistungs-Label
+            let selectedSvg = '';
+            if (pvChartState.selected) {
+                const sel = pvChartState.selected;
+                if (sel.t < viewStart || sel.t > viewEnd) {
+                    pvChartState.selected = null;
+                } else {
+                    const sx = x(sel.t), sy = y(sel.pv, pvMax);
+                    const timeStr = new Date(sel.t).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                    const pvStr = sel.pv.toFixed(2) + ' kW' + (sel.isForecast ? ' (Prognose)' : '');
+                    const dotColor = sel.isForecast ? '#fff' : '#ffdb00';
+                    const boxW = 76, boxH = 20;
+                    const anchorRight = sx > PAD_L + (W - PAD_L - PAD_R) * 0.55;
+                    const bx = Math.max(PAD_L, Math.min(W - PAD_R - boxW, anchorRight ? sx - boxW - 5 : sx + 5));
+                    const by = Math.max(PAD_T, sy - boxH - 4);
+                    selectedSvg = `
+                        <line x1="${sx.toFixed(1)}" y1="${PAD_T}" x2="${sx.toFixed(1)}" y2="${H - PAD_B}" stroke="rgba(255,219,0,0.45)" stroke-width="1"/>
+                        <circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.5" fill="${dotColor}" stroke="#000" stroke-width="0.6"/>
+                        <rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${boxW}" height="${boxH}" rx="3" fill="rgba(10,10,14,0.92)" stroke="rgba(255,255,255,0.18)"/>
+                        <text x="${(bx + 4).toFixed(1)}" y="${(by + 9).toFixed(1)}" font-size="7" fill="#aaa">${timeStr}</text>
+                        <text x="${(bx + 4).toFixed(1)}" y="${(by + 17).toFixed(1)}" font-size="7.5" fill="${dotColor}" font-weight="700">${pvStr}</text>
+                    `;
+                }
             }
 
             svg.innerHTML = `
+                ${yAxis}
                 <polygon points="${areaPts}" fill="rgba(255,219,0,0.18)" stroke="none"></polygon>
                 ${dayLines}
+                ${nowLine}
                 <polyline points="${linePts}" fill="none" stroke="#ffdb00" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"></polyline>
+                <polyline points="${forecastLinePts}" fill="none" stroke="#ffdb00" stroke-width="1.5" stroke-dasharray="3,2.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.6"></polyline>
+                ${dayLabels}
+                ${xAxis}
+                ${selectedSvg}
             `;
 
             const zoomed = viewStart > fullStart + 1000 || viewEnd < fullEnd - 1000;
@@ -2421,7 +2623,7 @@
                     ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }
                     : { hour: '2-digit', minute: '2-digit' });
                 const sameDay = new Date(viewStart).toDateString() === new Date(viewEnd).toDateString();
-                rangeEl.innerText = zoomed ? `· ${fmt(viewStart, !sameDay)} – ${fmt(viewEnd, !sameDay)}` : '· letzte 3 Tage';
+                rangeEl.innerText = zoomed ? `· ${fmt(viewStart, !sameDay)} – ${fmt(viewEnd, !sameDay)}` : (forecast ? '· 3 Tage + Prognose' : '· letzte 3 Tage');
             }
         }
 
@@ -2458,9 +2660,16 @@
             const resetBtn = document.getElementById('pvHistoryResetBtn');
             if (!svg) return;
 
+            // relX misst relativ zur Plot-Fläche (ohne Achsen-Rand links/rechts), damit Zoom-Anker,
+            // Pan-Geschwindigkeit und Tap-Position exakt mit der gezeichneten Zeitachse übereinstimmen.
+            const plotFrac = PV_CHART_W > (PV_CHART_PAD_L + PV_CHART_PAD_R) ? (PV_CHART_W - PV_CHART_PAD_L - PV_CHART_PAD_R) / PV_CHART_W : 1;
+            const leftFrac = PV_CHART_PAD_L / PV_CHART_W;
             const relX = (clientX) => {
                 const rect = svg.getBoundingClientRect();
-                return rect.width > 0 ? Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)) : 0.5;
+                if (rect.width <= 0) return 0.5;
+                const plotLeftPx = rect.width * leftFrac;
+                const plotWidthPx = rect.width * plotFrac;
+                return plotWidthPx > 0 ? Math.min(1, Math.max(0, (clientX - rect.left - plotLeftPx) / plotWidthPx)) : 0.5;
             };
 
             svg.addEventListener('wheel', (e) => {
@@ -2472,8 +2681,10 @@
             }, { passive: false });
 
             const pointers = new Map();
-            let dragStart = null;      // { view0, view1, clientX } für Ein-Finger-Pan
+            let dragStart = null;      // { view0, view1, clientX, downX, downY, moved, pointerType } für Ein-Finger-Pan/Tap
             let pinchStart = null;     // { dist, view0, view1 } für Zwei-Finger-Pinch
+
+            const distSq = (ax, ay, bx, by) => (ax - bx) * (ax - bx) + (ay - by) * (ay - by);
 
             svg.addEventListener('pointerdown', (e) => {
                 if (!pvChartState.data.length) return;
@@ -2481,7 +2692,11 @@
                 pointers.set(e.pointerId, e.clientX);
                 if (pointers.size === 1) {
                     svg.style.cursor = 'grabbing';
-                    dragStart = { clientX: e.clientX, viewStart: pvChartState.viewStart, viewEnd: pvChartState.viewEnd };
+                    dragStart = {
+                        clientX: e.clientX, downX: e.clientX, downY: e.clientY, moved: false,
+                        pointerType: e.pointerType || 'mouse',
+                        viewStart: pvChartState.viewStart, viewEnd: pvChartState.viewEnd
+                    };
                     pinchStart = null;
                 } else if (pointers.size === 2) {
                     dragStart = null;
@@ -2508,23 +2723,63 @@
                     let ns = anchorT - relX(midClientX) * newSpan;
                     pvChartPanTo(ns, ns + newSpan);
                 } else if (pointers.size === 1 && dragStart) {
+                    if (!dragStart.moved) {
+                        const threshold = DRAG_THRESHOLD_SQ[dragStart.pointerType] ?? DRAG_THRESHOLD_SQ.mouse;
+                        if (distSq(e.clientX, e.clientY, dragStart.downX, dragStart.downY) > threshold) dragStart.moved = true;
+                    }
                     const rect = svg.getBoundingClientRect();
-                    const dxRel = rect.width > 0 ? (e.clientX - dragStart.clientX) / rect.width : 0;
+                    const plotWidthPx = rect.width * plotFrac;
+                    const dxRel = plotWidthPx > 0 ? (e.clientX - dragStart.clientX) / plotWidthPx : 0;
                     const span = dragStart.viewEnd - dragStart.viewStart;
                     const shift = -dxRel * span;
                     pvChartPanTo(dragStart.viewStart + shift, dragStart.viewEnd + shift);
                 }
             });
 
+            // Tippen/Klicken ohne nennenswerte Bewegung: nächsten Mess-/Prognosepunkt suchen und anzeigen
+            function handleChartTap(clientX) {
+                if (!pvChartState.data.length) return;
+                let { viewStart, viewEnd } = pvChartState;
+                if (viewEnd - viewStart < PV_CHART_MIN_SPAN_MS) {
+                    const mid = (viewStart + viewEnd) / 2;
+                    viewStart = mid - PV_CHART_MIN_SPAN_MS / 2;
+                    viewEnd = mid + PV_CHART_MIN_SPAN_MS / 2;
+                }
+                const tapT = viewStart + relX(clientX) * (viewEnd - viewStart);
+
+                let best = null, bestDist = Infinity;
+                for (const p of pvChartState.data) {
+                    const d = Math.abs(p.t - tapT);
+                    if (d < bestDist) { bestDist = d; best = { t: p.t, pv: p.pv, isForecast: false }; }
+                }
+                if (pvChartState.forecast) {
+                    for (const p of pvChartState.forecast) {
+                        const d = Math.abs(p.t - tapT);
+                        if (d < bestDist) { bestDist = d; best = { t: p.t, pv: p.pv, isForecast: true }; }
+                    }
+                }
+                if (best) {
+                    pvChartState.selected = best;
+                    drawPvChart();
+                }
+            }
+
             const endPointer = (e) => {
+                const wasTap = pointers.size === 1 && dragStart && !dragStart.moved && !pinchStart;
+                const tapClientX = e.clientX;
                 pointers.delete(e.pointerId);
                 try { svg.releasePointerCapture(e.pointerId); } catch (err) {}
                 if (pointers.size === 0) { dragStart = null; svg.style.cursor = 'grab'; }
                 if (pointers.size < 2) pinchStart = null;
                 if (pointers.size === 1) {
                     const [remaining] = pointers.entries();
-                    dragStart = { clientX: remaining[1], viewStart: pvChartState.viewStart, viewEnd: pvChartState.viewEnd };
+                    dragStart = {
+                        clientX: remaining[1], downX: remaining[1], downY: 0, moved: false,
+                        pointerType: dragStart ? dragStart.pointerType : 'mouse',
+                        viewStart: pvChartState.viewStart, viewEnd: pvChartState.viewEnd
+                    };
                 }
+                if (wasTap) handleChartTap(tapClientX);
             };
             svg.addEventListener('pointerup', endPointer);
             svg.addEventListener('pointercancel', endPointer);
