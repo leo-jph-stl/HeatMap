@@ -23,7 +23,6 @@
     <script src="urban_data.js"></script>
     <script src="cities_data.js"></script>
     <script id="pvDataScript" src="pv_data.js"></script>
-    <script id="priceDataScript" src="electricity_price.js"></script>
     
     <style>
         body { margin: 0; padding: 0; background-color: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; overflow: hidden; }
@@ -2275,9 +2274,6 @@
         // Netto-Marktpreise in ct/kWh.
         let priceData = [];
         async function loadPriceData() {
-            if (typeof window !== 'undefined' && Array.isArray(window.priceData) && window.priceData.length) {
-                priceData = window.priceData;
-            }
             try {
                 const res = await fetch('electricity_price.json?_t=' + Date.now());
                 if (res.ok) priceData = await res.json();
