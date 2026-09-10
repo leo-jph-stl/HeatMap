@@ -3655,21 +3655,27 @@
                 maxEnergy = Math.max(maxEnergy, genArr[h] || 0, feedArr[h] || 0, loadArr[h] || 0);
             }
             if (dayPts.length >= 10) {
-                for (const p of dayPts) maxEnergy = Math.max(maxEnergy, p.pv);
+                for (const p of dayPts) {
+                    maxEnergy = Math.max(maxEnergy, p.pv || 0, p.feedin || 0, p.loads || 0);
+                }
             }
             maxEnergy = Math.max(1.0, Math.ceil(maxEnergy * 1.15 * 2) / 2);
             const yE = (v) => (H - PAD_B) - Math.min(1, Math.max(0, (v || 0) / maxEnergy)) * plotH;
 
-            // PV-Kurve: Hochauflösende 5-Minuten-Punkte (wie links im Hauptgraphen)
+            // Sortierte 5-Minuten-Punkte
+            const sortedPts = [...dayPts].sort((a, b) => new Date(a.t).getTime() - new Date(b.t).getTime());
+            const hasHighResFeed = sortedPts.some(p => typeof p.feedin === 'number');
+            const hasHighResLoad = sortedPts.some(p => typeof p.loads === 'number');
+
+            // 1. PV-Kurve: Hochauflösende 5-Minuten-Punkte (Gelb)
             let genPts = [];
             let genAreaPts = '';
             if (dayPts.length >= 10) {
-                const sortedPts = [...dayPts].sort((a, b) => new Date(a.t).getTime() - new Date(b.t).getTime());
                 genPts = sortedPts.map(p => {
                     const ptTime = new Date(p.t).getTime();
                     const frac = Math.max(0, Math.min(1, (ptTime - dayStart) / (24 * 3600 * 1000)));
                     const px = (PAD_L + frac * plotW).toFixed(1);
-                    const py = yE(p.pv).toFixed(1);
+                    const py = yE(p.pv || 0).toFixed(1);
                     return `${px},${py}`;
                 });
                 genAreaPts = `${PAD_L},${H - PAD_B} ` + genPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
@@ -3681,14 +3687,45 @@
                 genAreaPts = `${PAD_L},${H - PAD_B} ` + genPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
             }
 
-            const feedPts = [], loadPts = [];
-            for (let h = 0; h < 24; h++) {
-                const cx = (PAD_L + (h + 0.5) * slotW).toFixed(1);
-                feedPts.push(`${cx},${yE(feedArr[h] || 0).toFixed(1)}`);
-                loadPts.push(`${cx},${yE(loadArr[h] || 0).toFixed(1)}`);
+            // 2. Einspeisung: Hochauflösende 5-Minuten-Punkte (Cyan)
+            let feedPts = [];
+            let feedAreaPts = '';
+            if (dayPts.length >= 10 && hasHighResFeed) {
+                feedPts = sortedPts.map(p => {
+                    const ptTime = new Date(p.t).getTime();
+                    const frac = Math.max(0, Math.min(1, (ptTime - dayStart) / (24 * 3600 * 1000)));
+                    const px = (PAD_L + frac * plotW).toFixed(1);
+                    const py = yE(p.feedin || 0).toFixed(1);
+                    return `${px},${py}`;
+                });
+                feedAreaPts = `${PAD_L},${H - PAD_B} ` + feedPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
+            } else {
+                for (let h = 0; h < 24; h++) {
+                    const cx = (PAD_L + (h + 0.5) * slotW).toFixed(1);
+                    feedPts.push(`${cx},${yE(feedArr[h] || 0).toFixed(1)}`);
+                }
+                feedAreaPts = `${PAD_L},${H - PAD_B} ` + feedPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
             }
-            const feedAreaPts = `${PAD_L},${H - PAD_B} ` + feedPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
-            const loadAreaPts = `${PAD_L},${H - PAD_B} ` + loadPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
+
+            // 3. Hausverbrauch: Hochauflösende 5-Minuten-Punkte (Orange)
+            let loadPts = [];
+            let loadAreaPts = '';
+            if (dayPts.length >= 10 && hasHighResLoad) {
+                loadPts = sortedPts.map(p => {
+                    const ptTime = new Date(p.t).getTime();
+                    const frac = Math.max(0, Math.min(1, (ptTime - dayStart) / (24 * 3600 * 1000)));
+                    const px = (PAD_L + frac * plotW).toFixed(1);
+                    const py = yE(p.loads || 0).toFixed(1);
+                    return `${px},${py}`;
+                });
+                loadAreaPts = `${PAD_L},${H - PAD_B} ` + loadPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
+            } else {
+                for (let h = 0; h < 24; h++) {
+                    const cx = (PAD_L + (h + 0.5) * slotW).toFixed(1);
+                    loadPts.push(`${cx},${yE(loadArr[h] || 0).toFixed(1)}`);
+                }
+                loadAreaPts = `${PAD_L},${H - PAD_B} ` + loadPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
+            }
 
             let gridEnergySvg = '';
             hourTicks.forEach(h => {

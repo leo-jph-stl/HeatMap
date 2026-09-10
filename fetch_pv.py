@@ -352,46 +352,68 @@ if api_key and not metrics:
             extra_data["daily_reports"] = daily_reports
 
             time.sleep(1.1)
+            now_ms = int(time.time() * 1000)
+            begin_ms = now_ms - (3 * 24 * 3600 * 1000)
+            history_vars = ["pvPower", "feedinPower", "loadsPower"]
+            
+            datas = []
             history_res = call_fox_openapi("/op/v0/device/history/query", {
-                "sn": sn, "variables": ["pvPower", "feedinPower", "loadsPower"]
+                "sn": sn, "variables": history_vars, "begin": begin_ms, "end": now_ms
             })
-            if history_res:
-                res_list = history_res.get("result", [])
-                if res_list:
-                    datas = res_list[0].get("datas", [])
-                    pv_list = []
-                    feedin_map = {}
-                    loads_map = {}
-                    for d in datas:
-                        vname = d.get("variable")
-                        for point in d.get("data", []):
-                            t_norm = normalize_fox_time(point.get("time"))
-                            if not t_norm:
-                                continue
-                            try:
-                                val = round(float(point.get("value", 0)), 3)
-                            except (TypeError, ValueError):
-                                continue
-                            if vname == "pvPower":
-                                pv_list.append({"t": t_norm, "pv": val})
-                            elif vname == "feedinPower":
-                                feedin_map[t_norm] = val
-                            elif vname == "loadsPower":
-                                loads_map[t_norm] = val
+            if history_res and history_res.get("result"):
+                datas = history_res.get("result", [])[0].get("datas", [])
+            
+            # Manche FoxESS OpenAPI Versionen liefern nur 1 Variable pro Query.
+            # Falls Variablen fehlen, frage diese einzeln ab:
+            returned_vars = {d.get("variable") for d in datas if d.get("variable")}
+            for mv in [v for v in history_vars if v not in returned_vars]:
+                time.sleep(1.1)
+                single_res = call_fox_openapi("/op/v0/device/history/query", {
+                    "sn": sn, "variables": [mv], "begin": begin_ms, "end": now_ms
+                })
+                if single_res and single_res.get("result"):
+                    s_datas = single_res.get("result", [])[0].get("datas", [])
+                    if s_datas:
+                        datas.extend(s_datas)
 
-                    history_3d = []
-                    for item in pv_list:
-                        t = item["t"]
-                        pt = {"t": t, "pv": item["pv"]}
-                        if t in feedin_map:
-                            pt["feedin"] = feedin_map[t]
-                        if t in loads_map:
-                            pt["loads"] = loads_map[t]
-                        history_3d.append(pt)
+            if datas:
+                # 5-Minuten-Slots synchronisieren (tolerant gegenüber Zeitstempel-Verschiebungen)
+                slots = {}
+                for d in datas:
+                    vname = (d.get("variable") or "").strip()
+                    for point in d.get("data", []):
+                        t_raw = point.get("time")
+                        t_norm = normalize_fox_time(t_raw)
+                        if not t_norm:
+                            continue
+                        try:
+                            val = round(float(point.get("value", 0)), 3)
+                        except (TypeError, ValueError):
+                            continue
+                        
+                        try:
+                            dt = datetime.fromisoformat(t_norm)
+                            epoch = dt.timestamp()
+                            slot_epoch = int(round(epoch / 300.0) * 300)
+                            slot_dt = datetime.fromtimestamp(slot_epoch, tz=dt.tzinfo)
+                            slot_key = slot_dt.isoformat()
+                        except Exception:
+                            slot_key = t_norm
+                        
+                        if slot_key not in slots:
+                            slots[slot_key] = {"t": slot_key, "pv": 0.0, "feedin": 0.0, "loads": 0.0}
+                        
+                        if vname == "pvPower":
+                            slots[slot_key]["pv"] = val
+                        elif vname == "feedinPower":
+                            slots[slot_key]["feedin"] = val
+                        elif vname == "loadsPower":
+                            slots[slot_key]["loads"] = val
 
-                    if history_3d:
-                        extra_data["history_3d"] = history_3d
-                        print(f"3-Tage-Verlauf: {len(history_3d)} Datenpunkte (PV, Feedin, Loads)")
+                history_3d = sorted(slots.values(), key=lambda x: x["t"])
+                if history_3d:
+                    extra_data["history_3d"] = history_3d
+                    print(f"3-Tage-Verlauf: {len(history_3d)} synchrone Datenpunkte (PV, Feedin, Loads)")
     except Exception as e:
         print(f"OpenAPI Abruf fehlgeschlagen: {e}")
         traceback.print_exc()
