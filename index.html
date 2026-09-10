@@ -1135,11 +1135,22 @@
             const scale = step.scale || 1.0;
             const span = rangeMax - rangeMin;
             
-            // Einmaliges Spalten-Lookup (-180°..+180° -> 0°..360° GFS Spaltenindex)
+            // Einmaliges Spalten-Lookup: rechnet die Textur-Spalte x auf den passenden GFS-
+            // Spaltenindex im 0°..360°-Rohraster um. Der nötige Versatz ist ein Viertel der
+            // Rasterbreite (90°), nicht die Hälfte (180°) - er muss exakt die -90°-Rotation von
+            // earthMesh/dataMesh (dataMesh.rotation.y = -Math.PI/2) ausgleichen, mit der die Basis-
+            // Erdtextur korrekt zur echten Geographie ausgerichtet wird. Ein halbes Raster (720
+            // Spalten) war hier schlicht falsch kalibriert: am 2026-09-10 per Klick nachgewiesen,
+            // dass reale Tageswerte (z.B. 499 W/m² im Nahen Osten) als reines Schwarz gerendert
+            // wurden, weil die Textur dabei tatsächlich einen um 90° Länge entfernten Punkt zeigte -
+            // über 100 Stichproben (Raycast realer Bildschirmpunkte gegen die vertrauenswürdige
+            // sphereVertexToLatLng(), verglichen mit dem tatsächlich in der Textur gespeicherten
+            // Rohwert) bestätigen exakt einen konstanten Fehler von 1080 Spalten (~ -270°, äquivalent
+            // zu +90°) - keine zufällige Abweichung.
             const colLookup = new Int32Array(width);
-            const halfNx = Math.floor(nx / 2);
+            const quarterNx = Math.floor(nx / 4);
             for (let x = 0; x < width; x++) {
-                colLookup[x] = (x < halfNx) ? (x + halfNx) : (x - halfNx);
+                colLookup[x] = (x + quarterNx) % nx;
             }
 
             if (useFloat) {
