@@ -757,25 +757,14 @@
                     </div>
                     <button id="pvHistoryResetBtn" title="Auf 3 Tage zurücksetzen" style="display:none; background: rgba(255,219,0,0.12); border: 1px solid rgba(255,219,0,0.35); color: #ffdb00; border-radius: 6px; font-size: 9px; font-weight: 600; padding: 1px 6px; cursor: pointer;">↺ 3 Tage</button>
                 </div>
-                <svg id="pvHistoryChart" viewBox="0 0 300 70" preserveAspectRatio="none" style="width:100%; height:70px; display:block; overflow: visible; touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none;"></svg>
+                <svg id="pvHistoryChart" viewBox="0 0 300 78" preserveAspectRatio="none" style="width:100%; height:78px; display:block; overflow: visible; touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none;"></svg>
                 <div style="font-size: 8.5px; color: #666; margin-top: 2px;">Ziehen zum Verschieben, Mausrad/Pinch zum Zoomen, Tippen für Details</div>
-                <div id="pvForecastSummary" style="display:none; margin-top: 7px; padding-top: 7px; border-top: 1px solid rgba(255,255,255,0.08);">
-                    <div style="font-size: 9px; color: #888; margin-bottom: 4px;">☀️ Prognose (kumuliert)</div>
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;">
-                        <div style="background: rgba(255,219,0,0.07); border: 1px solid rgba(255,219,0,0.2); border-radius: 8px; padding: 5px 3px; text-align: center;">
-                            <div id="pvForecastLabel24" style="font-size: 9px; color: #888;">24h</div>
-                            <div id="pvForecast24h" style="font-size: 11.5px; font-weight: 700; color: #ffdb00;">-- kWh</div>
-                        </div>
-                        <div style="background: rgba(255,219,0,0.07); border: 1px solid rgba(255,219,0,0.2); border-radius: 8px; padding: 5px 3px; text-align: center;">
-                            <div id="pvForecastLabel48" style="font-size: 9px; color: #888;">48h</div>
-                            <div id="pvForecast48h" style="font-size: 11.5px; font-weight: 700; color: #ffdb00;">-- kWh</div>
-                        </div>
-                        <div style="background: rgba(255,219,0,0.07); border: 1px solid rgba(255,219,0,0.2); border-radius: 8px; padding: 5px 3px; text-align: center;">
-                            <div id="pvForecastLabel72" style="font-size: 9px; color: #888;">72h</div>
-                            <div id="pvForecast72h" style="font-size: 11.5px; font-weight: 700; color: #ffdb00;">-- kWh</div>
-                        </div>
-                    </div>
-                </div>
+            </div>
+
+            <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 9px; margin-bottom: 7px;">
+                <div style="font-size: 10px; color: #888; margin-bottom: 4px;">Strompreis (Day-Ahead) <span id="priceChartRange" style="color:#aaa;"></span></div>
+                <svg id="priceChart" viewBox="0 0 300 70" preserveAspectRatio="none" style="width:100%; height:70px; display:block; overflow: visible;"></svg>
+                <div style="font-size: 8.5px; color: #666; margin-top: 2px;">EPEX Day-Ahead-Marktpreis, netto (aWATTar) - ct/kWh</div>
             </div>
 
             <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; margin-bottom: 7px; overflow: hidden;">
@@ -2246,6 +2235,95 @@
                 const res = await fetch('electricity_price.json?_t=' + Date.now());
                 if (res.ok) priceData = await res.json();
             } catch (e) {}
+            drawPriceChart();
+            const euroBody = document.getElementById('pvEuroBody');
+            if (euroBody && euroBody.style.display !== 'none') renderEuroTable();
+        }
+
+        const PRICE_CHART_W = 300, PRICE_CHART_H = 70;
+        const PRICE_CHART_PAD_L = 30, PRICE_CHART_PAD_R = 6, PRICE_CHART_PAD_T = 6, PRICE_CHART_PAD_B = 16;
+
+        // Statischer (kein Zoom/Pan) Kurvenverlauf des Day-Ahead-Preises über den gesamten geladenen
+        // Zeitraum (~5 Tage zurück, soweit veröffentlicht auch etwas voraus). Stufenlinie statt
+        // geglätteter Kurve, weil der Preis pro Stunde tatsächlich konstant ist (keine sanften
+        // Übergänge) - eine geglättete Linie würde hier eine Präzision vortäuschen, die nicht da ist.
+        function drawPriceChart() {
+            const svg = document.getElementById('priceChart');
+            const rangeEl = document.getElementById('priceChartRange');
+            if (!svg) return;
+            if (!priceData.length) {
+                svg.innerHTML = '';
+                if (rangeEl) rangeEl.innerText = '';
+                return;
+            }
+
+            const W = PRICE_CHART_W, H = PRICE_CHART_H;
+            const PAD_L = PRICE_CHART_PAD_L, PAD_R = PRICE_CHART_PAD_R, PAD_T = PRICE_CHART_PAD_T, PAD_B = PRICE_CHART_PAD_B;
+            const viewStart = priceData[0].t, viewEnd = priceData[priceData.length - 1].endT;
+            const x = (t) => PAD_L + (viewEnd > viewStart ? (t - viewStart) / (viewEnd - viewStart) : 0) * (W - PAD_L - PAD_R);
+            const priceMin = Math.min(0, ...priceData.map(r => r.ctKwh));
+            const priceMax = Math.max(1, ...priceData.map(r => r.ctKwh));
+            const range = (priceMax - priceMin) || 1;
+            const y = (v) => (H - PAD_B) - ((v - priceMin) / range) * (H - PAD_B - PAD_T);
+
+            // Treppenlinie: pro Stunde ein waagrechtes Segment auf Höhe des Preises dieser Stunde
+            const stepPts = [];
+            priceData.forEach(r => {
+                stepPts.push(`${x(r.t).toFixed(1)},${y(r.ctKwh).toFixed(1)}`);
+                stepPts.push(`${x(r.endT).toFixed(1)},${y(r.ctKwh).toFixed(1)}`);
+            });
+            const linePts = stepPts.join(' ');
+            const zeroY = y(0).toFixed(1);
+            const areaPts = `${x(viewStart).toFixed(1)},${zeroY} ` + linePts + ` ${x(viewEnd).toFixed(1)},${zeroY}`;
+
+            const now = Date.now();
+            let nowLine = '';
+            if (now >= viewStart && now <= viewEnd) {
+                const nx = x(now).toFixed(1);
+                nowLine = `<line x1="${nx}" y1="${PAD_T}" x2="${nx}" y2="${H - PAD_B}" stroke="rgba(255,255,255,0.35)" stroke-width="1" stroke-dasharray="1,2"/>`;
+            }
+
+            let dayLines = '', dayLabels = '';
+            const dayMs = 24 * 3600 * 1000;
+            const span = viewEnd - viewStart;
+            let dayStart = Math.ceil(viewStart / dayMs) * dayMs;
+            for (; dayStart < viewEnd; dayStart += dayMs) {
+                const dxPos = x(dayStart).toFixed(1);
+                dayLines += `<line x1="${dxPos}" y1="${PAD_T}" x2="${dxPos}" y2="${H - PAD_B}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2,2"/>`;
+                if (dayStart - viewStart > span * 0.05 && viewEnd - dayStart > span * 0.05) {
+                    const wd = new Date(dayStart).toLocaleDateString('de-DE', { weekday: 'short' });
+                    dayLabels += `<text x="${dxPos}" y="${H - 2}" font-size="7" fill="#888" text-anchor="middle">${wd}</text>`;
+                }
+            }
+
+            let yAxis = '';
+            [priceMin, (priceMin + priceMax) / 2, priceMax].forEach((v, i) => {
+                const yy = y(v);
+                yAxis += `<line x1="${PAD_L}" y1="${yy.toFixed(1)}" x2="${W - PAD_R}" y2="${yy.toFixed(1)}" stroke="rgba(255,255,255,${i === 2 ? 0.14 : 0.07})" stroke-width="1"/>`;
+                yAxis += `<text x="${PAD_L - 3}" y="${(yy + 2.3).toFixed(1)}" font-size="7" fill="#666" text-anchor="end">${v.toFixed(0)}</text>`;
+            });
+            yAxis += `<text x="${(PAD_L - 3).toFixed(1)}" y="${PAD_T + 5}" font-size="6" fill="#555" text-anchor="end">ct</text>`;
+
+            const fmtHM = (t) => new Date(t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+            const xAxis = `
+                <text x="${PAD_L}" y="${H - 2}" font-size="7" fill="#666" text-anchor="start">${fmtHM(viewStart)}</text>
+                <text x="${W - PAD_R}" y="${H - 2}" font-size="7" fill="#666" text-anchor="end">${fmtHM(viewEnd)}</text>
+            `;
+
+            svg.innerHTML = `
+                ${yAxis}
+                <polygon points="${areaPts}" fill="rgba(0,229,255,0.15)" stroke="none"></polygon>
+                ${dayLines}
+                ${nowLine}
+                <polyline points="${linePts}" fill="none" stroke="#00e5ff" stroke-width="1.5" stroke-linejoin="round"></polyline>
+                ${dayLabels}
+                ${xAxis}
+            `;
+
+            if (rangeEl) {
+                const lastKnown = priceData[priceData.length - 1].endT;
+                rangeEl.innerText = lastKnown > now ? `· bekannt bis ${fmtHM(lastKnown)}` : '';
+            }
         }
 
         async function loadPvData() {
@@ -2389,8 +2467,13 @@
         // (bei vorhandener Prognose reicht fullEnd bis ans Ende des Prognose-Horizonts).
         const pvChartState = { data: [], forecast: null, fullStart: null, fullEnd: null, viewStart: null, viewEnd: null, selected: null };
         const PV_CHART_MIN_SPAN_MS = 20 * 60 * 1000; // näher als 20 Minuten wird nicht reingezoomt
-        const PV_CHART_W = 300, PV_CHART_H = 70;
-        const PV_CHART_PAD_L = 28, PV_CHART_PAD_R = 6, PV_CHART_PAD_T = 6, PV_CHART_PAD_B = 16;
+        const PV_CHART_W = 300, PV_CHART_H = 78;
+        // PAD_B ist bewusst groß genug für zwei Beschriftungszeilen am unteren Rand: Wochentage
+        // (Tagesgrenzen) und, in einer eigenen Zeile darunter, die kumulierte Prognose je Zeitfenster -
+        // getrennte Zeilen, damit sich beide nicht überlappen ("keine Konkurrenz zu den Abkürzungen").
+        const PV_CHART_PAD_L = 28, PV_CHART_PAD_R = 6, PV_CHART_PAD_T = 6, PV_CHART_PAD_B = 24;
+        const PV_CHART_WEEKDAY_ROW_Y = PV_CHART_H - PV_CHART_PAD_B + 9;
+        const PV_CHART_FORECAST_ROW_Y = PV_CHART_H - 3;
 
         // Interpoliert die GFS-Einstrahlungsprognose (W/m²) am PV-Standort für einen beliebigen
         // Zeitpunkt (lineare Interpolation zwischen den umgebenden 3h-Schritten von solarData).
@@ -2510,40 +2593,43 @@
             return kwh;
         }
 
-        function updatePvForecastSummaryUI(forecast) {
-            const summaryEl = document.getElementById('pvForecastSummary');
+        function updatePvForecastLegend(forecast) {
             const legendEl = document.getElementById('pvForecastLegend');
-            if (!summaryEl) return;
+            if (!legendEl) return;
             if (!forecast) {
-                summaryEl.style.display = 'none';
-                if (legendEl) legendEl.style.display = 'none';
+                legendEl.style.display = 'none';
                 return;
             }
-            const now = Date.now();
-            const horizonEnd = forecast.points[forecast.points.length - 1].t;
-            const horizonHours = Math.max(0, Math.round((horizonEnd - now) / 3600000));
-
-            // Drei Checkpoints statt nur einem: sollen visuell mit den 3 Tagen des Charts darüber
-            // korrespondieren (24h ~ Tag 1, 48h ~ Tag 2, 72h ~ Tag 3 der Prognose).
-            [
-                { h: 24, valEl: 'pvForecast24h', labelEl: 'pvForecastLabel24' },
-                { h: 48, valEl: 'pvForecast48h', labelEl: 'pvForecastLabel48' },
-                { h: 72, valEl: 'pvForecast72h', labelEl: 'pvForecastLabel72' }
-            ].forEach(({ h, valEl, labelEl }) => {
-                const targetT = Math.min(now + h * 3600000, horizonEnd);
-                const kwh = integrateKwh(forecast.points, now, targetT);
-                const el = document.getElementById(valEl);
-                const lbl = document.getElementById(labelEl);
-                if (el) el.innerText = kwh.toFixed(1) + ' kWh';
-                if (lbl) lbl.innerText = Math.min(h, horizonHours) + 'h';
-            });
-            summaryEl.style.display = 'block';
-            if (legendEl) legendEl.style.display = 'inline';
-
+            legendEl.style.display = 'inline';
             const basisStr = forecast.calibSource === 'log'
                 ? `${forecast.sampleCount} Messwerten aus bis zu ${forecast.calibDays} Tagen`
                 : `${forecast.sampleCount} Messwerten der letzten 24h (Log noch im Aufbau)`;
-            summaryEl.title = `Geschätzt aus der GFS-Einstrahlungsprognose, kalibriert auf ${basisStr} dieser Anlage.`;
+            legendEl.title = `Geschätzt aus der GFS-Einstrahlungsprognose, kalibriert auf ${basisStr} dieser Anlage.`;
+        }
+
+        // Drei rollierende 24h-Fenster ab jetzt (Tag +1/+2/+3, gekappt am real verfügbaren Prognose-
+        // Horizont) mit kumulierter kWh und - soweit die Börse den Preis dafür schon veröffentlicht hat
+        // - geschätztem Erlös. Eine Stelle für beides: die Beschriftung direkt im Chart (drawPvChart)
+        // und die Zeilen im €-Panel (buildEuroRows) nutzen exakt dieselben Fenster/Zahlen.
+        function computeForecastCheckpoints() {
+            const forecast = pvChartState.forecast;
+            if (!forecast || !forecast.length) return [];
+            const now = Date.now();
+            const dayMs = 24 * 3600 * 1000;
+            const horizonEnd = forecast[forecast.length - 1].t;
+            const checkpoints = [];
+            for (let i = 0; i < 3; i++) {
+                const fromT = now + i * dayMs;
+                if (fromT >= horizonEnd) break;
+                const toT = Math.min(fromT + dayMs, horizonEnd);
+                checkpoints.push({
+                    label: `Tag +${i + 1}`,
+                    fromT, toT,
+                    kwh: integrateKwh(forecast, fromT, toT),
+                    eur: estimateRevenueEur(forecast, fromT, toT)
+                });
+            }
+            return checkpoints;
         }
 
         // Erlös (€) für eine Leistungs-Zeitreihe im Intervall [fromT, toT): summiert je Stunden-
@@ -2588,18 +2674,9 @@
                 }
             }
 
-            const forecast = pvChartState.forecast;
-            if (forecast && forecast.length) {
-                const horizonEnd = forecast[forecast.length - 1].t;
-                for (let i = 0; i < 3; i++) {
-                    const segStart = now + i * dayMs;
-                    if (segStart >= horizonEnd) break;
-                    const segEnd = Math.min(segStart + dayMs, horizonEnd);
-                    const kwh = integrateKwh(forecast, segStart, segEnd);
-                    const eur = estimateRevenueEur(forecast, segStart, segEnd);
-                    rows.push({ label: `Tag +${i + 1}`, kwh, eur, isForecast: true });
-                }
-            }
+            computeForecastCheckpoints().forEach(cp => {
+                rows.push({ label: cp.label, kwh: cp.kwh, eur: cp.eur, isForecast: true });
+            });
             return rows;
         }
 
@@ -2662,7 +2739,7 @@
             pvChartState.data = points;
             const forecast = computePvForecast();
             pvChartState.forecast = forecast ? forecast.points : null;
-            updatePvForecastSummaryUI(forecast);
+            updatePvForecastLegend(forecast);
             const euroBody = document.getElementById('pvEuroBody');
             if (euroBody && euroBody.style.display !== 'none') renderEuroTable();
 
@@ -2744,8 +2821,21 @@
                 dayLines += `<line x1="${dxPos}" y1="${PAD_T}" x2="${dxPos}" y2="${H - PAD_B}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2,2"/>`;
                 if (dayStart - viewStart > span * 0.07 && viewEnd - dayStart > span * 0.07) {
                     const wd = new Date(dayStart).toLocaleDateString('de-DE', { weekday: 'short' });
-                    dayLabels += `<text x="${dxPos}" y="${H - 2}" font-size="7" fill="#888" text-anchor="middle">${wd}</text>`;
+                    dayLabels += `<text x="${dxPos}" y="${PV_CHART_WEEKDAY_ROW_Y}" font-size="7" fill="#888" text-anchor="middle">${wd}</text>`;
                 }
+            }
+
+            // Prognose-Checkpoints (Tag +1/+2/+3): kumulierte kWh direkt unter dem jeweiligen
+            // Zeitfenster im Chart platziert, in einer eigenen Zeile unterhalb der Wochentage, damit
+            // sich beide Beschriftungen nie überlappen.
+            let forecastCheckpointLabels = '';
+            if (forecast) {
+                computeForecastCheckpoints().forEach(cp => {
+                    const centerT = (cp.fromT + cp.toT) / 2;
+                    if (centerT < viewStart || centerT > viewEnd) return;
+                    const cx = x(centerT).toFixed(1);
+                    forecastCheckpointLabels += `<text x="${cx}" y="${PV_CHART_FORECAST_ROW_Y}" font-size="7" fill="#ffdb00" text-anchor="middle" opacity="0.85">${cp.kwh.toFixed(1)} kWh</text>`;
+                });
             }
 
             // "Jetzt"-Markierung, sobald eine Prognose existiert (trennt Messwerte von Schätzung)
@@ -2768,8 +2858,8 @@
             // X-Achse: Start-/Endzeit des sichtbaren Fensters
             const fmtHM = (t) => new Date(t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
             const xAxis = `
-                <text x="${PAD_L}" y="${H - 2}" font-size="7" fill="#666" text-anchor="start">${fmtHM(viewStart)}</text>
-                <text x="${W - PAD_R}" y="${H - 2}" font-size="7" fill="#666" text-anchor="end">${fmtHM(viewEnd)}</text>
+                <text x="${PAD_L}" y="${PV_CHART_WEEKDAY_ROW_Y}" font-size="7" fill="#666" text-anchor="start">${fmtHM(viewStart)}</text>
+                <text x="${W - PAD_R}" y="${PV_CHART_WEEKDAY_ROW_Y}" font-size="7" fill="#666" text-anchor="end">${fmtHM(viewEnd)}</text>
             `;
 
             // Ausgewählter Punkt (Tap/Klick): Fadenkreuz + Zeit/Leistungs-Label
@@ -2806,6 +2896,7 @@
                 <polyline points="${forecastLinePts}" fill="none" stroke="#ffdb00" stroke-width="1.5" stroke-dasharray="3,2.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.6"></polyline>
                 ${dayLabels}
                 ${xAxis}
+                ${forecastCheckpointLabels}
                 ${selectedSvg}
             `;
 
@@ -4474,10 +4565,7 @@
         switchLayer('temp');
         loadPvData();
         loadPvForecastLog().then(() => { if (livePvData) updatePvDashboardUI(); });
-        loadPriceData().then(() => {
-            const euroBody = document.getElementById('pvEuroBody');
-            if (euroBody && euroBody.style.display !== 'none') renderEuroTable();
-        });
+        loadPriceData();
         animate();
         detectUserLocationAndFly();
         checkWeatherUpdate();
