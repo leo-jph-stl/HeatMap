@@ -1,0 +1,30 @@
+[
+  {
+    "date": "2026-09-10",
+    "sampleCount": 16,
+    "medianRatio": 0.005429,
+    "logEntryCount": 26,
+    "logDateRange": {
+      "from": "2026-09-09T09:00:00.000Z",
+      "to": "2026-09-10T10:00:00.000Z"
+    },
+    "dataQualityFlags": [],
+    "weeklyFitCheck": {
+      "days": [
+        {
+          "date": "2026-09-09",
+          "actualKwh": 29.91,
+          "modeledKwh": 16.06,
+          "pctError": -46.33
+        },
+        {
+          "date": "2026-09-10",
+          "actualKwh": 5.95,
+          "modeledKwh": 5.68,
+          "pctError": -4.59
+        }
+      ],
+      "meanAbsPctError": 25.46
+    }
+  }
+]

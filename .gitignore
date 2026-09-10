@@ -22,3 +22,6 @@ wind_raw.json
 node_modules/
 .DS_Store
 Thumbs.db
+
+# Transient output of pv_calibration_review.js (only pv_calibration_history.json is persisted)
+pv_calibration_report.md
