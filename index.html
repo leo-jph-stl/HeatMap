@@ -16,6 +16,7 @@
     <script id="tempDataScript" src="temp_data.js?_v=20260907_gfs025_c2"></script>
     <script src="solar_data.js"></script>
     <script src="solar_climatology_data.js"></script>
+    <script src="cloud_data.js"></script>
     <script src="lakes_data.js"></script>
     <script src="rivers_data.js"></script>
     <script src="roads_data.js"></script>
@@ -1074,6 +1075,12 @@
         // Größenordnung als die instantane Live-Leistung in W/m^2 - eigene Skala nötig.
         const minSolarClimRange = 0.0;
         const maxSolarClimRange = 8.0;
+        const minCloudRange = 0.0;
+        const maxCloudRange = 100.0;
+        // Ab welcher Einstrahlung (W/m^2) die Nachtseite (Wolken-Ansicht) in die Tag-Farbrampe
+        // übergeht. Als Zone statt scharfer Schwelle: die Dämmerung blendet über diesen Bereich
+        // weich zwischen beiden Darstellungen über (siehe Fragment-Shader, u_nightThreshold).
+        const nightCloudThreshold = 40.0;
 
         const colorRampTempTex = createColorRampTexture(colorScaleTemp, minTempRange, maxTempRange, 2048);
         const colorRampWindTex = createColorRampTexture(kmh => colorScaleWind(kmh / 3.6), 0.0, maxWindKmh, 2048);
@@ -1213,6 +1220,8 @@
         let tempTextures = (typeof tempData !== 'undefined') ? tempData.map(step => buildTempDataTexture(step)) : [];
         let windTextures = (typeof windData !== 'undefined') ? windData.map(buildWindDataTexture) : [];
         let solarTextures = (typeof solarData !== 'undefined') ? solarData.map(step => buildTempDataTexture(step, minSolarRange, maxSolarRange)) : [];
+        // Wolkendeckung (%) für die Nachtseite der Einstrahlungs-Karte, siehe nightCloudThreshold.
+        let cloudTextures = (typeof cloudData !== 'undefined') ? cloudData.map(step => buildTempDataTexture(step, minCloudRange, maxCloudRange)) : [];
         // Klimatologie-Layer (12 Monate + Jahresmittel) werden träge/on-demand gebaut und gecacht,
         // da sie im Normalfall gar nicht angeschaut werden (siehe getSolarClimatologyTexture).
         const solarClimTextureCache = new Map();
@@ -1235,6 +1244,9 @@
             }
             if (typeof solarData !== 'undefined') {
                 solarTextures = solarData.map(step => buildTempDataTexture(step, minSolarRange, maxSolarRange));
+            }
+            if (typeof cloudData !== 'undefined') {
+                cloudTextures = cloudData.map(step => buildTempDataTexture(step, minCloudRange, maxCloudRange));
             }
             solarClimTextureCache.clear();
         }
@@ -1259,6 +1271,11 @@
                 uniform float u_minVal;
                 uniform float u_maxVal;
                 uniform float u_opacity;
+                uniform sampler2D u_cloudA;
+                uniform sampler2D u_cloudB;
+                uniform float u_showNightClouds;
+                uniform float u_nightThreshold;
+                uniform float u_cloudMax;
                 varying vec2 vUv;
 
                 // 16-PUNKT BICUBIC CATMULL-ROM SPLINE FILTER (Windy.com / GIS Professional Interpolation)
@@ -1315,8 +1332,27 @@
                     float valB = sampleSmooth(u_dataB, vUv);
                     float val = mix(valA, valB, u_blend);
                     float norm = clamp((val - u_minVal) / (u_maxVal - u_minVal), 0.0, 1.0);
-                    vec4 col = texture2D(u_colorRamp, vec2(norm, 0.5));
-                    gl_FragColor = vec4(col.rgb, u_opacity);
+                    vec3 dayColor = texture2D(u_colorRamp, vec2(norm, 0.5)).rgb;
+
+                    if (u_showNightClouds > 0.5) {
+                        // Einstrahlung sagt nachts nichts über Bewölkung aus (überall ~0) - dort
+                        // stattdessen echte Wolkendeckung zeigen. dayFactor blendet weich über die
+                        // Dämmerungszone (0..u_nightThreshold W/m^2), statt hart am Terminator zu
+                        // schneiden. Hardware-bilineare Sample reicht für Wolken (kein Catmull-Rom
+                        // nötig, spart pro Pixel 32 Texturzugriffe).
+                        float cloudA = texture2D(u_cloudA, vUv).r;
+                        float cloudB = texture2D(u_cloudB, vUv).r;
+                        float cloud = clamp(mix(cloudA, cloudB, u_blend) / u_cloudMax, 0.0, 1.0);
+                        vec3 nightClear = vec3(0.03, 0.035, 0.06);
+                        vec3 nightCloud = vec3(0.5, 0.52, 0.56);
+                        vec3 nightColor = mix(nightClear, nightCloud, cloud);
+                        float dayFactor = smoothstep(0.0, u_nightThreshold, val);
+                        vec3 col = mix(nightColor, dayColor, dayFactor);
+                        gl_FragColor = vec4(col, u_opacity);
+                        return;
+                    }
+
+                    gl_FragColor = vec4(dayColor, u_opacity);
                 }
             `,
             uniforms: {
@@ -1327,7 +1363,12 @@
                 u_blend: { value: 0.0 },
                 u_minVal: { value: useFloat ? minTempRange : 0.0 },
                 u_maxVal: { value: useFloat ? maxTempRange : 1.0 },
-                u_opacity: { value: 0.90 }
+                u_opacity: { value: 0.90 },
+                u_cloudA: { value: cloudTextures[0] || null },
+                u_cloudB: { value: cloudTextures[0] || null },
+                u_showNightClouds: { value: 0.0 },
+                u_nightThreshold: { value: nightCloudThreshold },
+                u_cloudMax: { value: useFloat ? maxCloudRange : 1.0 }
             },
             transparent: true,
             depthWrite: false
@@ -3655,6 +3696,14 @@
                 const solarIdx = Math.max(0, Math.min(maxI, liveIdx + stepOffset));
                 activeSolar = solarData[solarIdx];
             }
+            let cloudIdx0 = 0, cloudIdx1 = 0, cloudBlend = 0;
+            if (typeof cloudData !== 'undefined' && cloudData.length > 0) {
+                const maxI = cloudData.length - 1;
+                const clamped = Math.max(0, Math.min(maxI, rawIdx));
+                cloudIdx0 = Math.floor(clamped);
+                cloudIdx1 = Math.min(maxI, cloudIdx0 + 1);
+                cloudBlend = clamped - cloudIdx0;
+            }
 
             const titleEl = document.getElementById('timeDisplayTitle');
             if (titleEl) {
@@ -3662,6 +3711,7 @@
             }
 
             let texA = null, texB = null, blend = 0;
+            let showNightClouds = false;
             if (currentMode === 'temp') {
                 texA = tempTextures[tempIdx0]; texB = tempTextures[tempIdx1]; blend = tempBlend;
             } else if (currentMode === 'wind') {
@@ -3671,8 +3721,16 @@
                     texA = texB = getSolarClimatologyTexture(solarClimSelection);
                 } else {
                     texA = solarTextures[solarIdx0]; texB = solarTextures[solarIdx1]; blend = solarBlend;
+                    // Nachtseite: Einstrahlung ist dort überall ~0 und sagt nichts über Bewölkung
+                    // aus, daher echte Wolkendeckung einblenden (siehe Fragment-Shader).
+                    if (cloudTextures[cloudIdx0] && cloudTextures[cloudIdx1]) {
+                        dataMaterial.uniforms.u_cloudA.value = cloudTextures[cloudIdx0];
+                        dataMaterial.uniforms.u_cloudB.value = cloudTextures[cloudIdx1];
+                        showNightClouds = true;
+                    }
                 }
             }
+            dataMaterial.uniforms.u_showNightClouds.value = showNightClouds ? 1.0 : 0.0;
             if (texA && texB) {
                 dataMaterial.uniforms.u_dataA.value = texA;
                 dataMaterial.uniforms.u_dataB.value = texB;
