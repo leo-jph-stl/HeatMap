@@ -1108,26 +1108,28 @@
                 <svg id="pvHistEnergyChart" viewBox="0 0 380 100" preserveAspectRatio="none" style="width:100%; height:100px; display:block; overflow:visible; cursor:crosshair; user-select:none;"></svg>
             </div>
 
-            <!-- Stündliche Abrechnungstabelle mit EPEX-Börsenpreis & Erlös nach Vorbild links -->
+            <!-- Stündliche Abrechnungstabelle mit Vergütung & Erlös nach Vorbild links -->
             <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 7px 8px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
                     <div style="font-size: 10px; font-weight: 600; color: #bbb;">Stündliche Abrechnungsdetails</div>
-                    <div style="font-size: 8.5px; color: #777;">EPEX Day-Ahead Vergütung</div>
+                    <div id="pvHistTableSub" style="font-size: 8.5px; color: #777;"></div>
                 </div>
-                <div style="max-height: 190px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(0,229,255,0.2) transparent;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 9.5px;">
-                        <thead>
-                            <tr style="color: #888; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                                <th style="text-align: left; padding: 3px 4px;">Zeitraum</th>
-                                <th style="padding: 3px 4px;">PV</th>
-                                <th style="padding: 3px 4px;">Haus</th>
-                                <th style="padding: 3px 4px;">Einspeis.</th>
-                                <th style="padding: 3px 4px;">Börse (Ø)</th>
-                                <th style="padding: 3px 4px;">Erlös</th>
+                <!-- Dynamisches Modell-Badge für EEG / Direktvermarktung & Optionen -->
+                <div id="pvHistModelBadge" style="margin-bottom: 5px;"></div>
+                <div id="pvHistTableContainer" style="max-height: 190px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(0,229,255,0.2) transparent;">
+                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; font-size: 9.5px;">
+                        <thead id="pvHistHourlyTableHead" style="position: sticky; top: 0; z-index: 5;">
+                            <tr style="color: #888; text-align: right;">
+                                <th style="text-align: left; padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Zeitraum</th>
+                                <th style="padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">PV</th>
+                                <th style="padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Haus</th>
+                                <th id="pvHistColBasis" style="padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Einspeis.</th>
+                                <th id="pvHistColRate" style="padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Vergütung</th>
+                                <th style="padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Erlös</th>
                             </tr>
                         </thead>
                         <tbody id="pvHistHourlyTableBody"></tbody>
-                        <tfoot id="pvHistHourlyTableFoot"></tfoot>
+                        <tfoot id="pvHistHourlyTableFoot" style="position: sticky; bottom: 0; z-index: 5;"></tfoot>
                     </table>
                 </div>
             </div>
@@ -3734,6 +3736,100 @@
                 `;
             }
 
+            // 5. Modell-Konfiguration (EEG vs. Direktvermarktung, Option A/B, Solar-Spitzen § 51, Batterie-Shift)
+            const isGrossOptionB = (pvRevenueConfig.feedinBasis === 'gross');
+            const isEeg = (pvRevenueConfig.mode === 'eeg');
+            const eegRate = (typeof pvRevenueConfig.eegRateCt === 'number') ? pvRevenueConfig.eegRateCt : 8.20;
+            const hasSolarSpitzen = isEeg && !!pvRevenueConfig.applySolarSpitzen;
+
+            const modelBadgeEl = document.getElementById('pvHistModelBadge');
+            const colBasisEl = document.getElementById('pvHistColBasis');
+            const colRateEl = document.getElementById('pvHistColRate');
+            const tableSubEl = document.getElementById('pvHistTableSub');
+
+            if (colBasisEl) {
+                colBasisEl.innerText = isGrossOptionB ? 'Erzeug. (100%)' : 'Einspeis.';
+                colBasisEl.title = isGrossOptionB ? 'Option B: 100% Gesamterzeugung wird vergütet' : 'Option A: Netzeinspeisung wird vergütet';
+            }
+            if (colRateEl) {
+                colRateEl.innerText = isEeg ? 'Vergütung (Satz)' : 'Börse (EPEX)';
+            }
+            if (tableSubEl) {
+                tableSubEl.innerText = isEeg ? `EEG-Tarif (${eegRate.toFixed(2)} ct/kWh)` : 'EPEX Spotmarkt (aWATTar)';
+            }
+
+            if (modelBadgeEl) {
+                if (isEeg) {
+                    const spitzenBadge = hasSolarSpitzen
+                        ? '<span style="color:#00ff88;">§ 51 Spitzen aktiv (0 ct bei Negativpreis)</span>'
+                        : '<span style="color:#aaa;">Ohne Solar-Spitzen (§ 51)</span>';
+                    const basisBadge = isGrossOptionB
+                        ? '<span style="color:#ffdb00; font-weight:600;">Option B (100% Gesamterzeugung)</span>'
+                        : '<span style="color:#00e5ff; font-weight:600;">Option A (Netzeinspeisung)</span>';
+                    modelBadgeEl.innerHTML = `
+                        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:5px; font-size:8.5px; background:rgba(255,219,0,0.08); border:1px solid rgba(255,219,0,0.22); border-radius:6px; padding:3px 7px; color:#ccc;">
+                            <span style="color:#ffdb00; font-weight:700;">☀️ EEG: ${eegRate.toFixed(2)} ct/kWh</span>
+                            <span style="color:#555;">•</span>
+                            <span>${basisBadge}</span>
+                            <span style="color:#555;">•</span>
+                            <span>${spitzenBadge}</span>
+                        </div>
+                    `;
+                } else {
+                    const basisBadge = isGrossOptionB
+                        ? '<span style="color:#ffdb00; font-weight:600;">Option B (100% Gesamterzeugung)</span>'
+                        : '<span style="color:#00e5ff; font-weight:600;">Option A (Netzeinspeisung)</span>';
+                    const shiftBadge = pvRevenueConfig.batteryShift
+                        ? `<span style="color:#00ff88; font-weight:600;">Batterie-Shift aktiv (${pvRevenueConfig.shiftCapKwh || 8} kWh, WR ${pvRevenueConfig.inverterAcKw || 5} kW, η=${pvRevenueConfig.efficiencyPct || 90}%)</span>`
+                        : '<span style="color:#aaa;">Echtzeit-Einspeisung (ohne Shift)</span>';
+                    modelBadgeEl.innerHTML = `
+                        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:5px; font-size:8.5px; background:rgba(0,229,255,0.08); border:1px solid rgba(0,229,255,0.22); border-radius:6px; padding:3px 7px; color:#ccc;">
+                            <span style="color:#00e5ff; font-weight:700;">⚡ Direktvermarktung (EPEX Day-Ahead)</span>
+                            <span style="color:#555;">•</span>
+                            <span>${basisBadge}</span>
+                            <span style="color:#555;">•</span>
+                            <span>${shiftBadge}</span>
+                        </div>
+                    `;
+                }
+            }
+
+            // Falls Direktvermarktung mit Batterie-Shift aktiv ist:
+            // Simuliere stündliche Lastverschiebung für den Tag:
+            let shiftedFeed = [...feedArr];
+            if (!isEeg && pvRevenueConfig.batteryShift) {
+                const shiftSlots = [];
+                for (let h = 0; h < 24; h++) {
+                    const baseM = isGrossOptionB ? (genArr[h] || 0) : (feedArr[h] || 0);
+                    shiftSlots.push({ h, kwh: baseM, ctKwh: hourlyPrices[h] !== null ? hourlyPrices[h] : 0, shiftedOut: 0, shiftedIn: 0 });
+                }
+                const fullCap = Math.max(0, pvRevenueConfig.shiftCapKwh || 8.0);
+                const nightRes = (!isGrossOptionB && pvRevenueConfig.selfProtect !== false) ? getTypicalNightReserveKwh(dayStart) : 0;
+                const shiftCap = Math.max(0, fullCap - nightRes);
+                const invKw = Math.max(0.1, pvRevenueConfig.inverterAcKw || 5.0);
+                const eff = Math.min(1, Math.max(0.1, (pvRevenueConfig.efficiencyPct || 90) / 100));
+
+                let remCharge = shiftCap;
+                const chargeCandidates = shiftSlots.filter(s => s.kwh > 0.01).sort((a, b) => a.ctKwh - b.ctKwh);
+                let charged = 0;
+                for (const s of chargeCandidates) {
+                    if (remCharge <= 0) break;
+                    const toCharge = Math.min(s.kwh, invKw * 1.0, remCharge);
+                    s.shiftedOut = toCharge;
+                    charged += toCharge;
+                    remCharge -= toCharge;
+                }
+                let remDischarge = charged * eff;
+                const dischargeCandidates = shiftSlots.filter(s => s.shiftedOut === 0).sort((a, b) => b.ctKwh - a.ctKwh);
+                for (const s of dischargeCandidates) {
+                    if (remDischarge <= 0) break;
+                    const toDischarge = Math.min(remDischarge, invKw * 1.0);
+                    s.shiftedIn = toDischarge;
+                    remDischarge -= toDischarge;
+                }
+                shiftedFeed = shiftSlots.map(s => Math.max(0, s.kwh - s.shiftedOut + s.shiftedIn));
+            }
+
             // --- Crosshair & Hover-Werteinspektion ---
             const syncHoverEls = container.querySelectorAll('.pv-hist-sync-hover');
             syncHoverEls.forEach(el => {
@@ -3745,13 +3841,21 @@
                     const f = feedArr[h] || 0;
                     const p = hourlyPrices[h];
 
-                    let eur = 0;
-                    if (pvRevenueConfig.mode === 'eeg') {
-                        const effectiveRate = (pvRevenueConfig.applySolarSpitzen && p !== null && p < 0) ? 0 : (pvRevenueConfig.eegRateCt || 8.20);
-                        eur = f * (effectiveRate / 100);
+                    const basisKwh = isGrossOptionB ? g : (pvRevenueConfig.batteryShift && !isEeg ? (shiftedFeed[h] || 0) : f);
+
+                    let rate = 0;
+                    let isSolarSpitzenActive = false;
+                    if (isEeg) {
+                        if (hasSolarSpitzen && p !== null && p < 0) {
+                            rate = 0.0;
+                            isSolarSpitzenActive = true;
+                        } else {
+                            rate = eegRate;
+                        }
                     } else {
-                        eur = (p !== null) ? (f * (p / 100)) : (f * ((pvRevenueConfig.eegRateCt || 8.20) / 100));
+                        rate = (p !== null) ? p : eegRate;
                     }
+                    const eur = basisKwh * (rate / 100);
 
                     const curE = document.getElementById('pvHistEnergyCursor');
                     const lineE = document.getElementById('pvHistEnergyCursorLine');
@@ -3771,12 +3875,14 @@
                     }
 
                     const timeRange = `${String(h).padStart(2, '0')}:00 - ${String(h + 1).padStart(2, '0')}:00`;
-                    const pStr = (p !== null && !isNaN(p)) ? `${(p >= 0 ? '+' : '')}${p.toFixed(1)} ct` : '--';
-                    const pCol = (p !== null && p < 0) ? '#ff5252' : '#00e5ff';
-                    const eurCol = (eur > 0.005) ? '#00ff88' : (eur < -0.005 ? '#ff5252' : '#888');
+                    const rateStr = isEeg 
+                        ? (isSolarSpitzenActive ? '0.0 ct (§51)' : `${rate.toFixed(2)} ct`)
+                        : (p !== null ? `${(p >= 0 ? '+' : '')}${p.toFixed(1)} ct` : '--');
+                    const eurCol = (eur > 0.005) ? '#00ff88' : (eur < -0.005 ? '#ff5252' : (isSolarSpitzenActive ? '#ff5252' : '#888'));
+                    const basisName = isGrossOptionB ? 'Erzeug.' : 'Einsp.';
 
                     if (energyValEl) {
-                        energyValEl.innerHTML = `<b style="color:#ddd;">${timeRange}:</b> PV <span style="color:#ffdb00;">${g.toFixed(2)}</span> · Haus <span style="color:#ff9100;">${l.toFixed(2)}</span> · Einsp. <span style="color:#00e5ff;">${f.toFixed(2)}</span> · Börse <span style="color:${pCol};">${pStr}</span> · <span style="color:${eurCol}; font-weight:700;">${eur.toFixed(2)} €</span>`;
+                        energyValEl.innerHTML = `<b style="color:#ddd;">${timeRange}:</b> PV <span style="color:#ffdb00;">${g.toFixed(2)}</span> · Haus <span style="color:#ff9100;">${l.toFixed(2)}</span> · ${basisName} <span style="color:#00e5ff;">${basisKwh.toFixed(2)} kWh</span> · <span style="color:#ffdb00;">${rateStr}</span> · <span style="color:${eurCol}; font-weight:700;">${eur.toFixed(2)} €</span>`;
                     }
                 });
 
@@ -3787,9 +3893,10 @@
                 });
             });
 
-            // 5. Stündliche Abrechnungstabelle (nach Vorbild der Erlöse-Tabelle links)
+            // 6. Stündliche Abrechnungstabelle
             if (tableBody) {
                 let totalEur = 0;
+                let totalBasisKwh = 0;
                 const rowsHtml = [];
 
                 for (let h = 0; h < 24; h++) {
@@ -3798,31 +3905,47 @@
                     const f = feedArr[h] || 0;
                     const p = hourlyPrices[h];
 
-                    let eur = 0;
-                    if (pvRevenueConfig.mode === 'eeg') {
-                        const effectiveRate = (pvRevenueConfig.applySolarSpitzen && p !== null && p < 0) ? 0 : (pvRevenueConfig.eegRateCt || 8.20);
-                        eur = f * (effectiveRate / 100);
+                    const basisKwh = isGrossOptionB ? g : (pvRevenueConfig.batteryShift && !isEeg ? (shiftedFeed[h] || 0) : f);
+                    totalBasisKwh += basisKwh;
+
+                    let rate = 0;
+                    let rateHtml = '';
+                    let isSolarSpitzenActive = false;
+
+                    if (isEeg) {
+                        if (hasSolarSpitzen && p !== null && p < 0) {
+                            rate = 0.0;
+                            isSolarSpitzenActive = true;
+                            rateHtml = `<span style="color:#ff5252; font-weight:700;">0.00 ct</span> <span style="font-size:7.5px; color:#ff8080;" title="Solar-Spitzen § 51: Börsenpreis ${p.toFixed(1)} ct führt zu 0 ct Vergütung">(§51)</span>`;
+                        } else {
+                            rate = eegRate;
+                            const pRef = (p !== null) ? `<span style="font-size:7.5px; color:#666;">(${p >= 0 ? '+' : ''}${p.toFixed(1)})</span>` : '';
+                            rateHtml = `<span style="color:#ffdb00; font-weight:600;">${rate.toFixed(2)} ct</span> ${pRef}`;
+                        }
                     } else {
-                        eur = (p !== null) ? (f * (p / 100)) : (f * ((pvRevenueConfig.eegRateCt || 8.20) / 100));
+                        // Direktvermarktung
+                        rate = (p !== null) ? p : eegRate;
+                        const pColor = (rate < 0) ? '#ff5252' : '#00e5ff';
+                        rateHtml = `<span style="color:${pColor}; font-weight:600;">${(rate >= 0 ? '+' : '')}${rate.toFixed(1)} ct</span>`;
                     }
+
+                    const eur = basisKwh * (rate / 100);
                     totalEur += eur;
 
-                    const pColor = (p !== null && p < 0) ? '#ff5252' : '#00e5ff';
-                    const pStr = (p !== null) ? `${(p >= 0 ? '+' : '')}${p.toFixed(1)} ct` : '--';
                     const gColor = (g > 0.01) ? '#ffdb00; font-weight:600;' : '#555;';
-                    const fColor = (f > 0.01) ? '#00e5ff; font-weight:600;' : '#555;';
+                    const fColor = (basisKwh > 0.01) ? (isGrossOptionB ? '#ffdb00; font-weight:600;' : '#00e5ff; font-weight:600;') : '#555;';
                     const lColor = (l > 0.01) ? '#ff9100;' : '#555;';
-                    const eurColor = (eur > 0.005) ? '#00ff88; font-weight:600;' : (eur < -0.005 ? '#ff5252; font-weight:600;' : '#666;');
+                    const eurColor = (eur > 0.005) ? '#00ff88; font-weight:600;' : (eur < -0.005 ? '#ff5252; font-weight:600;' : (isSolarSpitzenActive ? '#ff5252;' : '#666;'));
 
                     const slotLabel = `${String(h).padStart(2, '0')}:00 - ${String(h + 1).padStart(2, '0')}:00`;
                     rowsHtml.push(`
                         <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
-                            <td style="padding: 3px 4px; color: #888;">${slotLabel}</td>
-                            <td style="padding: 3px 4px; text-align: right; color: ${gColor}">${g.toFixed(2)}</td>
-                            <td style="padding: 3px 4px; text-align: right; color: ${lColor}">${l.toFixed(2)}</td>
-                            <td style="padding: 3px 4px; text-align: right; color: ${fColor}">${f.toFixed(2)}</td>
-                            <td style="padding: 3px 4px; text-align: right; color: ${pColor};">${pStr}</td>
-                            <td style="padding: 3px 4px; text-align: right; color: ${eurColor}">${eur.toFixed(2)} €</td>
+                            <td style="padding: 3.5px 4px; color: #888;">${slotLabel}</td>
+                            <td style="padding: 3.5px 4px; text-align: right; color: ${gColor}">${g.toFixed(2)}</td>
+                            <td style="padding: 3.5px 4px; text-align: right; color: ${lColor}">${l.toFixed(2)}</td>
+                            <td style="padding: 3.5px 4px; text-align: right; color: ${fColor}">${basisKwh.toFixed(2)}</td>
+                            <td style="padding: 3.5px 4px; text-align: right;">${rateHtml}</td>
+                            <td style="padding: 3.5px 4px; text-align: right; color: ${eurColor}">${eur.toFixed(2)} €</td>
                         </tr>
                     `);
                 }
@@ -3830,17 +3953,18 @@
                 tableBody.innerHTML = rowsHtml.join('');
 
                 if (tableFoot) {
-                    const validPrices = hourlyPrices.filter(p => p !== null);
-                    const avgPrice = (validPrices.length > 0) ? (validPrices.reduce((a, b) => a + b, 0) / validPrices.length) : null;
-                    const avgPriceStr = (avgPrice !== null) ? `${(avgPrice >= 0 ? '+' : '')}${avgPrice.toFixed(1)} ct` : '--';
+                    const avgRate = (totalBasisKwh > 0.001) ? (totalEur / totalBasisKwh * 100) : (isEeg ? eegRate : 0);
+                    const basisColTotal = isGrossOptionB ? genKwh : feedKwh;
+                    const basisColColor = isGrossOptionB ? '#ffdb00' : '#00e5ff';
+                    const eurColor = (totalEur > 0.005) ? '#00ff88' : (totalEur < -0.005 ? '#ff5252' : '#aaa');
                     tableFoot.innerHTML = `
-                        <tr style="border-top: 1.5px solid rgba(255,255,255,0.18); font-weight: 700; background: rgba(0,0,0,0.2);">
-                            <td style="padding: 5px 4px; color: #fff;">Gesamt (24h)</td>
-                            <td style="padding: 5px 4px; text-align: right; color: #ffdb00;">${genKwh.toFixed(1)}</td>
-                            <td style="padding: 5px 4px; text-align: right; color: #ff9100;">${loadKwh.toFixed(1)}</td>
-                            <td style="padding: 5px 4px; text-align: right; color: #00e5ff;">${feedKwh.toFixed(1)}</td>
-                            <td style="padding: 5px 4px; text-align: right; color: #00e5ff;">${avgPriceStr}</td>
-                            <td style="padding: 5px 4px; text-align: right; color: #00ff88;">${totalEur.toFixed(2)} €</td>
+                        <tr style="font-weight: 700; background: #151821;">
+                            <td style="padding: 5px 4px; color: #fff; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">Gesamt (24h)</td>
+                            <td style="padding: 5px 4px; text-align: right; color: #ffdb00; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">${genKwh.toFixed(1)}</td>
+                            <td style="padding: 5px 4px; text-align: right; color: #ff9100; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">${loadKwh.toFixed(1)}</td>
+                            <td style="padding: 5px 4px; text-align: right; color: ${basisColColor}; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">${basisColTotal.toFixed(1)}</td>
+                            <td style="padding: 5px 4px; text-align: right; color: #aaa; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">Ø ${avgRate.toFixed(1)} ct</td>
+                            <td style="padding: 5px 4px; text-align: right; color: ${eurColor}; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">${totalEur.toFixed(2)} €</td>
                         </tr>
                     `;
                 }
