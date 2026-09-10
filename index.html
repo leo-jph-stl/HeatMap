@@ -879,13 +879,17 @@
             ])
             .clamp(true);
 
-        // Sonneneinstrahlung (GHI, W/m^2): "viridis"-Farbskala (dunkles Indigo -> Petrol -> Grün
-        // -> helles Gelbgrün) - wahrnehmungsgleichmäßig wie inferno, aber eine komplett andere
-        // Farbfamilie (durchläuft Blau-/Grüntöne statt Schwarz/Orange), dadurch visuell klar von
-        // jedem "Hitze"-Verlauf unterscheidbar.
+        // Sonneneinstrahlung (GHI, W/m^2): zweigeteilte Skala. Untere Hälfte (0-550 W/m²,
+        // niedrig/mittel) = "viridis" (Indigo -> Petrol -> Grün -> Gelb). Ab dem Gelbpunkt bei
+        // 550 W/m² (mittlere Intensität) geht es weiter in warme Töne (Orange -> Rot -> Ocker ->
+        // Beige -> Weiß) für hohe bis extreme Werte - dadurch mehr unterscheidbare Stufen am
+        // oberen Ende als reines Viridis, das dort nur noch blasses Gelbgrün hätte.
         const colorScaleSolar = d3.scaleLinear()
-            .domain([0, 122, 244, 367, 489, 611, 733, 856, 978, 1100])
-            .range(['#440154', '#482878', '#3e4989', '#31688e', '#26828e', '#1f9e89', '#35b779', '#6ece58', '#b5de2b', '#fde725'])
+            .domain([0, 61, 122, 183, 244, 306, 367, 428, 489, 550, 640, 720, 800, 880, 960, 1030, 1100])
+            .range([
+                '#440154', '#482878', '#3e4989', '#31688e', '#26828e', '#1f9e89', '#35b779', '#6ece58', '#b5de2b',
+                '#fde725', '#fab942', '#f28f3a', '#dd5f34', '#b8392f', '#d9a76a', '#ecd9b8', '#ffffff'
+            ])
             .clamp(true);
 
         function getInterpolatedData(lat, lng) {
@@ -3710,7 +3714,7 @@
                 dataMaterial.uniforms.u_maxVal.value = useFloat ? maxTempRange : 1.0;
                 if (dataMaterial.uniforms.u_texSize) dataMaterial.uniforms.u_texSize.value.set(1441.0, 721.0);
             } else if (mode === 'solar') {
-                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #440154 0%, #482878 11.1%, #3e4989 22.2%, #31688e 33.3%, #26828e 44.4%, #1f9e89 55.6%, #35b779 66.7%, #6ece58 77.8%, #b5de2b 88.9%, #fde725 100%)';
+                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #440154 0%, #482878 5.5%, #3e4989 11.1%, #31688e 16.6%, #26828e 22.2%, #1f9e89 27.8%, #35b779 33.4%, #6ece58 38.9%, #b5de2b 44.5%, #fde725 50%, #fab942 58.2%, #f28f3a 65.5%, #dd5f34 72.7%, #b8392f 80%, #d9a76a 87.3%, #ecd9b8 93.6%, #ffffff 100%)';
                 dataMaterial.uniforms.u_colorRamp.value = colorRampSolarTex;
                 applySolarRangeAndLegend();
             } else {
