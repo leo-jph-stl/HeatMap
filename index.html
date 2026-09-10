@@ -879,10 +879,14 @@
             ])
             .clamp(true);
 
-        // Sonneneinstrahlung (GHI, W/m^2): dunkel/Nachtseite -> Purpur/Orange -> helles Gold bei Zenit-Peak
+        // Sonneneinstrahlung (GHI, W/m^2): "inferno"-Farbskala (Schwarz -> Violett -> Rot ->
+        // Orange -> Gelb), eine wissenschaftlich validierte, wahrnehmungsgleichmäßige
+        // Sequential-Skala (eine Farbfamilie, durchgängig steigende Helligkeit in gleichmäßigen
+        // Schritten) - dadurch sind Intensitätsstufen klarer unterscheidbar als bei der vorigen,
+        // ungleichmäßig gestuften Version.
         const colorScaleSolar = d3.scaleLinear()
-            .domain([0, 50, 150, 300, 450, 600, 750, 900, 1000, 1100])
-            .range(['#050510', '#1a1240', '#3a1568', '#6b1866', '#a8243f', '#d9541f', '#f2841a', '#ffbe33', '#ffe485', '#ffffff'])
+            .domain([0, 122, 244, 367, 489, 611, 733, 856, 978, 1100])
+            .range(['#000004', '#1b0c41', '#4a0c6b', '#781c6d', '#a52c60', '#cf4446', '#ed6925', '#fb9a06', '#f7d03c', '#fcffa4'])
             .clamp(true);
 
         function getInterpolatedData(lat, lng) {
@@ -3707,7 +3711,7 @@
                 dataMaterial.uniforms.u_maxVal.value = useFloat ? maxTempRange : 1.0;
                 if (dataMaterial.uniforms.u_texSize) dataMaterial.uniforms.u_texSize.value.set(1441.0, 721.0);
             } else if (mode === 'solar') {
-                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #050510 0%, #1a1240 11%, #3a1568 22%, #6b1866 33%, #a8243f 44%, #d9541f 55%, #f2841a 66%, #ffbe33 77%, #ffe485 88%, #ffffff 100%)';
+                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #000004 0%, #1b0c41 11.1%, #4a0c6b 22.2%, #781c6d 33.3%, #a52c60 44.4%, #cf4446 55.6%, #ed6925 66.7%, #fb9a06 77.8%, #f7d03c 88.9%, #fcffa4 100%)';
                 dataMaterial.uniforms.u_colorRamp.value = colorRampSolarTex;
                 applySolarRangeAndLegend();
             } else {
