@@ -813,11 +813,11 @@
             <div id="timeDisplayTitle">Live (Jetzt)</div>
             <button id="pvQuickBtn" class="pv-badge-btn" title="Zur PV-Anlage Hochheim am Main springen">☀️ PV Hochheim</button>
         </div>
-        <input type="range" id="timeSlider" min="-24" max="48" step="1" value="0">
+        <input type="range" id="timeSlider" min="-24" max="72" step="1" value="0">
         <div class="time-labels">
             <span>-24h</span>
             <span>Live</span>
-            <span>+48h</span>
+            <span>+72h</span>
         </div>
         <div id="layer-toggles-visible">
             <button id="btn-temp-vis" class="layer-toggle-btn active" onclick="switchLayer('temp')">🌡️ Temperatur</button>
@@ -3828,7 +3828,7 @@
                 playBtn.innerText = '⏸ Pause';
                 playInterval = setInterval(() => {
                     let val = parseInt(timeSlider.value) + 1;
-                    if (val > 48) val = -24;
+                    if (val > 72) val = -24;
                     timeSlider.value = val;
                     timeSlider.dispatchEvent(new Event('input'));
                 }, 150); // 1h-Schritte, GPU blendet zwischen den 3h-GFS-Stützstellen weich über
