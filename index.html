@@ -539,6 +539,12 @@
             left: 24px;
             width: 330px;
             max-width: calc(100vw - 48px);
+            max-height: calc(100vh - 96px);
+            overflow-y: auto;
+            overflow-x: hidden;
+            overscroll-behavior: contain;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 219, 0, 0.25) transparent;
             z-index: 46;
             background: rgba(18, 18, 24, 0.94);
             backdrop-filter: blur(16px);
@@ -552,6 +558,38 @@
             color: #fff;
             display: none;
             transition: opacity 0.25s ease;
+        }
+        /* Dezente, moderne Scrollleiste ohne Scrolltasten/Pfeile */
+        #pv-container::-webkit-scrollbar {
+            width: 4px;
+        }
+        #pv-container::-webkit-scrollbar-button {
+            display: none;
+            width: 0;
+            height: 0;
+        }
+        #pv-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #pv-container::-webkit-scrollbar-thumb {
+            background: rgba(255, 219, 0, 0.22);
+            border-radius: 4px;
+        }
+        #pv-container::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 219, 0, 0.45);
+        }
+        #pv-container .forecast-header {
+            position: sticky;
+            top: -14px;
+            margin: -14px -16px 8px -16px;
+            padding: 12px 16px 6px 16px;
+            background: rgba(18, 18, 24, 0.97);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            z-index: 10;
+            border-top-left-radius: 16px;
+            border-top-right-radius: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
         .pv-badge-btn {
             background: rgba(255, 215, 0, 0.15);
@@ -601,8 +639,16 @@
                 right: 12px;
                 width: auto;
                 max-width: none;
+                max-height: calc(100vh - 76px);
                 padding: 10px 12px;
                 border-radius: 14px;
+            }
+            #pv-container .forecast-header {
+                top: -10px;
+                margin: -10px -12px 6px -12px;
+                padding: 10px 12px 6px 12px;
+                border-top-left-radius: 14px;
+                border-top-right-radius: 14px;
             }
             #forecast-container.minimized {
                 padding: 7px 12px;
@@ -3333,28 +3379,39 @@
             const forecastLinePts = fPlotPoints.map(p => `${x(p.t).toFixed(1)},${y(p.pv, pvMax).toFixed(1)}`).join(' ');
 
             // Tagesgrenzen (Mitternacht) als dezente vertikale Linien + Wochentag-Label, nur im sichtbaren Fenster.
-            // Für bereits (teilweise) vergangene Tage kommt in derselben unteren Zeile wie die
-            // Prognose-Checkpoints zusätzlich die tatsächliche Tagesproduktion dazu - echte Messwerte,
-            // deshalb mit Nachkommastelle und ohne "≈", im Gegensatz zu den geschätzten Prognosezahlen.
             let dayLines = '', dayLabels = '', actualDayLabels = '';
             const dayMs = 24 * 60 * 60 * 1000;
             const span = viewEnd - viewStart;
             const nowForDays = Date.now();
+
+            // 1. Vertikale Tageslinien und Wochentagsbeschriftung an den Mitternachtsgrenzen
             let dayStart = Math.ceil(viewStart / dayMs) * dayMs;
             for (; dayStart < viewEnd; dayStart += dayMs) {
                 const dxPos = x(dayStart).toFixed(1);
                 dayLines += `<line x1="${dxPos}" y1="${PAD_T}" x2="${dxPos}" y2="${H - PAD_B}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2,2"/>`;
-                if (dayStart - viewStart > span * 0.07 && viewEnd - dayStart > span * 0.07) {
+                if (dayStart - viewStart > span * 0.05 && viewEnd - dayStart > span * 0.05) {
                     const wd = new Date(dayStart).toLocaleDateString('de-DE', { weekday: 'short' });
                     dayLabels += `<text x="${dxPos}" y="${PV_CHART_WEEKDAY_ROW_Y}" font-size="7" fill="#888" text-anchor="middle">${wd}</text>`;
+                }
+            }
 
-                    if (dayStart < nowForDays && data.length) {
-                        const segStart = Math.max(dayStart, data[0].t);
-                        const segEnd = Math.min(dayStart + dayMs, nowForDays);
-                        if (segEnd > segStart) {
-                            const actualKwh = integrateKwh(data, segStart, segEnd);
-                            const labelCx = x((segStart + segEnd) / 2).toFixed(1);
-                            actualDayLabels += `<text x="${labelCx}" y="${PV_CHART_FORECAST_ROW_Y}" font-size="7" fill="#fff" text-anchor="middle" opacity="0.85">${actualKwh.toFixed(1)} kWh</text>`;
+            // 2. Tatsächliche Tageserträge (kWh) für alle vergangenen Tage mit Solarertrag
+            // Unabhängig von der Mitternachtslinie zentriert unter dem jeweiligen Tages-Erzeugungspeak platziert.
+            if (data.length) {
+                const minDay = Math.floor(viewStart / dayMs) * dayMs;
+                const maxDay = Math.min(nowForDays, viewEnd);
+                for (let d = minDay; d < maxDay; d += dayMs) {
+                    const segStart = Math.max(d, data[0].t);
+                    const segEnd = Math.min(d + dayMs, nowForDays);
+                    if (segEnd > segStart) {
+                        const actualKwh = integrateKwh(data, segStart, segEnd);
+                        // Nur Tage mit relevanter Produktion (> 0.5 kWh) beschriften
+                        if (actualKwh >= 0.5) {
+                            const noonT = d + 12 * 3600 * 1000;
+                            const cx = x(noonT);
+                            if (cx >= PAD_L + 12 && cx <= W - PAD_R - 12) {
+                                actualDayLabels += `<text x="${cx.toFixed(1)}" y="${PV_CHART_FORECAST_ROW_Y}" font-size="7" fill="#fff" text-anchor="middle" opacity="0.85">${actualKwh.toFixed(1)} kWh</text>`;
+                            }
                         }
                     }
                 }
