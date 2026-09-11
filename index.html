@@ -21,8 +21,15 @@
     <script src="rivers_data.js"></script>
     <script src="roads_data.js"></script>
     <script src="urban_data.js"></script>
-    <script src="cities_data.js"></script>
-    <script id="pvDataScript" src="pv_data.js"></script>
+    <script>
+        // Unregister any stale ServiceWorker from previous visits
+        if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(regs => {
+                for (const r of regs) r.unregister();
+            });
+        }
+    </script>
+    <script id="pvDataScript" src="pv_data.js?_v=20260911_v25"></script>
     
     <style>
         body { margin: 0; padding: 0; background-color: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; overflow: hidden; }
@@ -1155,8 +1162,8 @@
                 <span id="pvCumulativeYield" style="color: #888;"></span>
                 <div style="display:flex; align-items:center; gap:6px;">
                     <span id="pvLastUpdated" style="color: #888;">Live</span>
-                    <button type="button" onclick="resetPvRevenueConfig()" title="Werkseinstellungen wiederherstellen & Cache umgehen" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#aaa; font-size:8.5px; border-radius:4px; padding:1px 5px; cursor:pointer;">↺ Reset</button>
-                    <span style="font-size:8px; color:#00ff88; background:rgba(0,255,136,0.12); border:1px solid rgba(0,255,136,0.3); padding:1px 4px; border-radius:3px; font-weight:700;" title="Performance Patch v2.4 aktiv">v2.4</span>
+                    <button type="button" onclick="resetPvRevenueConfig()" title="Werkseinstellungen wiederherstellen & Cache umgehen" style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); color:#ddd; font-size:9px; border-radius:4px; padding:1px 6px; cursor:pointer;">↺ Reset</button>
+                    <span style="font-size:9px; color:#00ff88; background:rgba(0,255,136,0.18); border:1px solid #00ff88; padding:1px 5px; border-radius:3px; font-weight:700;" title="Performance Patch v2.5 aktiv">v2.5</span>
                 </div>
             </div>
         </div>
@@ -2844,9 +2851,31 @@
             return null;
         }
 
+        // Schneller O(log N) Bereichsabruf für Börsenpreise (vermeidet zeitraubenden linearen Array.filter über 12.000+ Elemente)
+        function getPriceSlice(arr, startT, endT) {
+            if (!arr || !arr.length || startT >= endT) return [];
+            if (startT >= arr[arr.length - 1].endT) return [];
+            if (endT <= arr[0].t) return [];
+            let low = 0, high = arr.length - 1;
+            let startIdx = arr.length;
+            while (low <= high) {
+                const mid = (low + high) >> 1;
+                if (arr[mid].endT <= startT) {
+                    low = mid + 1;
+                } else {
+                    startIdx = mid;
+                    high = mid - 1;
+                }
+            }
+            const res = [];
+            for (let i = startIdx; i < arr.length && arr[i].t < endT; i++) {
+                res.push(arr[i]);
+            }
+            return res;
+        }
+
         function clipPriceDataToView(arr, viewStart, viewEnd) {
-            if (!arr || !arr.length) return [];
-            return arr.filter(r => r.endT >= viewStart && r.t <= viewEnd);
+            return getPriceSlice(arr, viewStart, viewEnd);
         }
 
         // Zeichnet den Day-Ahead-Strompreis synchron zum sichtbaren Zeitfenster des PV-Charts.
@@ -3656,11 +3685,17 @@
             // Folgetags-Solar-Konfidenz: Wenn morgen viel Sonne prognostiziert wird (>= 25 kWh),
             // wird der Speicher morgens schnell nachgeladen -> Puffer kann um 30% entspannt werden.
             // Bei trübem Wetter (< 12 kWh) bleibt die Reserve voll gelockt (+5% Sicherheit).
+            // WICHTIG: Niemals computeForecastCheckpoints() aufrufen, da dies über estimateRevenueEur()
+            // eine unendliche gegenseitige Rekursion (Total-Freeze) auslöst!
             let tomorrowYieldEstimate = 20;
             try {
-                const checkpoints = computeForecastCheckpoints();
-                if (checkpoints && checkpoints.length > 0) {
-                    tomorrowYieldEstimate = checkpoints[0].rawKwh !== undefined ? checkpoints[0].rawKwh : checkpoints[0].kwh;
+                const fc = (typeof pvChartState !== 'undefined' && pvChartState.forecast && pvChartState.forecast.length) ? pvChartState.forecast : null;
+                if (fc) {
+                    const dayMs = 24 * 3600 * 1000;
+                    const nowMs = targetTime ? new Date(targetTime).getTime() : Date.now();
+                    const nextDayStart = Math.floor(nowMs / dayMs) * dayMs + dayMs;
+                    const nextDayEnd = nextDayStart + dayMs;
+                    tomorrowYieldEstimate = integrateKwh(fc, nextDayStart, nextDayEnd);
                 }
             } catch(e) {}
 
@@ -4034,7 +4069,7 @@
                 }
 
                 // Solar-Spitzen (§ 51 EEG): 0 ct/kWh bei negativem Day-Ahead-Preis
-                const rows = priceData.filter(r => r.endT > fromT && r.t < toT);
+                const rows = getPriceSlice(priceData, fromT, toT);
                 if (!rows.length) {
                     // Falls für Zukunftstage keine Börsenpreise vorliegen, Standard-EEG-Vergütung annehmen
                     const kwh = integrateKwh(points, fromT, toT) * basisFactor;
@@ -4053,7 +4088,7 @@
 
             // --- Direktvermarktungsmodell (EPEX Day-Ahead) ---
             if (!priceData.length) return null;
-            const rows = priceData.filter(r => r.endT > fromT && r.t < toT);
+            const rows = getPriceSlice(priceData, fromT, toT);
             if (!rows.length) return null;
 
             // Ohne Batterie-Verschiebung:
@@ -4072,7 +4107,7 @@
             const dayMs = 24 * 3600 * 1000;
             const calDayStart = Math.floor(fromT / dayMs) * dayMs;
             const calDayEnd = calDayStart + dayMs;
-            const dayPrices = priceData.filter(r => r.endT > calDayStart && r.t < calDayEnd);
+            const dayPrices = getPriceSlice(priceData, calDayStart, calDayEnd);
             const availablePrices = dayPrices.length ? dayPrices : rows;
 
             const slots = availablePrices.map(r => {
@@ -4536,7 +4571,7 @@
                 if (isScenarioActive) rawKwh = rawKwh * sFactor;
                 const basisFactor = pvRevenueConfig.feedinBasis === 'feedin' ? getFeedinRatio(cp.fromT) : 1.0;
                 let kwh = rawKwh * basisFactor;
-                let eur = cp.points ? estimateRevenueEur(cp.points, cp.fromT, cp.toT) : cp.eur;
+                let eur = (cp.eur !== undefined && cp.eur !== null) ? cp.eur : (cp.points ? estimateRevenueEur(cp.points, cp.fromT, cp.toT) : null);
                 if (eur !== null && isScenarioActive) eur = eur * sFactor;
                 rows.push({ label: cp.label, kwh, rawKwh, eur, isForecast: true });
             });
@@ -6536,13 +6571,17 @@
                     body.style.display = wasExpanded ? 'none' : 'block';
                     if (chevron) chevron.innerText = wasExpanded ? '▸' : '▾';
                     if (!wasExpanded) {
-                        requestAnimationFrame(() => {
+                        const tbody = document.getElementById('pvEuroTableBody');
+                        if (tbody && !tbody.hasChildNodes()) {
+                            tbody.innerHTML = '<tr><td colspan="4" style="color:#ffdb00; padding:6px 0; text-align:center; font-size:10px;">⚡ Berechne Erlöse &amp; Strompreise...</td></tr>';
+                        }
+                        setTimeout(() => {
                             try {
                                 renderEuroTable();
                             } catch (err) {
                                 console.error('Fehler beim Rendern der Erlös-Tabelle:', err);
                             }
-                        });
+                        }, 10);
                     }
                 });
             }
