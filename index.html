@@ -1153,7 +1153,11 @@
 
             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #aaa;">
                 <span id="pvCumulativeYield" style="color: #888;"></span>
-                <span id="pvLastUpdated" style="color: #888;">Live</span>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span id="pvLastUpdated" style="color: #888;">Live</span>
+                    <button type="button" onclick="resetPvRevenueConfig()" title="Werkseinstellungen wiederherstellen & Cache umgehen" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#aaa; font-size:8.5px; border-radius:4px; padding:1px 5px; cursor:pointer;">↺ Reset</button>
+                    <span style="font-size:8px; color:#00ff88; background:rgba(0,255,136,0.12); border:1px solid rgba(0,255,136,0.3); padding:1px 4px; border-radius:3px; font-weight:700;" title="Performance Patch v2.4 aktiv">v2.4</span>
+                </div>
             </div>
         </div>
     </div>
@@ -3351,6 +3355,11 @@
 
         function loadRevenueConfig() {
             try {
+                if (typeof window !== 'undefined' && window.location && window.location.search && (window.location.search.includes('reset') || window.location.search.includes('clear'))) {
+                    localStorage.removeItem('pvRevenueConfig');
+                    localStorage.removeItem('pvScenarioConfig');
+                    console.log('Reset-Parameter gefunden: localStorage für PV zurückgesetzt.');
+                }
                 const saved = localStorage.getItem('pvRevenueConfig');
                 if (saved) {
                     const parsed = JSON.parse(saved);
@@ -3373,6 +3382,16 @@
                 localStorage.setItem('pvRevenueConfig', JSON.stringify(pvRevenueConfig));
             } catch (e) {
                 console.warn('Fehler beim Speichern von pvRevenueConfig:', e);
+            }
+        }
+
+        function resetPvRevenueConfig() {
+            try {
+                localStorage.removeItem('pvRevenueConfig');
+                localStorage.removeItem('pvScenarioConfig');
+                window.location.href = window.location.pathname + '?reset=' + Date.now();
+            } catch (e) {
+                location.reload();
             }
         }
 
@@ -4470,9 +4489,15 @@
             // In der kompakten linken Übersichtskarte werden die letzten 14 Tage aufgeführt (für alle 17 Monate dient Container 3):
             const allDateKeys = getAvailableHistoryDateKeys();
             const dateKeys = allDateKeys.slice(-14);
-            for (const dateKey of dateKeys) {
-                const dayData = computeDayEnergyAndRevenue(dateKey);
-                if (!dayData || dayData.genKwh < 0.05) continue;
+            let prevCarryover = null;
+            for (let i = 0; i < dateKeys.length; i++) {
+                const dateKey = dateKeys[i];
+                const dayData = (i === 0)
+                    ? computeDayEnergyAndRevenue(dateKey, true)
+                    : computeDayEnergyAndRevenue(dateKey, false, prevCarryover);
+                if (!dayData) continue;
+                prevCarryover = dayData.carryoverToNextDay || 0;
+                if (dayData.genKwh < 0.05) continue;
 
                 const d = new Date(dateKey + 'T12:00:00');
                 const isToday = (dateKey === todayKey);
@@ -4520,11 +4545,12 @@
         }
 
         function renderEuroTable() {
-            const tbody = document.getElementById('pvEuroTableBody');
-            const tfoot = document.getElementById('pvEuroTableFoot');
-            const colKwh = document.getElementById('pvEuroColKwh');
-            const hintEl = document.getElementById('pvEuroHint');
-            if (!tbody) return;
+            try {
+                const tbody = document.getElementById('pvEuroTableBody');
+                const tfoot = document.getElementById('pvEuroTableFoot');
+                const colKwh = document.getElementById('pvEuroColKwh');
+                const hintEl = document.getElementById('pvEuroHint');
+                if (!tbody) return;
 
             // Spaltenüberschrift
             const isFeedin = pvRevenueConfig.feedinBasis === 'feedin';
@@ -4597,6 +4623,9 @@
                         <td style="padding: 5px 0 5px 4px; text-align:right; color:#00e5ff;">${hasValidEur ? totalHistEur.toFixed(2) + ' €' : '--'}</td>
                     </tr>
                 `;
+            }
+            } catch (err) {
+                console.error('Fehler in renderEuroTable:', err);
             }
         }
 
@@ -6506,7 +6535,15 @@
                     const wasExpanded = body.style.display !== 'none';
                     body.style.display = wasExpanded ? 'none' : 'block';
                     if (chevron) chevron.innerText = wasExpanded ? '▸' : '▾';
-                    if (!wasExpanded) renderEuroTable();
+                    if (!wasExpanded) {
+                        requestAnimationFrame(() => {
+                            try {
+                                renderEuroTable();
+                            } catch (err) {
+                                console.error('Fehler beim Rendern der Erlös-Tabelle:', err);
+                            }
+                        });
+                    }
                 });
             }
         }
