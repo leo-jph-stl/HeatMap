@@ -1159,7 +1159,7 @@
     </div>
 
     <!-- FoxESS Historische Detailanalyse (Side-by-Side Companion Container) -->
-    <div id="pv-history-container">
+    <div id="pv-history-container" style="display: none;">
         <div class="forecast-header">
             <div class="forecast-title-box">
                 <div class="forecast-place" style="color: #00e5ff; display: flex; align-items: center; gap: 6px;">
@@ -1307,7 +1307,7 @@
     </div>
 
     <!-- FoxESS Monats- & Ertragsübersicht (Dedizierter 3. Container) -->
-    <div id="pv-monthly-container">
+    <div id="pv-monthly-container" style="display: none;">
         <div class="forecast-header">
             <div class="forecast-title-box">
                 <div class="forecast-place" style="color: #ffdb00; display: flex; align-items: center; gap: 6px;">
@@ -2919,13 +2919,16 @@
             let dayLines = '', dayLabels = '';
             const dayMs = 24 * 3600 * 1000;
             const span = viewEnd - viewStart;
-            let dayStart = Math.ceil(viewStart / dayMs) * dayMs;
-            for (; dayStart < viewEnd; dayStart += dayMs) {
-                const dxPos = x(dayStart).toFixed(1);
-                dayLines += `<line x1="${dxPos}" y1="${PAD_T}" x2="${dxPos}" y2="${H - PAD_B}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2,2"/>`;
-                if (dayStart - viewStart > span * 0.07 && viewEnd - dayStart > span * 0.07) {
-                    const wd = new Date(dayStart).toLocaleDateString('de-DE', { weekday: 'short' });
-                    dayLabels += `<text x="${dxPos}" y="${H - 2}" font-size="7" fill="#888" text-anchor="middle">${wd}</text>`;
+            if (isFinite(viewStart) && isFinite(viewEnd) && span > 0 && span < 365 * dayMs) {
+                let dayStart = Math.ceil(viewStart / dayMs) * dayMs;
+                let maxSteps = 400;
+                for (; dayStart < viewEnd && maxSteps > 0; dayStart += dayMs, maxSteps--) {
+                    const dxPos = x(dayStart).toFixed(1);
+                    dayLines += `<line x1="${dxPos}" y1="${PAD_T}" x2="${dxPos}" y2="${H - PAD_B}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2,2"/>`;
+                    if (dayStart - viewStart > span * 0.07 && viewEnd - dayStart > span * 0.07) {
+                        const wd = new Date(dayStart).toLocaleDateString('de-DE', { weekday: 'short' });
+                        dayLabels += `<text x="${dxPos}" y="${H - 2}" font-size="7" fill="#888" text-anchor="middle">${wd}</text>`;
+                    }
                 }
             }
 
@@ -4096,9 +4099,12 @@
         // Zentrale, konsistente Tages-Bilanzierung & Erlösberechnung:
         // Wird synchron von der linken Erlöskarte (buildEuroRows) UND dem rechten Detail-Container (renderPvHistoryContainer) genutzt.
         // Garantiert absolute Konsistenz, konstanten Haushaltsverbrauch und exakte Bilanzierung von Umwandlungsverlusten.
-        function computeDayEnergyAndRevenue(dateKey, allowRecursion = true) {
+        function computeDayEnergyAndRevenue(dateKey, allowRecursion = true, initialSocOverride = null) {
             if (!dateKey) return null;
-            const cacheKey = `${dateKey}_${allowRecursion ? 1 : 0}_${pvRevenueConfig.mode}_${pvRevenueConfig.feedinBasis}_${pvRevenueConfig.batteryShift}_${pvRevenueConfig.shiftCapKwh}_${pvRevenueConfig.inverterAcKw}_${pvRevenueConfig.efficiencyPct}_${pvRevenueConfig.enableMerchantArbitrage}_${pvRevenueConfig.arbitrageMinSpreadCt}_${pvRevenueConfig.applySolarSpitzen}_${pvScenarioConfig.targetKwp}_${pvScenarioConfig.baseKwp}`;
+            const socCacheTag = (initialSocOverride !== null && isFinite(initialSocOverride)) 
+                ? ('soc_' + Math.round(initialSocOverride * 100)) 
+                : (allowRecursion ? 'rec' : 'norec');
+            const cacheKey = `${dateKey}_${socCacheTag}_${pvRevenueConfig.mode}_${pvRevenueConfig.feedinBasis}_${pvRevenueConfig.batteryShift}_${pvRevenueConfig.shiftCapKwh}_${pvRevenueConfig.inverterAcKw}_${pvRevenueConfig.efficiencyPct}_${pvRevenueConfig.enableMerchantArbitrage}_${pvRevenueConfig.arbitrageMinSpreadCt}_${pvRevenueConfig.applySolarSpitzen}_${pvScenarioConfig.targetKwp}_${pvScenarioConfig.baseKwp}`;
             if (pvDayRevenueCache.has(cacheKey)) {
                 return pvDayRevenueCache.get(cacheKey);
             }
@@ -4107,10 +4113,17 @@
             const dayEnd = dayStart + 24 * 3600 * 1000;
 
             const history3d = (livePvData && livePvData.history_3d) ? livePvData.history_3d : [];
-            const dayPts = history3d.filter(p => {
-                const pt = new Date(p.t).getTime();
-                return pt >= dayStart && pt < dayEnd;
-            });
+            let dayPts = [];
+            if (history3d.length > 0) {
+                const h3dStart = new Date(history3d[0].t).getTime();
+                const h3dEnd = new Date(history3d[history3d.length - 1].t).getTime();
+                if (dayEnd >= h3dStart && dayStart <= h3dEnd) {
+                    dayPts = history3d.filter(p => {
+                        const pt = new Date(p.t).getTime();
+                        return pt >= dayStart && pt < dayEnd;
+                    });
+                }
+            }
 
             // Prüfen, ob für heute (oder einen unvollständigen Tag) eine 24h-Solar- & Lastprognose synthetisiert werden soll
             const now = Date.now();
@@ -4249,7 +4262,9 @@
 
             if (!isEeg && pvRevenueConfig.batteryShift) {
                 // A. Kausaler Vortags-Übertrag (initialSoc):
-                if (allowRecursion) {
+                if (initialSocOverride !== null && isFinite(initialSocOverride)) {
+                    initialSoc = Math.min(pvRevenueConfig.shiftCapKwh || 0, Math.max(0, initialSocOverride));
+                } else if (allowRecursion) {
                     const dPrev = new Date(dateKey + 'T12:00:00');
                     dPrev.setDate(dPrev.getDate() - 1);
                     const prevKey = dPrev.getFullYear() + '-' + String(dPrev.getMonth() + 1).padStart(2, '0') + '-' + String(dPrev.getDate()).padStart(2, '0');
@@ -5625,11 +5640,16 @@
             const daysData = [];
             const monthGroups = {};
 
-            for (const dKey of dateKeys) {
-                // allowRecursion = true: Stellt sicher, dass der kausale Vortags-Batterieübertrag (Morgenspitze)
-                // exakt identisch wie in Container 1 (Erlöskarte) und Container 2 (24h-Detailansicht) berücksichtigt wird.
-                const dayData = computeDayEnergyAndRevenue(dKey, true);
+            let prevCarryover = null;
+            for (let i = 0; i < dateKeys.length; i++) {
+                const dKey = dateKeys[i];
+                // Linearer Vorwärtspass: Für den 1. Tag wird der kausale Übertrag vom Vortag ermittelt.
+                // Für alle Folgetage wird der End-SOC des Vortags direkt und ohne Rekursion übergeben!
+                const dayData = (i === 0)
+                    ? computeDayEnergyAndRevenue(dKey, true)
+                    : computeDayEnergyAndRevenue(dKey, false, prevCarryover);
                 if (!dayData) continue;
+                prevCarryover = dayData.carryoverToNextDay || 0;
 
                 totalGen += dayData.genKwh;
                 totalInitialFeed += dayData.initialFeedKwh;
@@ -6185,18 +6205,18 @@
             }
             refreshPvTimer = setTimeout(() => {
                 doRefreshActivePvAnalysisContainers();
-            }, 80);
+            }, 200);
         }
 
         function doRefreshActivePvAnalysisContainers() {
             clearPvDayRevenueCache();
             renderEuroTable();
             const histCont = document.getElementById('pv-history-container');
-            if (histCont && histCont.style.display !== 'none' && currentHistoryDateKey) {
+            if (histCont && histCont.style.display === 'block' && currentHistoryDateKey) {
                 renderPvHistoryContainer(currentHistoryDateKey);
             }
             const monthCont = document.getElementById('pv-monthly-container');
-            if (monthCont && monthCont.style.display !== 'none') {
+            if (monthCont && monthCont.style.display === 'block') {
                 renderPvMonthlyContainer(currentMonthlyActiveKey);
             }
         }
@@ -6595,32 +6615,36 @@
             const nowForDays = Date.now();
 
             // 1. Vertikale Tageslinien und Wochentagsbeschriftung an den Mitternachtsgrenzen
-            let dayStart = Math.ceil(viewStart / dayMs) * dayMs;
-            for (; dayStart < viewEnd; dayStart += dayMs) {
-                const dxPos = x(dayStart).toFixed(1);
-                dayLines += `<line x1="${dxPos}" y1="${PAD_T}" x2="${dxPos}" y2="${H - PAD_B}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2,2"/>`;
-                if (dayStart - viewStart > span * 0.05 && viewEnd - dayStart > span * 0.05) {
-                    const wd = new Date(dayStart).toLocaleDateString('de-DE', { weekday: 'short' });
-                    dayLabels += `<text x="${dxPos}" y="${PV_CHART_WEEKDAY_ROW_Y}" font-size="7" fill="#888" text-anchor="middle">${wd}</text>`;
+            if (isFinite(viewStart) && isFinite(viewEnd) && span > 0 && span < 365 * dayMs) {
+                let dayStart = Math.ceil(viewStart / dayMs) * dayMs;
+                let maxSteps = 400;
+                for (; dayStart < viewEnd && maxSteps > 0; dayStart += dayMs, maxSteps--) {
+                    const dxPos = x(dayStart).toFixed(1);
+                    dayLines += `<line x1="${dxPos}" y1="${PAD_T}" x2="${dxPos}" y2="${H - PAD_B}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2,2"/>`;
+                    if (dayStart - viewStart > span * 0.05 && viewEnd - dayStart > span * 0.05) {
+                        const wd = new Date(dayStart).toLocaleDateString('de-DE', { weekday: 'short' });
+                        dayLabels += `<text x="${dxPos}" y="${PV_CHART_WEEKDAY_ROW_Y}" font-size="7" fill="#888" text-anchor="middle">${wd}</text>`;
+                    }
                 }
-            }
 
-            // 2. Tatsächliche Tageserträge (kWh) für alle vergangenen Tage mit Solarertrag
-            // Unabhängig von der Mitternachtslinie zentriert unter dem jeweiligen Tages-Erzeugungspeak platziert.
-            if (data.length) {
-                const minDay = Math.floor(viewStart / dayMs) * dayMs;
-                const maxDay = Math.min(nowForDays, viewEnd);
-                for (let d = minDay; d < maxDay; d += dayMs) {
-                    const segStart = Math.max(d, data[0].t);
-                    const segEnd = Math.min(d + dayMs, nowForDays);
-                    if (segEnd > segStart) {
-                        const actualKwh = integrateKwh(data, segStart, segEnd);
-                        // Nur Tage mit relevanter Produktion (> 0.5 kWh) beschriften
-                        if (actualKwh >= 0.5) {
-                            const noonT = d + 12 * 3600 * 1000;
-                            const cx = x(noonT);
-                            if (cx >= PAD_L + 12 && cx <= W - PAD_R - 12) {
-                                actualDayLabels += `<text x="${cx.toFixed(1)}" y="${PV_CHART_FORECAST_ROW_Y}" font-size="7" fill="#fff" text-anchor="middle" opacity="0.85">${actualKwh.toFixed(1)} kWh</text>`;
+                // 2. Tatsächliche Tageserträge (kWh) für alle vergangenen Tage mit Solarertrag
+                // Unabhängig von der Mitternachtslinie zentriert unter dem jeweiligen Tages-Erzeugungspeak platziert.
+                if (data.length) {
+                    const minDay = Math.floor(viewStart / dayMs) * dayMs;
+                    const maxDay = Math.min(nowForDays, viewEnd);
+                    let maxDaySteps = 400;
+                    for (let d = minDay; d < maxDay && maxDaySteps > 0; d += dayMs, maxDaySteps--) {
+                        const segStart = Math.max(d, data[0].t);
+                        const segEnd = Math.min(d + dayMs, nowForDays);
+                        if (segEnd > segStart) {
+                            const actualKwh = integrateKwh(data, segStart, segEnd);
+                            // Nur Tage mit relevanter Produktion (> 0.5 kWh) beschriften
+                            if (actualKwh >= 0.5) {
+                                const noonT = d + 12 * 3600 * 1000;
+                                const cx = x(noonT);
+                                if (cx >= PAD_L + 12 && cx <= W - PAD_R - 12) {
+                                    actualDayLabels += `<text x="${cx.toFixed(1)}" y="${PV_CHART_FORECAST_ROW_Y}" font-size="7" fill="#fff" text-anchor="middle" opacity="0.85">${actualKwh.toFixed(1)} kWh</text>`;
+                                }
                             }
                         }
                     }
