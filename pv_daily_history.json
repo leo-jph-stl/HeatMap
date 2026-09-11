@@ -27,17 +27,17 @@
       23
     ],
     "totals": {
-      "feedin": 0.0,
-      "gridConsumption": 0.1,
-      "chargeEnergyToTal": 0.0,
-      "dischargeEnergyToTal": 0.6,
-      "generation": 0.2,
-      "loads": 0.2
+      "feedin": 0.1,
+      "gridConsumption": 0.2,
+      "chargeEnergyToTal": 0.1,
+      "dischargeEnergyToTal": 1.4,
+      "generation": 0.5,
+      "loads": 0.5
     },
     "feedin": [
       0.0,
       0.0,
-      0.0,
+      0.1,
       0.0,
       0.0,
       0.0,
@@ -63,7 +63,7 @@
     "gridConsumption": [
       0.1,
       0.0,
-      0.0,
+      0.1,
       0.0,
       0.0,
       0.0,
@@ -89,7 +89,7 @@
     "chargeEnergyToTal": [
       0.0,
       0.0,
-      0.0,
+      0.1,
       0.0,
       0.0,
       0.0,
@@ -114,8 +114,8 @@
     ],
     "dischargeEnergyToTal": [
       0.5,
-      0.1,
-      0.0,
+      0.5,
+      0.4,
       0.0,
       0.0,
       0.0,
@@ -140,8 +140,8 @@
     ],
     "generation": [
       0.2,
-      0.0,
-      0.0,
+      0.2,
+      0.1,
       0.0,
       0.0,
       0.0,
@@ -166,8 +166,8 @@
     ],
     "loads": [
       0.2,
-      0.0,
-      0.0,
+      0.2,
+      0.1,
       0.0,
       0.0,
       0.0,
