@@ -3482,7 +3482,7 @@
                         const cellUsed = toDischarge / etaOut;
                         lossDischarge[d] += (cellUsed - toDischarge);
                         remInit -= cellUsed;
-                        for (let t = 0; t < d; t++) {
+                        for (let t = d; t < M; t++) {
                             soc[t] = Math.max(0, soc[t] - cellUsed);
                         }
                     }
@@ -3756,7 +3756,7 @@
                 const invKw = Math.max(0.1, pvRevenueConfig.inverterAcKw || 5.0);
                 const eff = Math.min(1, Math.max(0.01, (pvRevenueConfig.efficiencyPct || 90) / 100));
 
-                const simSlots = simulateBatteryShift(shiftSlots, shiftCap, invKw, eff, initialSoc, lookaheadSlots);
+                simSlots = simulateBatteryShift(shiftSlots, shiftCap, invKw, eff, initialSoc, lookaheadSlots);
                 shiftedFeed = simSlots.map(s => s.finalFeed);
                 chargedKwh = simSlots.chargedKwh || 0;
                 dischargedKwh = simSlots.dischargedTodayKwh || 0;
