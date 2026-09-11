@@ -3310,7 +3310,10 @@
             selfProtect: true,         // Eigenverbrauchs-Schutz (Nacht-Puffer)
             shiftCapKwh: 8.0,          // Batterie Speicherkapazität in kWh (theoretisch anpassbar)
             inverterAcKw: 10.0,        // Wechselrichter AC-Leistung in kW (max. Lade/Entlade-Limit pro Stunde)
-            efficiencyPct: 90          // Rundenwirkungsgrad in % (η)
+            efficiencyPct: 90,         // Rundenwirkungsgrad in % (η)
+            curtailNegativeFeedin: true, // Abregelung (Zero Export) bei negativen Börsenpreisen
+            allowGridArbitrage: true,    // Netzbezug bei echtem Negativ-Endpreis (Börse + Abgaben < 0)
+            gridFeeCt: 19.0              // Steuern, Umlagen & Netzentgelte für Bezug in ct/kWh
         };
 
         function loadRevenueConfig() {
@@ -3367,7 +3370,7 @@
             return target / base;
         }
 
-        function applyPvScenarioToDayData(dayPts, rep) {
+        function applyPvScenarioToDayData(dayPts, rep, dateKey) {
             const factor = getPvScenarioFactor();
             const isScenarioActive = Math.abs(factor - 1.0) > 0.005;
             const inverterKw = Math.max(0.1, pvRevenueConfig.inverterAcKw || 10.0);
@@ -3376,6 +3379,16 @@
             const feedArr = (rep && rep.feedin) ? rep.feedin : [];
             const loadArr = (rep && rep.loads) ? rep.loads : [];
             const gridArr = (rep && rep.gridConsumption) ? rep.gridConsumption : [];
+
+            // Monatsabhängige Sonnengrenzen für Deutschland (Puffer von ±30 min für Dämmerung):
+            let month = 6;
+            if (dateKey) month = parseInt(dateKey.slice(5, 7), 10);
+            const sunLimits = {
+                1: [8, 17], 2: [7, 18], 3: [6, 19], 4: [6, 20],
+                5: [5, 21], 6: [4, 22], 7: [5, 22], 8: [5, 21],
+                9: [6, 20], 10: [7, 19], 11: [7, 17], 12: [8, 17]
+            };
+            const [dawnH, duskH] = sunLimits[month] || [5, 21];
 
             let realGenArr = [];
             if (dayPts && dayPts.length >= 10) {
@@ -3389,12 +3402,32 @@
                     }
                 });
                 realGenArr = hourlySolarKwh.map((sum, h) => {
+                    if (h < dawnH || h >= duskH) return 0.0;
                     const count = hourlySolarCounts[h];
                     return count > 0 ? (sum / count) : 0;
                 });
             } else {
-                const rawGen = (rep && rep.generation) ? rep.generation : [];
-                realGenArr = rawGen.map((v, h) => (h < 6 || h > 20 ? 0.0 : (typeof v === 'number' ? v : 0)));
+                // Bei FoxESS-Hybrid-Wechselrichtern erfasst das Register 'generation' die gesamte AC-Abgabe
+                // des Wechselrichters – inklusive Batterie-Entladung ins Hausnetz!
+                // Die ECHTE Solarpanel-Produktion (reine PV) berechnet sich daher physikalisch exakt als:
+                // max(0, generation - discharge) + charge
+                // und ist nachts (vor Sonnenaufgang und nach Sonnenuntergang) strikt 0.0 kW!
+                const gen = (rep && rep.generation) ? rep.generation : [];
+                const dis = (rep && rep.dischargeEnergyToTal) ? rep.dischargeEnergyToTal : [];
+                const chg = (rep && rep.chargeEnergyToTal) ? rep.chargeEnergyToTal : [];
+
+                realGenArr = new Array(24).fill(0);
+                for (let h = 0; h < 24; h++) {
+                    if (h < dawnH || h >= duskH) {
+                        realGenArr[h] = 0.0;
+                        continue;
+                    }
+                    const g = (typeof gen[h] === 'number') ? gen[h] : 0;
+                    const d = (typeof dis[h] === 'number') ? dis[h] : 0;
+                    const c = (typeof chg[h] === 'number') ? chg[h] : 0;
+                    const pvToAc = Math.max(0, g - d);
+                    realGenArr[h] = Math.round((pvToAc + c) * 100) / 100;
+                }
             }
 
             if (!isScenarioActive) {
@@ -3790,6 +3823,39 @@
                 }
             }
 
+            // C. Multi-Use Netzbezug-Arbitrage:
+            // Wenn der Endkundenpreis (Börse + Steuern/Umlagen/Netzentgelte) tatsächlich negativ ist (z.B. p < -19 ct/kWh),
+            // verdient der Betreiber Geld beim Netzladen! Freie Batteriekapazität wird aus dem Netz nachgeladen.
+            const gridFeeCt = (pvRevenueConfig && typeof pvRevenueConfig.gridFeeCt === 'number') ? pvRevenueConfig.gridFeeCt : 19.0;
+            const allowGrid = (pvRevenueConfig && pvRevenueConfig.allowGridArbitrage !== false);
+            const gridArbitrageKwh = new Array(M).fill(0);
+            const gridArbitrageEur = new Array(M).fill(0);
+
+            if (allowGrid) {
+                for (let c = 0; c < N; c++) {
+                    const pC = allSlots[c].ctKwh || 0;
+                    const netRetailPrice = pC + gridFeeCt;
+                    if (netRetailPrice < -0.01) {
+                        const invRoom = Math.max(0, invKw - charge[c]);
+                        let maxCellHeadroom = fullCap - soc[c];
+                        for (let t = c; t < M; t++) {
+                            maxCellHeadroom = Math.min(maxCellHeadroom, fullCap - soc[t]);
+                        }
+                        const canDrawGrid = Math.max(0, Math.min(invRoom, maxCellHeadroom / etaIn));
+                        if (canDrawGrid > 0.01) {
+                            const deltaSoc = canDrawGrid * etaIn;
+                            charge[c] += canDrawGrid;
+                            lossCharge[c] += (canDrawGrid - deltaSoc);
+                            gridArbitrageKwh[c] = canDrawGrid;
+                            gridArbitrageEur[c] = canDrawGrid * (Math.abs(netRetailPrice) / 100);
+                            for (let t = c; t < M; t++) {
+                                soc[t] += deltaSoc;
+                            }
+                        }
+                    }
+                }
+            }
+
             const daySlots = slots.map((s, h) => {
                 const finalFeed = Math.max(0, (s.kwh || 0) - charge[h] + discharge[h]);
                 return {
@@ -3799,7 +3865,9 @@
                     finalFeed,
                     socEnd: soc[h],
                     lossCharge: lossCharge[h],
-                    lossDischarge: lossDischarge[h]
+                    lossDischarge: lossDischarge[h],
+                    gridArbitrageKwh: gridArbitrageKwh[h],
+                    gridArbitrageEur: gridArbitrageEur[h]
                 };
             });
 
@@ -3811,6 +3879,8 @@
             daySlots.lossChargeKwh = sumArrPart(lossCharge.slice(0, N));
             daySlots.lossDischargeTodayKwh = sumArrPart(lossDischarge.slice(0, N));
             daySlots.lossDischargeNextDayKwh = sumArrPart(lossDischarge.slice(N));
+            daySlots.gridArbitrageKwh = sumArrPart(gridArbitrageKwh.slice(0, N));
+            daySlots.gridArbitrageEur = sumArrPart(gridArbitrageEur.slice(0, N));
             daySlots.etaIn = etaIn;
             daySlots.etaOut = etaOut;
 
@@ -4028,7 +4098,7 @@
             if (!blendedRep && (!blendedDayPts || blendedDayPts.length < 10)) return null;
 
             // 1. Extrapolation unter Erhalt des realen Hausverbrauchs
-            const scenario = applyPvScenarioToDayData(blendedDayPts, blendedRep);
+            const scenario = applyPvScenarioToDayData(blendedDayPts, blendedRep, dateKey);
             const { factor, isScenarioActive, genArr, feedArr, loadArr, gridArr } = scenario;
 
             // 2. Stündliche Börsenpreise (per schnellem O(log N) Binärsuch-Lookup)
@@ -4130,14 +4200,24 @@
 
             let totalEur = 0;
             let totalBasisKwh = 0;
+            let totalCurtailedKwh = 0;
+            let totalSavedPenaltyEur = 0;
+            const totalGridArbitrageKwh = (simSlots && simSlots.gridArbitrageKwh) ? simSlots.gridArbitrageKwh : 0;
+            const totalGridArbitrageEur = (simSlots && simSlots.gridArbitrageEur) ? simSlots.gridArbitrageEur : 0;
+
+            const hourlyCurtailedKwh = new Array(24).fill(0);
+            const hourlySavedPenaltyEur = new Array(24).fill(0);
+            const effectiveHourlyFeed = new Array(24).fill(0);
+
             for (let h = 0; h < 24; h++) {
                 const g = genArr[h] || 0;
                 const f = feedArr[h] || 0;
                 const p = hourlyPrices[h];
-                const basisKwh = (pvRevenueConfig.batteryShift && !isEeg) ? (shiftedFeed[h] || 0) : (isGrossOptionB ? g : f);
-                totalBasisKwh += basisKwh;
-
+                let rawBasisKwh = (pvRevenueConfig.batteryShift && !isEeg) ? (shiftedFeed[h] || 0) : (isGrossOptionB ? g : f);
+                
+                let basisKwh = rawBasisKwh;
                 let rate = 0;
+
                 if (isEeg) {
                     if (hasSolarSpitzen && p !== null && p < 0) {
                         rate = 0.0;
@@ -4146,8 +4226,29 @@
                     }
                 } else {
                     rate = (p !== null) ? p : eegRate;
+                    // Direktvermarktung: Abregelungsschutz bei negativen Börsenpreisen (Zero Export)
+                    if (pvRevenueConfig.curtailNegativeFeedin !== false && rate < 0 && basisKwh > 0.001) {
+                        const curtailed = basisKwh;
+                        const savedPenalty = curtailed * (Math.abs(rate) / 100);
+                        hourlyCurtailedKwh[h] = curtailed;
+                        hourlySavedPenaltyEur[h] = savedPenalty;
+                        totalCurtailedKwh += curtailed;
+                        totalSavedPenaltyEur += savedPenalty;
+                        basisKwh = 0.0; // Abregelung: Es wird kein Strom zu Negativpreisen eingespeist!
+                    }
                 }
-                totalEur += basisKwh * (rate / 100);
+
+                effectiveHourlyFeed[h] = basisKwh;
+                totalBasisKwh += basisKwh;
+                let hourRev = basisKwh * (rate / 100);
+
+                // Grid Arbitrage Ertrag hinzurechnen (Gutschrift beim Laden aus dem Netz zu negativem Endpreis)
+                const gArbEur = (simSlots && simSlots[h] && simSlots[h].gridArbitrageEur) ? simSlots[h].gridArbitrageEur : 0;
+                if (gArbEur > 0) {
+                    hourRev += gArbEur;
+                }
+
+                totalEur += hourRev;
             }
             const avgRate = (totalBasisKwh > 0.001) ? (totalEur / totalBasisKwh * 100) : (isEeg ? eegRate : 0);
 
@@ -4189,6 +4290,13 @@
                 totalEur,
                 totalBasisKwh,
                 avgRate,
+                totalCurtailedKwh,
+                totalSavedPenaltyEur,
+                totalGridArbitrageKwh,
+                totalGridArbitrageEur,
+                hourlyCurtailedKwh,
+                hourlySavedPenaltyEur,
+                effectiveHourlyFeed,
                 isEeg,
                 isGrossOptionB,
                 hasSolarSpitzen,
@@ -4620,9 +4728,15 @@
                 const realBadge = dayData.isRealHourly 
                     ? ' · <span style="color:#00ff88; font-weight:600; font-size:9.5px;">✓ FoxESS Inverterdaten</span>'
                     : ' · <span style="color:#ffaa00; font-weight:600; font-size:9.5px;">⏳ Backfill ausstehend</span>';
+                const curtailBadge = (dayData.totalCurtailedKwh > 0.05)
+                    ? ` · <span style="color:#ff8080; font-weight:600; font-size:9px; background:rgba(255,82,82,0.12); border:1px solid rgba(255,82,82,0.3); padding:1px 4px; border-radius:3px;" title="${dayData.totalCurtailedKwh.toFixed(1)} kWh Netzeinspeisung abgeregelt">🛡️ ${dayData.totalSavedPenaltyEur.toFixed(2).replace('.', ',')} € vermieden</span>`
+                    : '';
+                const gridArbBadge = (dayData.totalGridArbitrageKwh > 0.05)
+                    ? ` · <span style="color:#00ff88; font-weight:600; font-size:9px; background:rgba(0,255,136,0.12); border:1px solid rgba(0,255,136,0.3); padding:1px 4px; border-radius:3px;" title="${dayData.totalGridArbitrageKwh.toFixed(1)} kWh aus dem Netz geladen">⚡ +${dayData.totalGridArbitrageEur.toFixed(2).replace('.', ',')} € Netzladen</span>`
+                    : '';
                 subEl.innerHTML = (isScenarioActive
                     ? `${fullDateStr} · <span style="color:#00e5ff; font-weight:700;">🧪 ${pvScenarioConfig.targetKwp.toFixed(1)} kWp (${factor.toFixed(2)}x)</span>`
-                    : fullDateStr) + hybridBadge + realBadge;
+                    : fullDateStr) + hybridBadge + realBadge + curtailBadge + gridArbBadge;
             }
 
             if (kpiYieldEl) kpiYieldEl.innerText = genKwh.toFixed(1) + ' kWh';
@@ -5093,8 +5207,10 @@
                     const f = feedArr[h] || 0;
                     const p = hourlyPrices[h];
 
-                    const basisKwh = (pvRevenueConfig.batteryShift && !isEeg) ? (shiftedFeed[h] || 0) : (isGrossOptionB ? g : f);
-                    totalBasisKwh += basisKwh;
+                    const rawBasisKwh = (pvRevenueConfig.batteryShift && !isEeg) ? (shiftedFeed[h] || 0) : (isGrossOptionB ? g : f);
+                    let basisKwh = rawBasisKwh;
+                    let isCurtailed = false;
+                    let savedPenalty = 0;
 
                     let rate = 0;
                     let rateHtml = '';
@@ -5115,17 +5231,30 @@
                     } else {
                         // Direktvermarktung
                         rate = (p !== null) ? p : eegRate;
+                        if (pvRevenueConfig.curtailNegativeFeedin !== false && rate < 0 && basisKwh > 0.001) {
+                            isCurtailed = true;
+                            savedPenalty = basisKwh * (Math.abs(rate) / 100);
+                            basisKwh = 0.0; // Abregelung
+                        }
                         const pColor = (rate < 0) ? '#ff5252' : '#00e5ff';
-                        rateHtml = `<span style="color:${pColor}; font-weight:600; font-variant-numeric:tabular-nums;">${(rate >= 0 ? '+' : '')}${rate.toFixed(1)} ct</span> <span style="display:inline-block; width:34px;"></span>`;
+                        const curNote = isCurtailed ? '<span style="color:#ff8080; font-size:7.5px; margin-left:2px;" title="Abregelung aktiv: 0 kW Einspeisung schützt vor Strafen">(abger.)</span>' : '';
+                        rateHtml = `<span style="color:${pColor}; font-weight:600; font-variant-numeric:tabular-nums;">${(rate >= 0 ? '+' : '')}${rate.toFixed(1)} ct</span> ${curNote}`;
                     }
 
-                    const eur = basisKwh * (rate / 100);
+                    let eur = basisKwh * (rate / 100);
+                    const gridArbEur = (simSlots && simSlots[h] && simSlots[h].gridArbitrageEur) ? simSlots[h].gridArbitrageEur : 0;
+                    const gridArbKwh = (simSlots && simSlots[h] && simSlots[h].gridArbitrageKwh) ? simSlots[h].gridArbitrageKwh : 0;
+                    if (gridArbEur > 0) {
+                        eur += gridArbEur;
+                    }
+                    totalBasisKwh += basisKwh;
                     totalEur += eur;
 
                     const gColor = (g > 0.01) ? '#ffdb00; font-weight:600;' : '#555;';
-                    const fColor = (basisKwh > 0.01) ? (isGrossOptionB ? '#ffdb00; font-weight:600;' : '#b388ff; font-weight:600;') : '#555;';
+                    let fDisplayHtml = (basisKwh > 0.01) ? basisKwh.toFixed(1) : (isCurtailed ? '<span style="color:#ff8080;" title="Abregelung bei Negativpreis">0.0</span>' : '0.0');
+                    const fColor = isCurtailed ? '#ff8080; font-weight:600;' : ((basisKwh > 0.01) ? (isGrossOptionB ? '#ffdb00; font-weight:600;' : '#b388ff; font-weight:600;') : '#555;');
                     const lColor = (l > 0.01) ? '#ff9100;' : '#555;';
-                    const eurColor = (eur > 0.005) ? '#00ff88; font-weight:600;' : (eur < -0.005 ? '#ff5252; font-weight:600;' : (isSolarSpitzenActive ? '#ff5252;' : '#666;'));
+                    const eurColor = (eur > 0.005) ? '#00ff88; font-weight:600;' : (eur < -0.005 ? '#ff5252; font-weight:600;' : (isSolarSpitzenActive || isCurtailed ? '#888;' : '#666;'));
 
                     let batHtml = '<span style="color:#555;">--</span>';
                     if (isShiftActive && simSlots && simSlots[h]) {
@@ -5153,6 +5282,10 @@
                         }
                     }
 
+                    if (gridArbKwh > 0.01) {
+                        batHtml = `<span style="color:#00ff88; font-weight:700;" title="Netzladen bei negativem Endpreis: +${gridArbKwh.toFixed(2)} kWh (+${gridArbEur.toFixed(2)} € Gutschrift)">+${gridArbKwh.toFixed(1)} <span style="font-size:7.5px; color:#00e5ff;">(Netz)</span></span>`;
+                    }
+
                     let slotBadge = '';
                     if (isTodayHybrid) {
                         if (h === currentHour) {
@@ -5162,13 +5295,17 @@
                         }
                     }
                     const slotLabel = `${String(h).padStart(2, '0')}:00 - ${String(h + 1).padStart(2, '0')}:00${slotBadge}`;
+                    const feedValHtml = isCurtailed 
+                        ? `<span style="color:#ff8080;" title="Abregelung bei Negativpreis: ${rawBasisKwh.toFixed(2)} kWh nicht eingespeist (${savedPenalty.toFixed(2)} € Strafe vermieden)">0.00 <span style="font-size:7px;">(abger.)</span></span>` 
+                        : basisKwh.toFixed(2);
+
                     rowsHtml.push(`
                         <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
                             <td style="padding: 3.5px 4px; color: #888; font-variant-numeric:tabular-nums; white-space:nowrap;">${slotLabel}</td>
                             <td style="padding: 3.5px 4px; text-align: right; color: ${gColor}; font-variant-numeric:tabular-nums;">${g.toFixed(2)}</td>
                             <td style="padding: 3.5px 4px; text-align: right; color: ${lColor}; font-variant-numeric:tabular-nums;">${l.toFixed(2)}</td>
                             <td style="padding: 3.5px 4px; text-align: right; font-variant-numeric:tabular-nums;">${batHtml}</td>
-                            <td style="padding: 3.5px 4px; text-align: right; color: ${fColor}; font-variant-numeric:tabular-nums;">${basisKwh.toFixed(2)}</td>
+                            <td style="padding: 3.5px 4px; text-align: right; color: ${fColor}; font-variant-numeric:tabular-nums;">${feedValHtml}</td>
                             <td style="padding: 3.5px 4px; text-align: right; white-space: nowrap;">${rateHtml}</td>
                             <td style="padding: 3.5px 4px; text-align: right; color: ${eurColor}; font-variant-numeric:tabular-nums;">${eur.toFixed(2)} €</td>
                         </tr>
