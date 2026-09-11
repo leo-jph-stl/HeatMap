@@ -1115,6 +1115,25 @@
                 </div>
             </div>
 
+            <!-- Interaktive Modell- & Speichersteuerung im History-Container -->
+            <div id="pvHistControlBar" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(0,229,255,0.22); border-radius: 8px; padding: 5px 8px; margin-bottom: 8px; font-size: 9px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px;">
+                <div style="display:flex; align-items:center; gap:5px;">
+                    <span style="color:#aaa;">Modus:</span>
+                    <button id="pvHistModeEegBtn" type="button" style="padding:2px 8px; border-radius:4px; font-size:9px; cursor:pointer; font-weight:600; border:1px solid #ffdb00; background:transparent; color:#bbb;">☀️ EEG</button>
+                    <button id="pvHistModeDirectBtn" type="button" style="padding:2px 8px; border-radius:4px; font-size:9px; cursor:pointer; font-weight:600; border:1px solid #00e5ff; background:transparent; color:#bbb;">⚡ Direktvermarktung</button>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <label style="display:flex; align-items:center; gap:4px; cursor:pointer; color:#eee;">
+                        <input id="pvHistShiftToggle" type="checkbox" style="cursor:pointer; accent-color:#00ff88;">
+                        <span style="font-weight:600; color:#00ff88;">🔋 Batterie-Shift</span>
+                    </label>
+                    <div id="pvHistShiftCapWrapper" style="display:inline-flex; align-items:center; gap:2px;">
+                        <input id="pvHistShiftCapInput" type="number" step="1" min="1" max="100" value="10" title="Speicherkapazität (kWh)" style="width:38px; background:rgba(0,0,0,0.6); border:1px solid rgba(0,255,136,0.4); color:#00ff88; border-radius:3px; padding:1px 3px; font-size:9.5px; text-align:right; font-weight:700; font-family:monospace;">
+                        <span style="color:#888; font-size:8.5px;">kWh</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- Tages-KPIs Energiebilanz (4 Boxen) -->
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px;">
                 <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 8px;">
@@ -1144,6 +1163,9 @@
                             <span style="color: #ffdb00; display: inline-flex; align-items: center; gap: 3px;">
                                 <span style="display:inline-block; width:8px; height:2px; background:#ffdb00;"></span>PV-Erzeugung
                             </span>
+                            <span id="pvHistBatLegend" style="color: #00ff88; display: inline-flex; align-items: center; gap: 3px;">
+                                <span style="display:inline-block; width:8px; height:2px; background:#00ff88; border-top:1px dashed #00ff88;"></span>Batterie
+                            </span>
                             <span style="color: #b388ff; display: inline-flex; align-items: center; gap: 3px;">
                                 <span style="display:inline-block; width:8px; height:2px; background:#b388ff;"></span>Einspeisung
                             </span>
@@ -1172,12 +1194,13 @@
                     <table style="width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 9.5px;">
                         <thead id="pvHistHourlyTableHead" style="position: sticky; top: 0; z-index: 5;">
                             <tr style="color: #888; text-align: right;">
-                                <th style="width: 72px; text-align: left; padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Zeitraum</th>
-                                <th style="width: 34px; padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">PV</th>
-                                <th style="width: 34px; padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Haus</th>
-                                <th id="pvHistColBasis" style="width: 44px; padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Einspeis.</th>
-                                <th id="pvHistColRate" style="width: 90px; padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Vergütung</th>
-                                <th style="width: 44px; padding: 5px 4px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Erlös</th>
+                                <th style="width: 66px; text-align: left; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Zeitraum</th>
+                                <th style="width: 32px; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">PV</th>
+                                <th style="width: 32px; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Haus</th>
+                                <th id="pvHistColBat" style="width: 48px; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2); color: #00ff88;">Batterie</th>
+                                <th id="pvHistColBasis" style="width: 42px; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Einspeis.</th>
+                                <th id="pvHistColRate" style="width: 82px; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Börse/Tarif</th>
+                                <th style="width: 44px; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Erlös</th>
                             </tr>
                         </thead>
                         <tbody id="pvHistHourlyTableBody"></tbody>
@@ -3674,6 +3697,7 @@
 
             // 4. Kausale Batterie-Lastverschiebung mit 2-stufigem Wirkungsgrad & Day-Ahead Horizont
             let shiftedFeed = [...feedArr];
+            let simSlots = null;
             let chargedKwh = 0;
             let dischargedKwh = 0;
             let conversionLossKwh = 0;
@@ -3811,6 +3835,7 @@
                 conversionLossKwh,
                 etaIn,
                 etaOut,
+                simSlots,
                 totalEur,
                 totalBasisKwh,
                 avgRate,
@@ -4014,6 +4039,38 @@
             if (inverterKwInput) inverterKwInput.value = pvRevenueConfig.inverterAcKw;
             if (efficiencyInput) efficiencyInput.value = pvRevenueConfig.efficiencyPct;
             updatePvScenarioUI();
+            updatePvHistControlBarUI();
+        }
+
+        function updatePvHistControlBarUI() {
+            const isEeg = (pvRevenueConfig.mode === 'eeg');
+            const eegBtn = document.getElementById('pvHistModeEegBtn');
+            const directBtn = document.getElementById('pvHistModeDirectBtn');
+            const shiftToggle = document.getElementById('pvHistShiftToggle');
+            const capInput = document.getElementById('pvHistShiftCapInput');
+            const capWrap = document.getElementById('pvHistShiftCapWrapper');
+
+            if (eegBtn) {
+                eegBtn.style.background = isEeg ? '#ffdb00' : 'transparent';
+                eegBtn.style.color = isEeg ? '#111' : '#bbb';
+                eegBtn.style.fontWeight = isEeg ? '700' : '600';
+            }
+            if (directBtn) {
+                directBtn.style.background = !isEeg ? '#00e5ff' : 'transparent';
+                directBtn.style.color = !isEeg ? '#111' : '#bbb';
+                directBtn.style.fontWeight = !isEeg ? '700' : '600';
+            }
+            if (shiftToggle) {
+                shiftToggle.checked = !isEeg && !!pvRevenueConfig.batteryShift;
+                shiftToggle.disabled = isEeg;
+            }
+            if (capInput) {
+                capInput.value = pvRevenueConfig.shiftCapKwh || 10;
+                capInput.disabled = isEeg || !pvRevenueConfig.batteryShift;
+            }
+            if (capWrap) {
+                capWrap.style.opacity = (isEeg || !pvRevenueConfig.batteryShift) ? '0.4' : '1.0';
+            }
         }
 
         function updatePvScenarioUI() {
@@ -4120,7 +4177,7 @@
                 if (energyValEl) energyValEl.innerText = '--';
                 const tableBody = document.getElementById('pvHistHourlyTableBody');
                 const tableFoot = document.getElementById('pvHistHourlyTableFoot');
-                if (tableBody) tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#666; padding:22px 0; font-style:italic;">Keine stündlichen Abrechnungsdaten verfügbar. Sobald FoxESS-Tagesberichte empfangen werden, erscheinen sie hier.</td></tr>';
+                if (tableBody) tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#666; padding:22px 0; font-style:italic;">Keine stündlichen Abrechnungsdaten verfügbar. Sobald FoxESS-Tagesberichte empfangen werden, erscheinen sie hier.</td></tr>';
                 if (tableFoot) tableFoot.innerHTML = '';
                 return;
             }
@@ -4175,8 +4232,12 @@
                 shiftedFeed, hourlyPrices, genKwh, initialFeedKwh, effectiveFeedKwh,
                 loadKwh, gridKwh, selfKwh, selfPct, feedPct, autarkyPct,
                 conversionLossKwh, carryoverToNextDay, initialSoc, lossChargeKwh,
-                isGrossOptionB, isEeg, hasSolarSpitzen, eegRate
+                isGrossOptionB, isEeg, hasSolarSpitzen, eegRate, simSlots, rep,
+                chargedKwh, dischargedKwh
             } = dayData;
+
+            const isShiftActive = (!isEeg && pvRevenueConfig.batteryShift);
+            updatePvHistControlBarUI();
 
             const dActive = new Date(activeDateKey + 'T12:00:00');
             const fullDateStr = dActive.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
@@ -4191,7 +4252,7 @@
             if (kpiSelfEl) kpiSelfEl.innerHTML = `${selfKwh.toFixed(1)} kWh <span style="font-size:9.5px; font-weight:normal; color:#888;">(${selfPct} %)</span>`;
             if (kpiFeedEl) {
                 let lossNote = '';
-                if (!isEeg && pvRevenueConfig.batteryShift) {
+                if (isShiftActive) {
                     if (carryoverToNextDay > 0.05) {
                         lossNote = ` · Übertrag: ${carryoverToNextDay.toFixed(1)} kWh für Morgen · Verlust ${conversionLossKwh.toFixed(1)} kWh`;
                     } else if (conversionLossKwh > 0.01) {
@@ -4213,6 +4274,12 @@
             let maxEnergy = 1.0;
             for (let h = 0; h < 24; h++) {
                 maxEnergy = Math.max(maxEnergy, genArr[h] || 0, feedArr[h] || 0, loadArr[h] || 0);
+                if (isShiftActive) {
+                    maxEnergy = Math.max(maxEnergy, shiftedFeed[h] || 0);
+                    if (simSlots && simSlots[h]) {
+                        maxEnergy = Math.max(maxEnergy, simSlots[h].socEnd || 0);
+                    }
+                }
             }
             if (effectiveDayPts.length >= 10) {
                 for (const p of effectiveDayPts) {
@@ -4247,10 +4314,17 @@
                 genAreaPts = `${PAD_L},${H - PAD_B} ` + genPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
             }
 
-            // 2. Einspeisung: Hochauflösende 5-Minuten-Punkte (Lila)
+            // 2. Einspeisung:
             let feedPts = [];
             let feedAreaPts = '';
-            if (effectiveDayPts.length >= 10 && hasHighResFeed) {
+            if (isShiftActive) {
+                feedPts = [];
+                for (let h = 0; h < 24; h++) {
+                    const cx = (PAD_L + (h + 0.5) * slotW).toFixed(1);
+                    feedPts.push(`${cx},${yE(shiftedFeed[h] || 0).toFixed(1)}`);
+                }
+                feedAreaPts = `${PAD_L},${H - PAD_B} ` + feedPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
+            } else if (effectiveDayPts.length >= 10 && hasHighResFeed) {
                 feedPts = sortedPts.map(p => {
                     const ptTime = new Date(p.t).getTime();
                     const frac = Math.max(0, Math.min(1, (ptTime - dayStart) / (24 * 3600 * 1000)));
@@ -4287,7 +4361,37 @@
                 loadAreaPts = `${PAD_L},${H - PAD_B} ` + loadPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
             }
 
-            // 4. Stündliche Börsenpreise & Preis-Stufenlinie im Chart (sekundäre Y-Achse rechts)
+            // 4. Batterie-Kurve: Bei aktiver Lastverschiebung stündlicher SOC (Grün #00ff88)
+            let batPts = [];
+            let batAreaPts = '';
+            let batSvgElements = '';
+            if (isShiftActive && simSlots && simSlots.length === 24) {
+                batPts.push(`${PAD_L.toFixed(1)},${yE(initialSoc || 0).toFixed(1)}`);
+                for (let h = 0; h < 24; h++) {
+                    const cx = (PAD_L + (h + 1) * slotW).toFixed(1);
+                    const soc = simSlots[h].socEnd || 0;
+                    batPts.push(`${cx},${yE(soc).toFixed(1)}`);
+                }
+                batAreaPts = `${PAD_L},${H - PAD_B} ${PAD_L},${yE(initialSoc || 0).toFixed(1)} ` + batPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
+                batSvgElements = `
+                    <polygon points="${batAreaPts}" fill="rgba(0,255,136,0.12)"/>
+                    <polyline points="${batPts.join(' ')}" fill="none" stroke="#00ff88" stroke-width="1.6" stroke-dasharray="3,2" stroke-linejoin="round" stroke-linecap="round"/>
+                `;
+            }
+
+            const batLegendEl = document.getElementById('pvHistBatLegend');
+            if (batLegendEl) {
+                if (isShiftActive) {
+                    batLegendEl.style.display = 'inline-flex';
+                    batLegendEl.innerHTML = '<span style="display:inline-block; width:8px; height:2px; background:#00ff88; border-top:1.5px dashed #00ff88;"></span>Batterie (SOC)';
+                } else {
+                    const hasRealBat = rep && ((rep.chargeEnergyToTal && rep.chargeEnergyToTal.some(v => v > 0)) || (rep.dischargeEnergyToTal && rep.dischargeEnergyToTal.some(v => v > 0)));
+                    batLegendEl.style.display = hasRealBat ? 'inline-flex' : 'none';
+                    batLegendEl.innerHTML = '<span style="display:inline-block; width:8px; height:2px; background:#00ff88;"></span>Batterie';
+                }
+            }
+
+            // 5. Stündliche Börsenpreise & Preis-Stufenlinie im Chart (sekundäre Y-Achse rechts)
             const validPrices = hourlyPrices.filter(p => p !== null);
             let priceSvgElements = '';
             let dotPriceSvg = '';
@@ -4362,6 +4466,7 @@
                     <polygon points="${loadAreaPts}" fill="rgba(255,145,0,0.08)"/>
                     <polygon points="${genAreaPts}" fill="rgba(255,219,0,0.18)"/>
                     <polygon points="${feedAreaPts}" fill="rgba(179,136,255,0.14)"/>
+                    ${batSvgElements}
                     <!-- Linienzüge -->
                     ${priceSvgElements}
                     <polyline points="${loadPts.join(' ')}" fill="none" stroke="#ff9100" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
@@ -4373,13 +4478,14 @@
                         <circle id="pvHistDotGen" cx="0" cy="0" r="2.5" fill="#ffdb00" stroke="#000" stroke-width="0.6"/>
                         <circle id="pvHistDotFeed" cx="0" cy="0" r="2.5" fill="#b388ff" stroke="#000" stroke-width="0.6"/>
                         <circle id="pvHistDotLoad" cx="0" cy="0" r="2.5" fill="#ff9100" stroke="#000" stroke-width="0.6"/>
+                        <circle id="pvHistDotBat" cx="0" cy="0" r="2.5" fill="#00ff88" stroke="#000" stroke-width="0.6" style="display:none;"/>
                         ${dotPriceSvg}
                     </g>
                     ${hoverEnergySlots}
                 `;
             }
 
-            // 5. Modell-Konfiguration (EEG vs. Direktvermarktung, Option A/B, Solar-Spitzen § 51, Batterie-Shift)
+            // 6. Modell-Konfiguration (EEG vs. Direktvermarktung, Option A/B, Solar-Spitzen § 51, Batterie-Shift)
             const modelBadgeEl = document.getElementById('pvHistModelBadge');
             const colBasisEl = document.getElementById('pvHistColBasis');
             const colRateEl = document.getElementById('pvHistColRate');
@@ -4444,7 +4550,6 @@
                 }
             }
 
-
             // --- Crosshair & Hover-Werteinspektion ---
             const syncHoverEls = container.querySelectorAll('.pv-hist-sync-hover');
             syncHoverEls.forEach(el => {
@@ -4477,6 +4582,7 @@
                     const dotG = document.getElementById('pvHistDotGen');
                     const dotF = document.getElementById('pvHistDotFeed');
                     const dotL = document.getElementById('pvHistDotLoad');
+                    const dotB = document.getElementById('pvHistDotBat');
                     const dotP = document.getElementById('pvHistDotPrice');
                     if (curE && lineE && dotG && dotF && dotL) {
                         curE.style.display = '';
@@ -4485,9 +4591,16 @@
                         dotG.setAttribute('cx', cx.toFixed(1));
                         dotG.setAttribute('cy', yE(g).toFixed(1));
                         dotF.setAttribute('cx', cx.toFixed(1));
-                        dotF.setAttribute('cy', yE(f).toFixed(1));
+                        dotF.setAttribute('cy', yE(basisKwh).toFixed(1));
                         dotL.setAttribute('cx', cx.toFixed(1));
                         dotL.setAttribute('cy', yE(l).toFixed(1));
+                        if (dotB && isShiftActive && simSlots && simSlots[h]) {
+                            dotB.style.display = '';
+                            dotB.setAttribute('cx', cx.toFixed(1));
+                            dotB.setAttribute('cy', yE(simSlots[h].socEnd || 0).toFixed(1));
+                        } else if (dotB) {
+                            dotB.style.display = 'none';
+                        }
                         if (dotP && p !== null && yP) {
                             dotP.style.display = '';
                             dotP.setAttribute('cx', cx.toFixed(1));
@@ -4505,8 +4618,25 @@
                     const basisName = isGrossOptionB ? 'Erzeug.' : 'Einsp.';
                     const basisCol = isGrossOptionB ? '#ffdb00' : '#b388ff';
 
+                    let batHoverStr = '';
+                    if (isShiftActive && simSlots && simSlots[h]) {
+                        const s = simSlots[h];
+                        if (s.shiftedOut > 0.01) {
+                            batHoverStr = ` · Bat <span style="color:#00ff88; font-weight:600;">+${s.shiftedOut.toFixed(1)} <span style="font-size:7.5px; opacity:0.8;">(${s.socEnd.toFixed(1)})</span></span>`;
+                        } else if (s.shiftedIn > 0.01) {
+                            batHoverStr = ` · Bat <span style="color:#00e5ff; font-weight:600;">-${s.shiftedIn.toFixed(1)} <span style="font-size:7.5px; opacity:0.8;">(${s.socEnd.toFixed(1)})</span></span>`;
+                        } else if (s.socEnd > 0.01) {
+                            batHoverStr = ` · Bat <span style="color:#aaa;">${s.socEnd.toFixed(1)}</span>`;
+                        }
+                    } else if (rep && ((rep.chargeEnergyToTal && rep.chargeEnergyToTal[h]) || (rep.dischargeEnergyToTal && rep.dischargeEnergyToTal[h]))) {
+                        const c = (rep.chargeEnergyToTal && rep.chargeEnergyToTal[h]) || 0;
+                        const d = (rep.dischargeEnergyToTal && rep.dischargeEnergyToTal[h]) || 0;
+                        if (c > 0.01) batHoverStr = ` · Bat <span style="color:#00ff88;">+${c.toFixed(1)}</span>`;
+                        else if (d > 0.01) batHoverStr = ` · Bat <span style="color:#00e5ff;">-${d.toFixed(1)}</span>`;
+                    }
+
                     if (energyValEl) {
-                        energyValEl.innerHTML = `<b style="color:#ddd;">${timeRange}:</b> PV <span style="color:#ffdb00;">${g.toFixed(2)}</span> · Haus <span style="color:#ff9100;">${l.toFixed(2)}</span> · ${basisName} <span style="color:${basisCol}; font-weight:600;">${basisKwh.toFixed(2)} kWh</span> · <span style="color:#00e5ff;">${rateStr}</span> · <span style="color:${eurCol}; font-weight:700;">${eur.toFixed(2)} €</span>`;
+                        energyValEl.innerHTML = `<b style="color:#ddd;">${timeRange}:</b> PV <span style="color:#ffdb00;">${g.toFixed(2)}</span> · Haus <span style="color:#ff9100;">${l.toFixed(2)}</span>${batHoverStr} · ${basisName} <span style="color:${basisCol}; font-weight:600;">${basisKwh.toFixed(2)}</span> · <span style="color:#00e5ff;">${rateStr}</span> · <span style="color:${eurCol}; font-weight:700;">${eur.toFixed(2)} €</span>`;
                     }
                 });
 
@@ -4515,11 +4645,13 @@
                     if (curE) curE.style.display = 'none';
                     const dotP = document.getElementById('pvHistDotPrice');
                     if (dotP) dotP.style.display = 'none';
+                    const dotB = document.getElementById('pvHistDotBat');
+                    if (dotB) dotB.style.display = 'none';
                     if (energyValEl) energyValEl.innerHTML = '';
                 });
             });
 
-            // 6. Stündliche Abrechnungstabelle
+            // 7. Stündliche Abrechnungstabelle
             if (tableBody) {
                 let totalEur = 0;
                 let totalBasisKwh = 0;
@@ -4565,12 +4697,39 @@
                     const lColor = (l > 0.01) ? '#ff9100;' : '#555;';
                     const eurColor = (eur > 0.005) ? '#00ff88; font-weight:600;' : (eur < -0.005 ? '#ff5252; font-weight:600;' : (isSolarSpitzenActive ? '#ff5252;' : '#666;'));
 
+                    let batHtml = '<span style="color:#555;">--</span>';
+                    if (isShiftActive && simSlots && simSlots[h]) {
+                        const sOut = simSlots[h].shiftedOut || 0;
+                        const sIn = simSlots[h].shiftedIn || 0;
+                        const soc = simSlots[h].socEnd || 0;
+                        if (sOut > 0.01) {
+                            batHtml = `<span style="color:#00ff88; font-weight:600;" title="Laden: +${sOut.toFixed(2)} kWh (SOC: ${soc.toFixed(1)} kWh)">+${sOut.toFixed(1)} <span style="font-size:7.5px; color:#aaa;">(${soc.toFixed(1)})</span></span>`;
+                        } else if (sIn > 0.01) {
+                            batHtml = `<span style="color:#00e5ff; font-weight:600;" title="Entladen: -${sIn.toFixed(2)} kWh (SOC: ${soc.toFixed(1)} kWh)">-${sIn.toFixed(1)} <span style="font-size:7.5px; color:#aaa;">(${soc.toFixed(1)})</span></span>`;
+                        } else if (soc > 0.01) {
+                            batHtml = `<span style="color:#888;" title="Speicherstand: ${soc.toFixed(2)} kWh">${soc.toFixed(1)}</span>`;
+                        } else {
+                            batHtml = `<span style="color:#444;">0.0</span>`;
+                        }
+                    } else if (rep) {
+                        const realCh = (rep.chargeEnergyToTal && typeof rep.chargeEnergyToTal[h] === 'number') ? rep.chargeEnergyToTal[h] : 0;
+                        const realDis = (rep.dischargeEnergyToTal && typeof rep.dischargeEnergyToTal[h] === 'number') ? rep.dischargeEnergyToTal[h] : 0;
+                        if (realCh > 0.01) {
+                            batHtml = `<span style="color:#00ff88;" title="FoxESS Ladung: +${realCh.toFixed(2)} kWh">+${realCh.toFixed(1)}</span>`;
+                        } else if (realDis > 0.01) {
+                            batHtml = `<span style="color:#00e5ff;" title="FoxESS Entladung: -${realDis.toFixed(2)} kWh">-${realDis.toFixed(1)}</span>`;
+                        } else if (realCh === 0 && realDis === 0) {
+                            batHtml = `<span style="color:#444;">0.0</span>`;
+                        }
+                    }
+
                     const slotLabel = `${String(h).padStart(2, '0')}:00 - ${String(h + 1).padStart(2, '0')}:00`;
                     rowsHtml.push(`
                         <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
                             <td style="padding: 3.5px 4px; color: #888; font-variant-numeric:tabular-nums;">${slotLabel}</td>
                             <td style="padding: 3.5px 4px; text-align: right; color: ${gColor}; font-variant-numeric:tabular-nums;">${g.toFixed(2)}</td>
                             <td style="padding: 3.5px 4px; text-align: right; color: ${lColor}; font-variant-numeric:tabular-nums;">${l.toFixed(2)}</td>
+                            <td style="padding: 3.5px 4px; text-align: right; font-variant-numeric:tabular-nums;">${batHtml}</td>
                             <td style="padding: 3.5px 4px; text-align: right; color: ${fColor}; font-variant-numeric:tabular-nums;">${basisKwh.toFixed(2)}</td>
                             <td style="padding: 3.5px 4px; text-align: right; white-space: nowrap;">${rateHtml}</td>
                             <td style="padding: 3.5px 4px; text-align: right; color: ${eurColor}; font-variant-numeric:tabular-nums;">${eur.toFixed(2)} €</td>
@@ -4586,11 +4745,23 @@
                     const basisColColor = isGrossOptionB ? '#ffdb00' : '#b388ff';
                     const eurColor = (totalEur > 0.005) ? '#00ff88' : (totalEur < -0.005 ? '#ff5252' : '#aaa');
 
+                    let batFootHtml = '<span style="color:#555;">--</span>';
+                    if (isShiftActive) {
+                        batFootHtml = `<span style="color:#00ff88; font-size:8.5px;" title="Geladen: +${chargedKwh.toFixed(1)} kWh / Entladen: -${dischargedKwh.toFixed(1)} kWh">+${chargedKwh.toFixed(1)}/-${dischargedKwh.toFixed(1)}</span>`;
+                    } else if (rep) {
+                        let totCh = 0, totDis = 0;
+                        if (rep.chargeEnergyToTal) totCh = rep.chargeEnergyToTal.reduce((a, b) => a + (b || 0), 0);
+                        if (rep.dischargeEnergyToTal) totDis = rep.dischargeEnergyToTal.reduce((a, b) => a + (b || 0), 0);
+                        if (totCh > 0.01 || totDis > 0.01) {
+                            batFootHtml = `<span style="color:#00ff88; font-size:8.5px;" title="Geladen: +${totCh.toFixed(1)} kWh / Entladen: -${totDis.toFixed(1)} kWh">+${totCh.toFixed(1)}/-${totDis.toFixed(1)}</span>`;
+                        }
+                    }
+
                     let extraFootRows = '';
                     if (initialSoc > 0.05) {
                         extraFootRows += `
                             <tr style="background: rgba(255,219,0,0.05); font-size: 8.5px; border-top: 1px dashed rgba(255,219,0,0.2);">
-                                <td colspan="6" style="padding: 4px 6px; color: #ffdb00;">
+                                <td colspan="7" style="padding: 4px 6px; color: #ffdb00;">
                                     ⚡ <b>Vortags-Übertrag:</b> ${initialSoc.toFixed(1)} kWh Restladung aus dem Vortag wurden in der Morgenspitze eingespeist.
                                 </td>
                             </tr>
@@ -4599,7 +4770,7 @@
                     if (carryoverToNextDay > 0.05) {
                         extraFootRows += `
                             <tr style="background: rgba(0,229,255,0.05); font-size: 8.5px; border-top: 1px dashed rgba(0,229,255,0.2);">
-                                <td colspan="6" style="padding: 4px 6px; color: #00e5ff;">
+                                <td colspan="7" style="padding: 4px 6px; color: #00e5ff;">
                                     🔋 <b>Speicher-Übertrag auf Folgemorgen:</b> ${carryoverToNextDay.toFixed(1)} kWh im Speicher gehalten (geplante Einspeisung in Folgemorgen-Morgenspitze).
                                 </td>
                             </tr>
@@ -4611,6 +4782,7 @@
                             <td style="padding: 5px 4px; color: #fff; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">Gesamt (24h)</td>
                             <td style="padding: 5px 4px; text-align: right; color: #ffdb00; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">${genKwh.toFixed(1)}</td>
                             <td style="padding: 5px 4px; text-align: right; color: #ff9100; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">${loadKwh.toFixed(1)}</td>
+                            <td style="padding: 5px 4px; text-align: right; color: #00ff88; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2); font-variant-numeric:tabular-nums;">${batFootHtml}</td>
                             <td style="padding: 5px 4px; text-align: right; color: ${basisColColor}; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">${basisColTotal.toFixed(1)}</td>
                             <td style="padding: 5px 4px; text-align: right; color: #00e5ff; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2); white-space: nowrap;">Ø ${avgRate.toFixed(1)} ct <span style="display:inline-block; width:34px;"></span></td>
                             <td style="padding: 5px 4px; text-align: right; color: ${eurColor}; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">${totalEur.toFixed(2)} €</td>
@@ -4692,6 +4864,9 @@
             if (batteryShiftToggle) {
                 batteryShiftToggle.addEventListener('change', (e) => {
                     pvRevenueConfig.batteryShift = e.target.checked;
+                    if (e.target.checked && pvRevenueConfig.mode === 'eeg') {
+                        pvRevenueConfig.mode = 'direct';
+                    }
                     saveRevenueConfig();
                     updatePvRevenueControlsUI();
                     renderEuroTable();
@@ -4808,6 +4983,55 @@
             if (closeHistBtn) {
                 closeHistBtn.addEventListener('click', () => {
                     closePvHistory();
+                });
+            }
+
+            // History-Container Schnellsteuerung (Modus, Batterie-Shift & Kapazität)
+            const histEegBtn = document.getElementById('pvHistModeEegBtn');
+            const histDirectBtn = document.getElementById('pvHistModeDirectBtn');
+            const histShiftToggle = document.getElementById('pvHistShiftToggle');
+            const histShiftCapInput = document.getElementById('pvHistShiftCapInput');
+
+            if (histEegBtn) {
+                histEegBtn.addEventListener('click', () => {
+                    pvRevenueConfig.mode = 'eeg';
+                    saveRevenueConfig();
+                    updatePvRevenueControlsUI();
+                    renderEuroTable();
+                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                });
+            }
+            if (histDirectBtn) {
+                histDirectBtn.addEventListener('click', () => {
+                    pvRevenueConfig.mode = 'direct';
+                    saveRevenueConfig();
+                    updatePvRevenueControlsUI();
+                    renderEuroTable();
+                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                });
+            }
+            if (histShiftToggle) {
+                histShiftToggle.addEventListener('change', (e) => {
+                    pvRevenueConfig.batteryShift = e.target.checked;
+                    if (e.target.checked && pvRevenueConfig.mode === 'eeg') {
+                        pvRevenueConfig.mode = 'direct';
+                    }
+                    saveRevenueConfig();
+                    updatePvRevenueControlsUI();
+                    renderEuroTable();
+                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                });
+            }
+            if (histShiftCapInput) {
+                histShiftCapInput.addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val) && val >= 0) {
+                        pvRevenueConfig.shiftCapKwh = val;
+                        saveRevenueConfig();
+                        updatePvRevenueControlsUI();
+                        renderEuroTable();
+                        if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                    }
                 });
             }
 
