@@ -5454,7 +5454,9 @@
             const monthGroups = {};
 
             for (const dKey of dateKeys) {
-                const dayData = computeDayEnergyAndRevenue(dKey, false);
+                // allowRecursion = true: Stellt sicher, dass der kausale Vortags-Batterieübertrag (Morgenspitze)
+                // exakt identisch wie in Container 1 (Erlöskarte) und Container 2 (24h-Detailansicht) berücksichtigt wird.
+                const dayData = computeDayEnergyAndRevenue(dKey, true);
                 if (!dayData) continue;
 
                 totalGen += dayData.genKwh;
