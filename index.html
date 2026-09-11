@@ -72,6 +72,22 @@
             color: #ffffff;
             box-shadow: 0 0 10px rgba(0, 204, 255, 0.4);
         }
+        #playSpeedBtn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            color: #cccccc;
+            padding: 3px 9px;
+            font-size: 11px;
+            font-weight: 700;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            flex-shrink: 0;
+        }
+        #playSpeedBtn:hover {
+            background: rgba(255, 255, 255, 0.18);
+            color: #ffffff;
+        }
         #timeDisplayTitle {
             font-weight: 600;
             font-size: 12.5px;
@@ -1176,6 +1192,7 @@
     <div id="timeline-container">
         <div class="timeline-top-row">
             <button id="playBtn">▶ Play</button>
+            <button id="playSpeedBtn" title="Wiedergabegeschwindigkeit">1x</button>
             <div id="timeDisplayTitle">Live (Jetzt)</div>
             <button id="pvQuickBtn" class="pv-badge-btn" title="Zur PV-Anlage Hochheim am Main springen">☀️ PV Hochheim</button>
         </div>
@@ -6547,7 +6564,19 @@
         const playBtn = document.getElementById('playBtn');
         let playAnimId = null;
         let playLastTime = 0;
-        const PLAY_HOURS_PER_SEC = 1000 / 150; // gleiche Gesamtgeschwindigkeit wie zuvor (1h/150ms)
+        const PLAY_HOURS_PER_SEC = 1000 / 150; // Basisgeschwindigkeit bei 1x (bisheriges Tempo)
+
+        const playSpeedBtn = document.getElementById('playSpeedBtn');
+        const PLAY_SPEEDS = [0.1, 0.25, 0.5, 1, 2];
+        let playSpeedIndex = 3; // 1x
+        function updatePlaySpeedLabel() {
+            playSpeedBtn.innerText = PLAY_SPEEDS[playSpeedIndex] + 'x';
+        }
+        playSpeedBtn.addEventListener('click', () => {
+            playSpeedIndex = (playSpeedIndex + 1) % PLAY_SPEEDS.length;
+            updatePlaySpeedLabel();
+        });
+        updatePlaySpeedLabel();
 
         function setHourOffset(val) {
             currentHourOffset = val;
@@ -6579,7 +6608,7 @@
                     playLastTime = now;
                     const min = parseInt(timeSlider.min, 10);
                     const max = parseInt(timeSlider.max, 10);
-                    let val = currentHourOffset + dtSec * PLAY_HOURS_PER_SEC;
+                    let val = currentHourOffset + dtSec * PLAY_HOURS_PER_SEC * PLAY_SPEEDS[playSpeedIndex];
                     if (val > max) val -= (max - min); // nahtloser Loop statt Hartsprung auf -24
                     timeSlider.value = val; // nur Reglerposition, wird intern auf ganze Stunden gerundet
                     setHourOffset(val);
