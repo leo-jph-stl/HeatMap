@@ -354,22 +354,33 @@ if api_key and not metrics:
                             if d_idx < len(vals) and isinstance(vals[d_idx], (int, float)):
                                 daily_reports[d_key]["totals"][v_name] = round(float(vals[d_idx]), 2)
 
-            # 2. Stündliche 24h-Vektoren abfragen:
-            # Heute und gestern immer aktualisieren, fehlende Tage der letzten 14 Tage schrittweise nachladen
+            # 2. Stündliche 24h-Vektoren (echte FoxESS Inverter-Messungen) abfragen:
+            # Heute und gestern immer aktualisieren, ältere Tage bis Mai 2025 schrittweise (oder per FULL_BACKFILL) nachladen
             days_to_fetch = [0, 1]  # Heute und gestern
-            start_date = datetime(2026, 8, 1, tzinfo=now.tzinfo)
+            start_date = datetime(2025, 5, 1, tzinfo=now.tzinfo)
             cur = now - timedelta(days=2)
             missing_days = []
             while cur >= start_date:
                 d_key = cur.strftime("%Y-%m-%d")
                 entry = daily_reports.get(d_key)
-                has_hourly = entry and isinstance(entry.get("generation"), list) and len(entry["generation"]) == 24 and any(v > 0 for v in entry["generation"])
-                if not has_hourly:
+                # Echte FoxESS-Messung prüfen (nicht-synthetisch, 24h vorhanden)
+                has_real_hourly = (
+                    entry and 
+                    entry.get("is_real_hourly") is True and
+                    isinstance(entry.get("generation"), list) and 
+                    len(entry["generation"]) == 24
+                )
+                if not has_real_hourly:
                     missing_days.append(cur)
                 cur -= timedelta(days=1)
 
-            # Pro Durchlauf bis zu 15 fehlende Tage nachladen (schont FoxESS Rate-Limits)
-            for m_day in missing_days[:15]:
+            # Steuerung der Batch-Größe: FULL_BACKFILL lädt alle fehlenden Tage in einem Run,
+            # ansonsten sichere 35 Tage pro 15-Minuten-Durchlauf (schont FoxESS Rate-Limits)
+            is_full_backfill = os.environ.get("FULL_BACKFILL", "").lower() in ["true", "1", "yes"]
+            batch_limit = len(missing_days) if is_full_backfill else 35
+            print(f"Echte Stundendaten fehlen für {len(missing_days)} Tage. Lade Batch von {min(len(missing_days), batch_limit)} Tagen nach (FULL_BACKFILL={is_full_backfill})...")
+
+            for m_day in missing_days[:batch_limit]:
                 days_to_fetch.append(m_day)
 
             for target_item in days_to_fetch:
@@ -395,6 +406,7 @@ if api_key and not metrics:
                         day_entry[var_name] = vals
                         day_entry["totals"][var_name] = round(sum(vals), 2)
                     
+                    day_entry["is_real_hourly"] = True
                     if any(day_entry["totals"].get(k, 0) > 0 for k in ["feedin", "generation", "gridConsumption", "loads"]):
                         daily_reports[date_key] = day_entry
 
