@@ -8,7 +8,13 @@ on:
     paths:
       - 'fetch_pv.py'
       - '.github/workflows/update_pv.yml'
-  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+  workflow_dispatch:
+    inputs:
+      full_backfill:
+        description: 'Lade alle fehlenden historischen Stundendaten seit Mai 2025 vollständig nach'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -82,6 +88,7 @@ jobs:
           VAR_NUTZERNAME: ${{ vars.NUTZERNAME }}
           VAR_BENUTZERNAME: ${{ vars.BENUTZERNAME }}
           VAR_PASSWORT: ${{ vars.PASSWORT }}
+          FULL_BACKFILL: ${{ inputs.full_backfill || 'false' }}
         run: python fetch_pv.py
 
       - name: Log Ist-Leistung vs. Einstrahlungsprognose (für anlagenspezifische Kalibrierung)
