@@ -3356,6 +3356,13 @@
             } catch (e) {
                 console.warn('Fehler beim Laden von pvRevenueConfig:', e);
             }
+            // Robuste Sanitization gegen NaN / ungültige Werte
+            pvRevenueConfig.shiftCapKwh = Math.max(0, parseFloat(pvRevenueConfig.shiftCapKwh) || 0);
+            pvRevenueConfig.inverterAcKw = Math.max(0.1, parseFloat(pvRevenueConfig.inverterAcKw) || 5.0);
+            pvRevenueConfig.efficiencyPct = Math.min(100, Math.max(10, parseFloat(pvRevenueConfig.efficiencyPct) || 90));
+            pvRevenueConfig.eegRateCt = Math.max(0, parseFloat(pvRevenueConfig.eegRateCt) || 8.2);
+            pvRevenueConfig.arbitrageMinSpreadCt = Math.max(0, parseFloat(pvRevenueConfig.arbitrageMinSpreadCt) || 0);
+            pvRevenueConfig.arbitrageGridFeeCt = Math.max(0, parseFloat(pvRevenueConfig.arbitrageGridFeeCt) || 0);
         }
 
         function saveRevenueConfig() {
@@ -3384,6 +3391,8 @@
             } catch (e) {
                 console.warn('Fehler beim Laden von pvScenarioConfig:', e);
             }
+            pvScenarioConfig.baseKwp = Math.max(0.1, parseFloat(pvScenarioConfig.baseKwp) || 9.6);
+            pvScenarioConfig.targetKwp = Math.max(0.1, parseFloat(pvScenarioConfig.targetKwp) || pvScenarioConfig.baseKwp);
         }
 
         function saveScenarioConfig() {
@@ -4079,11 +4088,20 @@
             return Array.from(set).sort();
         }
 
+        const pvDayRevenueCache = new Map();
+        function clearPvDayRevenueCache() {
+            pvDayRevenueCache.clear();
+        }
+
         // Zentrale, konsistente Tages-Bilanzierung & Erlösberechnung:
         // Wird synchron von der linken Erlöskarte (buildEuroRows) UND dem rechten Detail-Container (renderPvHistoryContainer) genutzt.
         // Garantiert absolute Konsistenz, konstanten Haushaltsverbrauch und exakte Bilanzierung von Umwandlungsverlusten.
         function computeDayEnergyAndRevenue(dateKey, allowRecursion = true) {
             if (!dateKey) return null;
+            const cacheKey = `${dateKey}_${allowRecursion ? 1 : 0}_${pvRevenueConfig.mode}_${pvRevenueConfig.feedinBasis}_${pvRevenueConfig.batteryShift}_${pvRevenueConfig.shiftCapKwh}_${pvRevenueConfig.inverterAcKw}_${pvRevenueConfig.efficiencyPct}_${pvRevenueConfig.enableMerchantArbitrage}_${pvRevenueConfig.arbitrageMinSpreadCt}_${pvRevenueConfig.applySolarSpitzen}_${pvScenarioConfig.targetKwp}_${pvScenarioConfig.baseKwp}`;
+            if (pvDayRevenueCache.has(cacheKey)) {
+                return pvDayRevenueCache.get(cacheKey);
+            }
             const rep = (livePvData && livePvData.daily_reports) ? livePvData.daily_reports[dateKey] : null;
             const dayStart = new Date(dateKey + 'T00:00:00').getTime();
             const dayEnd = dayStart + 24 * 3600 * 1000;
@@ -4252,7 +4270,7 @@
                 const nextDayStart = dayEnd;
                 for (let h = 0; h < 9; h++) {
                     const slotT = nextDayStart + h * 3600 * 1000 + 1800 * 1000;
-                    const match = (priceData || []).find(p => p.t <= slotT && p.endT > slotT);
+                    const match = getPriceAtTime(slotT);
                     if (match) {
                         lookaheadSlots.push({
                             h: 24 + h,
@@ -4417,6 +4435,8 @@
                 latestMeasuredT,
                 currentHour
             };
+            pvDayRevenueCache.set(cacheKey, result);
+            return result;
         }
 
         // Baut die Zeilen für das €-Panel: vergangene Kalendertage (Ist-Werte)
@@ -4432,7 +4452,9 @@
             const isScenarioActive = Math.abs(sFactor - 1.0) > 0.005;
 
             // 1. Historische Tage aus daily_reports & history_3d (synchron mit Detailanalyse):
-            const dateKeys = getAvailableHistoryDateKeys();
+            // In der kompakten linken Übersichtskarte werden die letzten 14 Tage aufgeführt (für alle 17 Monate dient Container 3):
+            const allDateKeys = getAvailableHistoryDateKeys();
+            const dateKeys = allDateKeys.slice(-14);
             for (const dateKey of dateKeys) {
                 const dayData = computeDayEnergyAndRevenue(dateKey);
                 if (!dayData || dayData.genKwh < 0.05) continue;
@@ -6151,7 +6173,23 @@
             });
         }
 
-        function refreshActivePvAnalysisContainers() {
+        let refreshPvTimer = null;
+        function refreshActivePvAnalysisContainers(immediate = false) {
+            if (refreshPvTimer) {
+                clearTimeout(refreshPvTimer);
+                refreshPvTimer = null;
+            }
+            if (immediate) {
+                doRefreshActivePvAnalysisContainers();
+                return;
+            }
+            refreshPvTimer = setTimeout(() => {
+                doRefreshActivePvAnalysisContainers();
+            }, 80);
+        }
+
+        function doRefreshActivePvAnalysisContainers() {
+            clearPvDayRevenueCache();
             renderEuroTable();
             const histCont = document.getElementById('pv-history-container');
             if (histCont && histCont.style.display !== 'none' && currentHistoryDateKey) {
