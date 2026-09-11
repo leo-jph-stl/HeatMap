@@ -1155,29 +1155,33 @@
             </div>
 
             <!-- 1. 24h Energiefluss (PV-Erzeugung hochauflösend, Einspeisung, Hausverbrauch) -->
+            <!-- 1. 24h Energiefluss (PV-Erzeugung hochauflösend, Einspeisung, Hausverbrauch) -->
             <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 9px; margin-bottom: 7px;">
-                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
-                    <div style="font-size: 10px; color: #888; display: flex; align-items: center; gap: 6px;">
-                        <span>24h Energiefluss</span>
-                        <div style="display: flex; gap: 7px; font-size: 8.5px;">
-                            <span style="color: #ffdb00; display: inline-flex; align-items: center; gap: 3px;">
-                                <span style="display:inline-block; width:8px; height:2px; background:#ffdb00;"></span>PV-Erzeugung
-                            </span>
-                            <span id="pvHistBatLegend" style="color: #00ff88; display: inline-flex; align-items: center; gap: 3px;">
-                                <span style="display:inline-block; width:8px; height:2px; background:#00ff88; border-top:1px dashed #00ff88;"></span>Batterie
-                            </span>
-                            <span style="color: #b388ff; display: inline-flex; align-items: center; gap: 3px;">
-                                <span style="display:inline-block; width:8px; height:2px; background:#b388ff;"></span>Einspeisung
-                            </span>
-                            <span style="color: #ff9100; display: inline-flex; align-items: center; gap: 3px;">
-                                <span style="display:inline-block; width:8px; height:2px; background:#ff9100;"></span>Haus
-                            </span>
-                            <span style="color: #00e5ff; display: inline-flex; align-items: center; gap: 3px;">
-                                <span style="display:inline-block; width:8px; height:0; border-top:1.8px dashed #00e5ff;"></span>Börsenpreis
-                            </span>
+                <div style="margin-bottom: 5px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                        <span style="font-size: 10px; font-weight: 600; color: #888;">24h Energiefluss</span>
+                        <div id="pvHistHoverMeta" style="font-size: 9px; display: flex; align-items: center; gap: 5px;">
+                            <span id="pvHistTimeSlot" style="color: #eee; font-weight: 600;"></span>
+                            <span id="pvHistValEur" style="font-weight: 700;"></span>
                         </div>
                     </div>
-                    <span id="pvHistEnergyVal" style="font-size: 9px; color: #aaa;"></span>
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 8.5px;">
+                        <span style="color: #ffdb00; display: inline-flex; align-items: center; gap: 3px;">
+                            <span style="display:inline-block; width:8px; height:2px; background:#ffdb00;"></span>PV <b id="pvHistValGen" style="font-weight:700; color:#ffdb00; margin-left:1px;"></b>
+                        </span>
+                        <span id="pvHistBatLegend" style="color: #00ff88; display: inline-flex; align-items: center; gap: 3px;">
+                            <span id="pvHistBatLineIcon" style="display:inline-block; width:8px; height:2px; background:#00ff88; border-top:1px dashed #00ff88;"></span><span id="pvHistBatLegendLabel">Batterie</span> <b id="pvHistValBat" style="font-weight:700; color:#00ff88; margin-left:1px;"></b>
+                        </span>
+                        <span style="color: #b388ff; display: inline-flex; align-items: center; gap: 3px;">
+                            <span style="display:inline-block; width:8px; height:2px; background:#b388ff;"></span><span id="pvHistLegendFeedLabel">Einspeisung</span> <b id="pvHistValFeed" style="font-weight:700; color:#b388ff; margin-left:1px;"></b>
+                        </span>
+                        <span style="color: #ff9100; display: inline-flex; align-items: center; gap: 3px;">
+                            <span style="display:inline-block; width:8px; height:2px; background:#ff9100;"></span>Haus <b id="pvHistValLoad" style="font-weight:700; color:#ff9100; margin-left:1px;"></b>
+                        </span>
+                        <span style="color: #00e5ff; display: inline-flex; align-items: center; gap: 3px;">
+                            <span style="display:inline-block; width:8px; height:0; border-top:1.8px dashed #00e5ff;"></span>Börsenpreis <b id="pvHistValPrice" style="font-weight:700; color:#00e5ff; margin-left:1px;"></b>
+                        </span>
+                    </div>
                 </div>
                 <svg id="pvHistEnergyChart" viewBox="0 0 380 100" preserveAspectRatio="none" style="width:100%; height:100px; display:block; overflow:visible; cursor:crosshair; user-select:none;"></svg>
             </div>
@@ -1207,6 +1211,8 @@
                         <tfoot id="pvHistHourlyTableFoot" style="position: sticky; bottom: 0; z-index: 5;"></tfoot>
                     </table>
                 </div>
+                <!-- Externe Zusatzbemerkungen (Vortags- & Speicherübertrag) außerhalb der scrollbaren Tabelle -->
+                <div id="pvHistFootNotes" style="display:none; margin-top: 6px; flex-direction: column; gap: 4px;"></div>
             </div>
         </div>
     </div>
@@ -4173,8 +4179,22 @@
                 if (kpiAutarkyEl) kpiAutarkyEl.innerText = '-- %';
                 const energySvg = document.getElementById('pvHistEnergyChart');
                 if (energySvg) energySvg.innerHTML = '<text x="190" y="52" fill="#777" font-size="10" text-anchor="middle">Keine stündlichen 24h-Messwerte vorhanden</text>';
-                const energyValEl = document.getElementById('pvHistEnergyVal');
-                if (energyValEl) energyValEl.innerText = '--';
+                const timeSlotEl = document.getElementById('pvHistTimeSlot');
+                const valEurEl = document.getElementById('pvHistValEur');
+                const valGenEl = document.getElementById('pvHistValGen');
+                const valBatEl = document.getElementById('pvHistValBat');
+                const valFeedEl = document.getElementById('pvHistValFeed');
+                const valLoadEl = document.getElementById('pvHistValLoad');
+                const valPriceEl = document.getElementById('pvHistValPrice');
+                const footNotesEl = document.getElementById('pvHistFootNotes');
+                if (timeSlotEl) timeSlotEl.innerText = '';
+                if (valEurEl) valEurEl.innerText = '';
+                if (valGenEl) valGenEl.innerText = '';
+                if (valBatEl) valBatEl.innerText = '';
+                if (valFeedEl) valFeedEl.innerText = '';
+                if (valLoadEl) valLoadEl.innerText = '';
+                if (valPriceEl) valPriceEl.innerText = '';
+                if (footNotesEl) { footNotesEl.style.display = 'none'; footNotesEl.innerHTML = ''; }
                 const tableBody = document.getElementById('pvHistHourlyTableBody');
                 const tableFoot = document.getElementById('pvHistHourlyTableFoot');
                 if (tableBody) tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#666; padding:22px 0; font-style:italic;">Keine stündlichen Abrechnungsdaten verfügbar. Sobald FoxESS-Tagesberichte empfangen werden, erscheinen sie hier.</td></tr>';
@@ -4194,7 +4214,6 @@
             const kpiFeedEl = document.getElementById('pvHistKpiFeedin');
             const kpiAutarkyEl = document.getElementById('pvHistKpiAutarky');
             const energySvg = document.getElementById('pvHistEnergyChart');
-            const energyValEl = document.getElementById('pvHistEnergyVal');
             const tableBody = document.getElementById('pvHistHourlyTableBody');
             const tableFoot = document.getElementById('pvHistHourlyTableFoot');
 
@@ -4380,15 +4399,24 @@
             }
 
             const batLegendEl = document.getElementById('pvHistBatLegend');
+            const batLegendLabel = document.getElementById('pvHistBatLegendLabel');
+            const batLineIcon = document.getElementById('pvHistBatLineIcon');
             if (batLegendEl) {
                 if (isShiftActive) {
                     batLegendEl.style.display = 'inline-flex';
-                    batLegendEl.innerHTML = '<span style="display:inline-block; width:8px; height:2px; background:#00ff88; border-top:1.5px dashed #00ff88;"></span>Batterie (SOC)';
+                    if (batLegendLabel) batLegendLabel.innerText = 'Batterie (SOC)';
+                    if (batLineIcon) batLineIcon.style.borderTop = '1px dashed #00ff88';
                 } else {
                     const hasRealBat = rep && ((rep.chargeEnergyToTal && rep.chargeEnergyToTal.some(v => v > 0)) || (rep.dischargeEnergyToTal && rep.dischargeEnergyToTal.some(v => v > 0)));
                     batLegendEl.style.display = hasRealBat ? 'inline-flex' : 'none';
-                    batLegendEl.innerHTML = '<span style="display:inline-block; width:8px; height:2px; background:#00ff88;"></span>Batterie';
+                    if (batLegendLabel) batLegendLabel.innerText = 'Batterie';
+                    if (batLineIcon) batLineIcon.style.borderTop = 'none';
                 }
+            }
+
+            const feedLegendLabel = document.getElementById('pvHistLegendFeedLabel');
+            if (feedLegendLabel) {
+                feedLegendLabel.innerText = isGrossOptionB ? 'Erzeugung' : 'Einspeisung';
             }
 
             // 5. Stündliche Börsenpreise & Preis-Stufenlinie im Chart (sekundäre Y-Achse rechts)
@@ -4615,29 +4643,42 @@
                         ? (isSolarSpitzenActive ? '0.0 ct (§51)' : `${rate.toFixed(2)} ct`)
                         : (p !== null ? `${(p >= 0 ? '+' : '')}${p.toFixed(1)} ct` : '--');
                     const eurCol = (eur > 0.005) ? '#00ff88' : (eur < -0.005 ? '#ff5252' : (isSolarSpitzenActive ? '#ff5252' : '#888'));
-                    const basisName = isGrossOptionB ? 'Erzeug.' : 'Einsp.';
-                    const basisCol = isGrossOptionB ? '#ffdb00' : '#b388ff';
 
                     let batHoverStr = '';
                     if (isShiftActive && simSlots && simSlots[h]) {
                         const s = simSlots[h];
                         if (s.shiftedOut > 0.01) {
-                            batHoverStr = ` · Bat <span style="color:#00ff88; font-weight:600;">+${s.shiftedOut.toFixed(1)} <span style="font-size:7.5px; opacity:0.8;">(${s.socEnd.toFixed(1)})</span></span>`;
+                            batHoverStr = `+${s.shiftedOut.toFixed(1)} (${s.socEnd.toFixed(1)})`;
                         } else if (s.shiftedIn > 0.01) {
-                            batHoverStr = ` · Bat <span style="color:#00e5ff; font-weight:600;">-${s.shiftedIn.toFixed(1)} <span style="font-size:7.5px; opacity:0.8;">(${s.socEnd.toFixed(1)})</span></span>`;
+                            batHoverStr = `-${s.shiftedIn.toFixed(1)} (${s.socEnd.toFixed(1)})`;
                         } else if (s.socEnd > 0.01) {
-                            batHoverStr = ` · Bat <span style="color:#aaa;">${s.socEnd.toFixed(1)}</span>`;
+                            batHoverStr = `${s.socEnd.toFixed(1)} kWh`;
+                        } else {
+                            batHoverStr = `0.0 kWh`;
                         }
                     } else if (rep && ((rep.chargeEnergyToTal && rep.chargeEnergyToTal[h]) || (rep.dischargeEnergyToTal && rep.dischargeEnergyToTal[h]))) {
                         const c = (rep.chargeEnergyToTal && rep.chargeEnergyToTal[h]) || 0;
                         const d = (rep.dischargeEnergyToTal && rep.dischargeEnergyToTal[h]) || 0;
-                        if (c > 0.01) batHoverStr = ` · Bat <span style="color:#00ff88;">+${c.toFixed(1)}</span>`;
-                        else if (d > 0.01) batHoverStr = ` · Bat <span style="color:#00e5ff;">-${d.toFixed(1)}</span>`;
+                        if (c > 0.01) batHoverStr = `+${c.toFixed(1)} kWh`;
+                        else if (d > 0.01) batHoverStr = `-${d.toFixed(1)} kWh`;
+                        else batHoverStr = `0.0 kWh`;
                     }
 
-                    if (energyValEl) {
-                        energyValEl.innerHTML = `<b style="color:#ddd;">${timeRange}:</b> PV <span style="color:#ffdb00;">${g.toFixed(2)}</span> · Haus <span style="color:#ff9100;">${l.toFixed(2)}</span>${batHoverStr} · ${basisName} <span style="color:${basisCol}; font-weight:600;">${basisKwh.toFixed(2)}</span> · <span style="color:#00e5ff;">${rateStr}</span> · <span style="color:${eurCol}; font-weight:700;">${eur.toFixed(2)} €</span>`;
-                    }
+                    const timeSlotEl = document.getElementById('pvHistTimeSlot');
+                    const valEurEl = document.getElementById('pvHistValEur');
+                    const valGenEl = document.getElementById('pvHistValGen');
+                    const valBatEl = document.getElementById('pvHistValBat');
+                    const valFeedEl = document.getElementById('pvHistValFeed');
+                    const valLoadEl = document.getElementById('pvHistValLoad');
+                    const valPriceEl = document.getElementById('pvHistValPrice');
+
+                    if (timeSlotEl) timeSlotEl.innerText = timeRange;
+                    if (valEurEl) valEurEl.innerHTML = `<span style="color:${eurCol};">${(eur >= 0 ? '+' : '')}${eur.toFixed(2)} €</span>`;
+                    if (valGenEl) valGenEl.innerText = `${g.toFixed(2)} kWh`;
+                    if (valBatEl) valBatEl.innerText = batHoverStr;
+                    if (valFeedEl) valFeedEl.innerText = `${basisKwh.toFixed(2)} kWh`;
+                    if (valLoadEl) valLoadEl.innerText = `${l.toFixed(2)} kWh`;
+                    if (valPriceEl) valPriceEl.innerText = rateStr;
                 });
 
                 el.addEventListener('mouseleave', () => {
@@ -4647,7 +4688,22 @@
                     if (dotP) dotP.style.display = 'none';
                     const dotB = document.getElementById('pvHistDotBat');
                     if (dotB) dotB.style.display = 'none';
-                    if (energyValEl) energyValEl.innerHTML = '';
+
+                    const timeSlotEl = document.getElementById('pvHistTimeSlot');
+                    const valEurEl = document.getElementById('pvHistValEur');
+                    const valGenEl = document.getElementById('pvHistValGen');
+                    const valBatEl = document.getElementById('pvHistValBat');
+                    const valFeedEl = document.getElementById('pvHistValFeed');
+                    const valLoadEl = document.getElementById('pvHistValLoad');
+                    const valPriceEl = document.getElementById('pvHistValPrice');
+
+                    if (timeSlotEl) timeSlotEl.innerText = '';
+                    if (valEurEl) valEurEl.innerText = '';
+                    if (valGenEl) valGenEl.innerText = '';
+                    if (valBatEl) valBatEl.innerText = '';
+                    if (valFeedEl) valFeedEl.innerText = '';
+                    if (valLoadEl) valLoadEl.innerText = '';
+                    if (valPriceEl) valPriceEl.innerText = '';
                 });
             });
 
@@ -4757,26 +4813,6 @@
                         }
                     }
 
-                    let extraFootRows = '';
-                    if (initialSoc > 0.05) {
-                        extraFootRows += `
-                            <tr style="background: rgba(255,219,0,0.05); font-size: 8.5px; border-top: 1px dashed rgba(255,219,0,0.2);">
-                                <td colspan="7" style="padding: 4px 6px; color: #ffdb00;">
-                                    ⚡ <b>Vortags-Übertrag:</b> ${initialSoc.toFixed(1)} kWh Restladung aus dem Vortag wurden in der Morgenspitze eingespeist.
-                                </td>
-                            </tr>
-                        `;
-                    }
-                    if (carryoverToNextDay > 0.05) {
-                        extraFootRows += `
-                            <tr style="background: rgba(0,229,255,0.05); font-size: 8.5px; border-top: 1px dashed rgba(0,229,255,0.2);">
-                                <td colspan="7" style="padding: 4px 6px; color: #00e5ff;">
-                                    🔋 <b>Speicher-Übertrag auf Folgemorgen:</b> ${carryoverToNextDay.toFixed(1)} kWh im Speicher gehalten (geplante Einspeisung in Folgemorgen-Morgenspitze).
-                                </td>
-                            </tr>
-                        `;
-                    }
-
                     tableFoot.innerHTML = `
                         <tr style="font-weight: 700; background: #151821;">
                             <td style="padding: 5px 4px; color: #fff; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">Gesamt (24h)</td>
@@ -4787,8 +4823,35 @@
                             <td style="padding: 5px 4px; text-align: right; color: #00e5ff; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2); white-space: nowrap;">Ø ${avgRate.toFixed(1)} ct <span style="display:inline-block; width:34px;"></span></td>
                             <td style="padding: 5px 4px; text-align: right; color: ${eurColor}; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">${totalEur.toFixed(2)} €</td>
                         </tr>
-                        ${extraFootRows}
                     `;
+
+                    const footNotesEl = document.getElementById('pvHistFootNotes');
+                    if (footNotesEl) {
+                        const notes = [];
+                        if (initialSoc > 0.05) {
+                            notes.push(`
+                                <div style="background: rgba(255,219,0,0.06); border: 1px solid rgba(255,219,0,0.2); border-radius: 4px; padding: 4px 7px; font-size: 8.5px; color: #ffdb00; display: flex; align-items: center; gap: 5px;">
+                                    <span>⚡</span>
+                                    <div><b>Vortags-Übertrag:</b> ${initialSoc.toFixed(1)} kWh Restladung aus dem Vortag wurden in der Morgenspitze eingespeist.</div>
+                                </div>
+                            `);
+                        }
+                        if (carryoverToNextDay > 0.05) {
+                            notes.push(`
+                                <div style="background: rgba(0,229,255,0.06); border: 1px solid rgba(0,229,255,0.2); border-radius: 4px; padding: 4px 7px; font-size: 8.5px; color: #00e5ff; display: flex; align-items: center; gap: 5px;">
+                                    <span>🔋</span>
+                                    <div><b>Speicher-Übertrag auf Folgemorgen:</b> ${carryoverToNextDay.toFixed(1)} kWh im Speicher gehalten (geplante Einspeisung in Folgemorgen-Morgenspitze).</div>
+                                </div>
+                            `);
+                        }
+                        if (notes.length > 0) {
+                            footNotesEl.style.display = 'flex';
+                            footNotesEl.innerHTML = notes.join('');
+                        } else {
+                            footNotesEl.style.display = 'none';
+                            footNotesEl.innerHTML = '';
+                        }
+                    }
                 }
             }
         }
