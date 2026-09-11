@@ -3370,62 +3370,88 @@
         }
 
         // Wirtschaftlich optimierte und zeitkausale Batterie-Lastverschiebung (Arbitrage):
-        // Physikalische Kausalität: Ein Ladeslot c kann Strom NUR in spätere Entladeslots d > c einspeisen.
-        // Entladung am Frühmorgen ist nur möglich, falls aus dem Vortag / der Nacht noch Restladung vorhanden ist (initialSoc).
-        // Berücksichtigt Speicherkapazität, Wechselrichter-AC-Limit und Umwandlungsverluste (η).
-        function simulateBatteryShift(slots, shiftCap, inverterKw, efficiency, initialSoc = 0) {
+        // 1. Zweistufige Umwandlungswirkungsgrade: η_in = √η_rt (Laden) und η_out = √η_rt (Entladen).
+        //    Bei PV-Überangebot wird die Batterie zu 100% elektrochemisch voll geladen (C_bat),
+        //    wobei die Ladeverluste direkt aus dem überschüssigen Sonnenstrom gedeckt werden.
+        // 2. Day-Ahead-Lookahead (Abendspitze vs. Folgemorgen 06:00-08:00 Uhr):
+        //    Liegen für den Folgemorgen Auktionspreise vor, die höher sind als am Abend,
+        //    wird der Speicherinhalt über Nacht gehalten und am nächsten Morgen eingespeist.
+        // 3. Kausale Vortags-Morgenspitze: initialSoc (aus Vortag) kann in den Morgenstunden entladen werden.
+        function simulateBatteryShift(slots, shiftCap, inverterKw, efficiency, initialSoc = 0, lookaheadSlots = []) {
             const fullCap = Math.max(0, shiftCap || 0);
             const invKw = Math.max(0.1, inverterKw || 5.0);
             const eff = Math.min(1, Math.max(0.01, efficiency || 0.90));
+            const etaIn = Math.sqrt(eff);
+            const etaOut = Math.sqrt(eff);
             const N = slots.length;
+            const allSlots = [...slots, ...(lookaheadSlots || [])];
+            const M = allSlots.length;
 
             if (fullCap <= 0.001 || N === 0) {
-                return slots.map(s => ({
+                const emptySlots = slots.map(s => ({
                     ...s,
                     shiftedOut: 0,
                     shiftedIn: 0,
                     finalFeed: Math.max(0, s.kwh || 0),
-                    socEnd: 0
+                    socEnd: 0,
+                    lossCharge: 0,
+                    lossDischarge: 0
                 }));
+                emptySlots.carryoverToNextDay = 0;
+                emptySlots.chargedKwh = 0;
+                emptySlots.dischargedTodayKwh = 0;
+                emptySlots.dischargedNextDayKwh = 0;
+                emptySlots.lossChargeKwh = 0;
+                emptySlots.lossDischargeTodayKwh = 0;
+                emptySlots.lossDischargeNextDayKwh = 0;
+                emptySlots.etaIn = etaIn;
+                emptySlots.etaOut = etaOut;
+                return emptySlots;
             }
 
-            const charge = new Array(N).fill(0);
-            const discharge = new Array(N).fill(0);
-            const soc = new Array(N).fill(Math.min(fullCap, Math.max(0, initialSoc)));
+            const charge = new Array(M).fill(0);
+            const discharge = new Array(M).fill(0);
+            const lossCharge = new Array(M).fill(0);
+            const lossDischarge = new Array(M).fill(0);
+            const soc = new Array(M).fill(Math.min(fullCap, Math.max(0, initialSoc)));
 
-            // 1. Entlade-Ziele: nach Börsenpreis absteigend sortiert (teuerste Stunden zuerst)
-            const dischargeHours = Array.from({ length: N }, (_, i) => i)
-                .sort((a, b) => (slots[b].ctKwh || 0) - (slots[a].ctKwh || 0));
-
-            // 2. Lade-Quellen: nach Börsenpreis aufsteigend sortiert (günstigste Stunden zuerst)
-            const chargeHours = Array.from({ length: N }, (_, i) => i)
-                .filter(i => (slots[i].kwh || 0) > 0.001)
-                .sort((a, b) => (slots[a].ctKwh || 0) - (slots[b].ctKwh || 0));
-
-            // A. Falls ein Anfangs-Ladezustand aus der Nacht/dem Vortag vorliegt, kann dieser frühmorgens entladen werden:
+            // A. Anfangs-Ladezustand (initialSoc aus Vortag) kann frühmorgens (vor PV-Produktion) entladen werden:
             let remInit = Math.min(fullCap, Math.max(0, initialSoc));
             if (remInit > 0.001) {
-                for (const d of dischargeHours) {
+                const morningDischargeHours = Array.from({ length: Math.min(12, N) }, (_, i) => i)
+                    .sort((a, b) => (allSlots[b].ctKwh || 0) - (allSlots[a].ctKwh || 0));
+
+                for (const d of morningDischargeHours) {
                     if (remInit <= 0.001) break;
-                    const currentExp = (slots[d].kwh || 0) - charge[d] + discharge[d];
+                    const currentExp = (allSlots[d].kwh || 0) - charge[d] + discharge[d];
                     const maxCanDischarge = Math.max(0, invKw - currentExp);
                     if (maxCanDischarge <= 0.001) continue;
 
-                    const toDischarge = Math.min(remInit * eff, maxCanDischarge);
+                    const toDischarge = Math.min(remInit * etaOut, maxCanDischarge);
                     if (toDischarge > 0.001) {
                         discharge[d] += toDischarge;
-                        const storageUsed = toDischarge / eff;
-                        remInit -= storageUsed;
+                        const cellUsed = toDischarge / etaOut;
+                        lossDischarge[d] += (cellUsed - toDischarge);
+                        remInit -= cellUsed;
                         for (let t = 0; t < d; t++) {
-                            soc[t] = Math.max(0, soc[t] - storageUsed);
+                            soc[t] = Math.max(0, soc[t] - cellUsed);
                         }
                     }
                 }
             }
 
-            // B. Kausales Matching: Ladeslot c lädt NUR in spätere Entladeslots d > c
+            // B. Kausales Matching: Ladeslot c (nur Stunden von Tag D) lädt in spätere Entladeslots d > c
+            // Entladekandidaten: alle Stunden d ∈ [0, M-1], sortiert nach Börsenpreis absteigend
+            const dischargeHours = Array.from({ length: M }, (_, i) => i)
+                .sort((a, b) => (allSlots[b].ctKwh || 0) - (allSlots[a].ctKwh || 0));
+
+            // Ladekandidaten: nur Stunden von Tag D (c < N), sortiert nach Börsenpreis aufsteigend
+            const chargeHours = Array.from({ length: N }, (_, i) => i)
+                .filter(i => (allSlots[i].kwh || 0) > 0.001)
+                .sort((a, b) => (allSlots[a].ctKwh || 0) - (allSlots[b].ctKwh || 0));
+
             for (const d of dischargeHours) {
-                const currentExp = (slots[d].kwh || 0) - charge[d] + discharge[d];
+                const currentExp = (allSlots[d].kwh || 0) - charge[d] + discharge[d];
                 let maxCanDischarge = Math.max(0, invKw - currentExp);
                 if (maxCanDischarge <= 0.001) continue;
 
@@ -3434,48 +3460,72 @@
                     if (c >= d) continue;
                     if (maxCanDischarge <= 0.001) break;
 
-                    const pD = slots[d].ctKwh || 0;
-                    const pC = slots[c].ctKwh || 0;
-                    // Arbitrage-Spread: Erlös bei d abzüglich Umwandlungsverlusten muss größer sein als Direktverkauf bei c:
+                    const pD = allSlots[d].ctKwh || 0;
+                    const pC = allSlots[c].ctKwh || 0;
+                    // Arbitrage-Spread: Erlös bei d abzüglich Gesamtwirkungsgrad muss profitabler sein als Direktverkauf bei c:
                     if (pD * eff <= pC) break;
 
-                    const remSurplus = (slots[c].kwh || 0) - charge[c];
+                    const remSurplus = (allSlots[c].kwh || 0) - charge[c];
                     const invChargeRoom = invKw - charge[c];
-                    const maxChargeSlot = Math.max(0, Math.min(remSurplus, invChargeRoom));
-                    if (maxChargeSlot <= 0.001) continue;
+                    const maxDrawAvailable = Math.max(0, Math.min(remSurplus, invChargeRoom));
+                    if (maxDrawAvailable <= 0.001) continue;
 
-                    // Speicher-Puffer: In allen Stunden zwischen c und d-1 darf die Kapazität nicht überschritten werden:
-                    let maxStorageHeadroom = fullCap;
+                    // Maximaler Speicher-Puffer in den Batteriezellen zwischen c und d-1:
+                    let maxCellHeadroom = fullCap;
                     for (let t = c; t < d; t++) {
-                        maxStorageHeadroom = Math.min(maxStorageHeadroom, fullCap - soc[t]);
+                        maxCellHeadroom = Math.min(maxCellHeadroom, fullCap - soc[t]);
                     }
-                    if (maxStorageHeadroom <= 0.001) continue;
+                    if (maxCellHeadroom <= 0.001) continue;
 
-                    const amountToCharge = Math.min(maxChargeSlot, maxStorageHeadroom, maxCanDischarge / eff);
-                    if (amountToCharge <= 0.001) continue;
+                    // Elektrochemische Netto-Ladung in die Batteriezellen:
+                    const deltaSoc = Math.min(
+                        maxCellHeadroom,
+                        maxDrawAvailable * etaIn,
+                        maxCanDischarge / etaOut
+                    );
+                    if (deltaSoc <= 0.001) continue;
 
-                    const amountDischarged = amountToCharge * eff;
+                    const eDraw = deltaSoc / etaIn;
+                    const eGrid = deltaSoc * etaOut;
 
-                    charge[c] += amountToCharge;
-                    discharge[d] += amountDischarged;
-                    maxCanDischarge -= amountDischarged;
+                    charge[c] += eDraw;
+                    lossCharge[c] += (eDraw - deltaSoc);
+
+                    discharge[d] += eGrid;
+                    lossDischarge[d] += (deltaSoc - eGrid);
+                    maxCanDischarge -= eGrid;
 
                     for (let t = c; t < d; t++) {
-                        soc[t] += amountToCharge;
+                        soc[t] += deltaSoc;
                     }
                 }
             }
 
-            return slots.map((s, h) => {
+            const daySlots = slots.map((s, h) => {
                 const finalFeed = Math.max(0, (s.kwh || 0) - charge[h] + discharge[h]);
                 return {
                     ...s,
                     shiftedOut: charge[h],
                     shiftedIn: discharge[h],
                     finalFeed,
-                    socEnd: soc[h]
+                    socEnd: soc[h],
+                    lossCharge: lossCharge[h],
+                    lossDischarge: lossDischarge[h]
                 };
             });
+
+            const sumArrPart = arr => arr.reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
+            daySlots.carryoverToNextDay = (N > 0 && N <= M) ? soc[N - 1] : 0;
+            daySlots.chargedKwh = sumArrPart(charge.slice(0, N));
+            daySlots.dischargedTodayKwh = sumArrPart(discharge.slice(0, N));
+            daySlots.dischargedNextDayKwh = sumArrPart(discharge.slice(N));
+            daySlots.lossChargeKwh = sumArrPart(lossCharge.slice(0, N));
+            daySlots.lossDischargeTodayKwh = sumArrPart(lossDischarge.slice(0, N));
+            daySlots.lossDischargeNextDayKwh = sumArrPart(lossDischarge.slice(N));
+            daySlots.etaIn = etaIn;
+            daySlots.etaOut = etaOut;
+
+            return daySlots;
         }
 
         // Erlös (€) für eine Leistungs-Zeitreihe im Intervall [fromT, toT):
@@ -3569,7 +3619,7 @@
         // Zentrale, konsistente Tages-Bilanzierung & Erlösberechnung:
         // Wird synchron von der linken Erlöskarte (buildEuroRows) UND dem rechten Detail-Container (renderPvHistoryContainer) genutzt.
         // Garantiert absolute Konsistenz, konstanten Haushaltsverbrauch und exakte Bilanzierung von Umwandlungsverlusten.
-        function computeDayEnergyAndRevenue(dateKey) {
+        function computeDayEnergyAndRevenue(dateKey, allowRecursion = true) {
             if (!dateKey) return null;
             const rep = (livePvData && livePvData.daily_reports) ? livePvData.daily_reports[dateKey] : null;
             const dayStart = new Date(dateKey + 'T00:00:00').getTime();
@@ -3602,29 +3652,71 @@
             const hasSolarSpitzen = !!pvRevenueConfig.applySolarSpitzen;
             const eegRate = Math.max(0, pvRevenueConfig.eegRateCt || 8.20);
 
-            // 4. Kausale Batterie-Lastverschiebung
+            // 4. Kausale Batterie-Lastverschiebung mit 2-stufigem Wirkungsgrad & Day-Ahead Horizont
             let shiftedFeed = [...feedArr];
             let chargedKwh = 0;
             let dischargedKwh = 0;
             let conversionLossKwh = 0;
+            let carryoverToNextDay = 0;
+            let initialSoc = 0;
+            let lossChargeKwh = 0;
+            let lossDischargeTodayKwh = 0;
+            let lossDischargeNextDayKwh = 0;
+            let etaIn = 0.95;
+            let etaOut = 0.95;
 
             if (!isEeg && pvRevenueConfig.batteryShift) {
+                // A. Kausaler Vortags-Übertrag (initialSoc):
+                if (allowRecursion) {
+                    const dPrev = new Date(dateKey + 'T12:00:00');
+                    dPrev.setDate(dPrev.getDate() - 1);
+                    const prevKey = dPrev.getFullYear() + '-' + String(dPrev.getMonth() + 1).padStart(2, '0') + '-' + String(dPrev.getDate()).padStart(2, '0');
+                    const prevData = computeDayEnergyAndRevenue(prevKey, false);
+                    if (prevData && prevData.carryoverToNextDay > 0.001) {
+                        initialSoc = prevData.carryoverToNextDay;
+                    }
+                }
+
                 const shiftSlots = [];
                 for (let h = 0; h < 24; h++) {
                     const baseM = isGrossOptionB ? (genArr[h] || 0) : (feedArr[h] || 0);
                     shiftSlots.push({ h, kwh: baseM, ctKwh: hourlyPrices[h] !== null ? hourlyPrices[h] : 0 });
                 }
+
+                // B. Folgemorgen-Lookahead (00:00 - 09:00 Uhr) zur Optimierung Abend vs. Folgemorgen:
+                const lookaheadSlots = [];
+                const nextDayStart = dayEnd;
+                for (let h = 0; h < 9; h++) {
+                    const slotT = nextDayStart + h * 3600 * 1000 + 1800 * 1000;
+                    const match = (priceData || []).find(p => p.t <= slotT && p.endT > slotT);
+                    if (match) {
+                        lookaheadSlots.push({
+                            h: 24 + h,
+                            displayH: h,
+                            kwh: 0,
+                            ctKwh: match.ctKwh,
+                            isLookahead: true
+                        });
+                    }
+                }
+
                 const fullCap = Math.max(0, pvRevenueConfig.shiftCapKwh || 8.0);
                 const nightRes = (!isGrossOptionB && pvRevenueConfig.selfProtect !== false) ? getTypicalNightReserveKwh(dayStart) : 0;
                 const shiftCap = Math.max(0, fullCap - nightRes);
                 const invKw = Math.max(0.1, pvRevenueConfig.inverterAcKw || 5.0);
                 const eff = Math.min(1, Math.max(0.01, (pvRevenueConfig.efficiencyPct || 90) / 100));
 
-                const simSlots = simulateBatteryShift(shiftSlots, shiftCap, invKw, eff, 0);
+                const simSlots = simulateBatteryShift(shiftSlots, shiftCap, invKw, eff, initialSoc, lookaheadSlots);
                 shiftedFeed = simSlots.map(s => s.finalFeed);
-                chargedKwh = simSlots.reduce((sum, s) => sum + s.shiftedOut, 0);
-                dischargedKwh = simSlots.reduce((sum, s) => sum + s.shiftedIn, 0);
-                conversionLossKwh = Math.max(0, chargedKwh - dischargedKwh);
+                chargedKwh = simSlots.chargedKwh || 0;
+                dischargedKwh = simSlots.dischargedTodayKwh || 0;
+                carryoverToNextDay = simSlots.carryoverToNextDay || 0;
+                lossChargeKwh = simSlots.lossChargeKwh || 0;
+                lossDischargeTodayKwh = simSlots.lossDischargeTodayKwh || 0;
+                lossDischargeNextDayKwh = simSlots.lossDischargeNextDayKwh || 0;
+                conversionLossKwh = lossChargeKwh + lossDischargeTodayKwh;
+                etaIn = simSlots.etaIn || Math.sqrt(eff);
+                etaOut = simSlots.etaOut || Math.sqrt(eff);
             }
 
             // 5. Summen & Erlöse
@@ -3635,7 +3727,7 @@
             const loadKwh = (typeof totals.loads === 'number') ? totals.loads : sumArr(loadArr);
             const gridKwh = isScenarioActive ? sumArr(gridArr) : ((typeof totals.gridConsumption === 'number') ? totals.gridConsumption : sumArr(gridArr));
 
-            // Effektive Netzeinspeisung berücksichtigt die Umwandlungsverluste der Batterie:
+            // Effektive Netzeinspeisung berücksichtigt die tatsächlichen Entladungen und Verluste des Tages:
             const effectiveFeedKwh = (!isEeg && pvRevenueConfig.batteryShift) ? sumArr(shiftedFeed) : initialFeedKwh;
             const selfKwh = Math.max(0, genKwh - initialFeedKwh);
             const selfPct = (genKwh > 0.05) ? Math.min(100, Math.round((selfKwh / genKwh) * 100)) : 0;
@@ -3691,7 +3783,14 @@
                 autarkyPct,
                 chargedKwh,
                 dischargedKwh,
+                carryoverToNextDay,
+                initialSoc,
+                lossChargeKwh,
+                lossDischargeTodayKwh,
+                lossDischargeNextDayKwh,
                 conversionLossKwh,
+                etaIn,
+                etaOut,
                 totalEur,
                 totalBasisKwh,
                 avgRate,
@@ -4055,7 +4154,8 @@
                 genArr, feedArr, loadArr, gridArr, effectiveDayPts,
                 shiftedFeed, hourlyPrices, genKwh, initialFeedKwh, effectiveFeedKwh,
                 loadKwh, gridKwh, selfKwh, selfPct, feedPct, autarkyPct,
-                conversionLossKwh, isGrossOptionB, isEeg, hasSolarSpitzen, eegRate
+                conversionLossKwh, carryoverToNextDay, initialSoc, lossChargeKwh,
+                isGrossOptionB, isEeg, hasSolarSpitzen, eegRate
             } = dayData;
 
             const dActive = new Date(activeDateKey + 'T12:00:00');
@@ -4070,9 +4170,14 @@
             if (kpiYieldEl) kpiYieldEl.innerText = genKwh.toFixed(1) + ' kWh';
             if (kpiSelfEl) kpiSelfEl.innerHTML = `${selfKwh.toFixed(1)} kWh <span style="font-size:9.5px; font-weight:normal; color:#888;">(${selfPct} %)</span>`;
             if (kpiFeedEl) {
-                const lossNote = (!isEeg && pvRevenueConfig.batteryShift && conversionLossKwh > 0.01)
-                    ? ` · Verlust ${conversionLossKwh.toFixed(1)} kWh`
-                    : '';
+                let lossNote = '';
+                if (!isEeg && pvRevenueConfig.batteryShift) {
+                    if (carryoverToNextDay > 0.05) {
+                        lossNote = ` · Übertrag: ${carryoverToNextDay.toFixed(1)} kWh für Morgen · Verlust ${conversionLossKwh.toFixed(1)} kWh`;
+                    } else if (conversionLossKwh > 0.01) {
+                        lossNote = ` · Verlust ${conversionLossKwh.toFixed(1)} kWh`;
+                    }
+                }
                 kpiFeedEl.innerHTML = `${effectiveFeedKwh.toFixed(1)} kWh <span style="font-size:9.5px; font-weight:normal; color:#888;">(${feedPct} %${lossNote})</span>`;
             }
             if (kpiAutarkyEl) kpiAutarkyEl.innerHTML = `${gridKwh.toFixed(1)} kWh <span style="font-size:9.5px; font-weight:normal; color:#888;">· ${autarkyPct} %</span>`;
@@ -4297,8 +4402,10 @@
                     const basisBadge = isGrossOptionB
                         ? '<span style="color:#ffdb00; font-weight:600;">Option B (100% Gesamterzeugung)</span>'
                         : '<span style="color:#b388ff; font-weight:600;">Option A (Netzeinspeisung)</span>';
+                    const etaRoundtrip = pvRevenueConfig.efficiencyPct || 90;
+                    const etaHalf = (Math.sqrt(etaRoundtrip / 100) * 100).toFixed(1);
                     const shiftBadge = pvRevenueConfig.batteryShift
-                        ? `<span style="color:#00ff88; font-weight:600;">Batterie-Shift aktiv (${pvRevenueConfig.shiftCapKwh || 8} kWh, WR ${pvRevenueConfig.inverterAcKw || 10} kW, η=${pvRevenueConfig.efficiencyPct || 90}%)</span>`
+                        ? `<span style="color:#00ff88; font-weight:600;">Batterie-Shift (${pvRevenueConfig.shiftCapKwh || 8} kWh, WR ${pvRevenueConfig.inverterAcKw || 10} kW, η=${etaRoundtrip}% [Laden/Entladen je ${etaHalf}%])</span>`
                         : '<span style="color:#aaa;">Echtzeit-Einspeisung (ohne Shift)</span>';
                     const inverterKw = Math.max(0.1, pvRevenueConfig.inverterAcKw || 10.0);
                     const scenarioBadge = isScenarioActive
@@ -4458,6 +4565,27 @@
                     const basisColTotal = totalBasisKwh;
                     const basisColColor = isGrossOptionB ? '#ffdb00' : '#b388ff';
                     const eurColor = (totalEur > 0.005) ? '#00ff88' : (totalEur < -0.005 ? '#ff5252' : '#aaa');
+
+                    let extraFootRows = '';
+                    if (initialSoc > 0.05) {
+                        extraFootRows += `
+                            <tr style="background: rgba(255,219,0,0.05); font-size: 8.5px; border-top: 1px dashed rgba(255,219,0,0.2);">
+                                <td colspan="6" style="padding: 4px 6px; color: #ffdb00;">
+                                    ⚡ <b>Vortags-Übertrag:</b> ${initialSoc.toFixed(1)} kWh Restladung aus dem Vortag wurden in der Morgenspitze eingespeist.
+                                </td>
+                            </tr>
+                        `;
+                    }
+                    if (carryoverToNextDay > 0.05) {
+                        extraFootRows += `
+                            <tr style="background: rgba(0,229,255,0.05); font-size: 8.5px; border-top: 1px dashed rgba(0,229,255,0.2);">
+                                <td colspan="6" style="padding: 4px 6px; color: #00e5ff;">
+                                    🔋 <b>Speicher-Übertrag auf Folgemorgen:</b> ${carryoverToNextDay.toFixed(1)} kWh im Speicher gehalten (geplante Einspeisung in Folgemorgen-Morgenspitze).
+                                </td>
+                            </tr>
+                        `;
+                    }
+
                     tableFoot.innerHTML = `
                         <tr style="font-weight: 700; background: #151821;">
                             <td style="padding: 5px 4px; color: #fff; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">Gesamt (24h)</td>
@@ -4467,6 +4595,7 @@
                             <td style="padding: 5px 4px; text-align: right; color: #00e5ff; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2); white-space: nowrap;">Ø ${avgRate.toFixed(1)} ct <span style="display:inline-block; width:34px;"></span></td>
                             <td style="padding: 5px 4px; text-align: right; color: ${eurColor}; background: #151821; position: sticky; bottom: 0; border-top: 1px solid rgba(255,255,255,0.2);">${totalEur.toFixed(2)} €</td>
                         </tr>
+                        ${extraFootRows}
                     `;
                 }
             }
