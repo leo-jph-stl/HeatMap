@@ -27,12 +27,12 @@
       23
     ],
     "totals": {
-      "feedin": 0.1,
-      "gridConsumption": 0.4,
-      "chargeEnergyToTal": 0.1,
-      "dischargeEnergyToTal": 3.0,
-      "generation": 1.1,
-      "loads": 1.2
+      "feedin": 0.2,
+      "gridConsumption": 0.5,
+      "chargeEnergyToTal": 0.7,
+      "dischargeEnergyToTal": 3.4,
+      "generation": 1.5,
+      "loads": 1.6
     },
     "feedin": [
       0.0,
@@ -44,7 +44,7 @@
       0.0,
       0.0,
       0.0,
-      0.0,
+      0.1,
       0.0,
       0.0,
       0.0,
@@ -69,7 +69,7 @@
       0.0,
       0.1,
       0.0,
-      0.0,
+      0.1,
       0.0,
       0.0,
       0.0,
@@ -95,8 +95,8 @@
       0.0,
       0.0,
       0.0,
-      0.0,
-      0.0,
+      0.2,
+      0.4,
       0.0,
       0.0,
       0.0,
@@ -120,8 +120,8 @@
       0.5,
       0.4,
       0.5,
-      0.0,
-      0.0,
+      0.3,
+      0.1,
       0.0,
       0.0,
       0.0,
@@ -146,9 +146,9 @@
       0.2,
       0.1,
       0.2,
-      0.0,
-      0.0,
-      0.0,
+      0.2,
+      0.1,
+      0.1,
       0.0,
       0.0,
       0.0,
@@ -172,9 +172,9 @@
       0.2,
       0.2,
       0.2,
-      0.0,
-      0.0,
-      0.0,
+      0.2,
+      0.1,
+      0.1,
       0.0,
       0.0,
       0.0,
@@ -2306,12 +2306,12 @@
       0.0
     ],
     "totals": {
-      "generation": 0.9,
-      "loads": 0.9,
-      "feedin": 0.0,
-      "gridConsumption": 0.1,
-      "chargeEnergyToTal": 0.0,
-      "dischargeEnergyToTal": 1.6
+      "generation": 37.2,
+      "loads": 7.7,
+      "feedin": 32.6,
+      "gridConsumption": 0.9,
+      "chargeEnergyToTal": 7.4,
+      "dischargeEnergyToTal": 9.6
     },
     "is_real_hourly": true
   },
@@ -2499,12 +2499,12 @@
       0.7
     ],
     "totals": {
-      "generation": 48.6,
-      "loads": 6.0,
-      "feedin": 48.9,
+      "generation": 53.2,
+      "loads": 7.1,
+      "feedin": 53.0,
       "gridConsumption": 0.8,
-      "chargeEnergyToTal": 4.4,
-      "dischargeEnergyToTal": 8.8
+      "chargeEnergyToTal": 4.6,
+      "dischargeEnergyToTal": 9.7
     },
     "is_real_hourly": true
   },
@@ -2692,12 +2692,12 @@
       0.7
     ],
     "totals": {
-      "generation": 43.3,
-      "loads": 6.4,
-      "feedin": 42.6,
-      "gridConsumption": 0.6,
-      "chargeEnergyToTal": 6.2,
-      "dischargeEnergyToTal": 9.9
+      "generation": 46.8,
+      "loads": 7.0,
+      "feedin": 46.0,
+      "gridConsumption": 0.7,
+      "chargeEnergyToTal": 6.7,
+      "dischargeEnergyToTal": 10.4
     },
     "is_real_hourly": true
   },
