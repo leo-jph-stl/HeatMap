@@ -1475,16 +1475,19 @@
             // earthMesh/dataMesh (dataMesh.rotation.y = -Math.PI/2) ausgleichen, mit der die Basis-
             // Erdtextur korrekt zur echten Geographie ausgerichtet wird. Ein halbes Raster (720
             // Spalten) war hier schlicht falsch kalibriert: am 2026-09-10 per Klick nachgewiesen,
-            // dass reale Tageswerte (z.B. 499 W/m² im Nahen Osten) als reines Schwarz gerendert
-            // wurden, weil die Textur dabei tatsächlich einen um 90° Länge entfernten Punkt zeigte -
-            // über 100 Stichproben (Raycast realer Bildschirmpunkte gegen die vertrauenswürdige
-            // sphereVertexToLatLng(), verglichen mit dem tatsächlich in der Textur gespeicherten
-            // Rohwert) bestätigen exakt einen konstanten Fehler von 1080 Spalten (~ -270°, äquivalent
-            // zu +90°) - keine zufällige Abweichung.
+            // WICHTIG: Der vorherige "quarterNx"-Fix (Verschiebung um nx/4) war FALSCH - er beruhte
+            // auf einer fehlerhaften Testmethode, die beim Zurückrechnen eines Raycast-Punktes in
+            // Lat/Lng die vom echten Klick-Handler durchgeführte +90°-Rotation
+            // (pt.applyAxisAngle(new THREE.Vector3(0,1,0), Math.PI/2), siehe echter Klick-Handler)
+            // ausließ. Mit korrigierter Methode (Rotation einbezogen, gegen echte Browser-Klicks und
+            // getInterpolatedData() als Ground Truth verifiziert, >2000 Stichproben) zeigt sich: die
+            // ursprüngliche Verschiebung um die HALBE Breite (nx/2) war korrekt. Nicht erneut auf
+            // nx/4 "korrigieren", ohne die Methode aus HeatMap-Debug-Notizen (Rotation vor
+            // sphereVertexToLatLng) zu verwenden.
             const colLookup = new Int32Array(width);
-            const quarterNx = Math.floor(nx / 4);
+            const halfNx = Math.floor(nx / 2);
             for (let x = 0; x < width; x++) {
-                colLookup[x] = (x + quarterNx) % nx;
+                colLookup[x] = (x < halfNx) ? (x + halfNx) : (x - halfNx);
             }
 
             if (useFloat) {
