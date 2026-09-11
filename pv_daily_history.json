@@ -27,12 +27,12 @@
       23
     ],
     "totals": {
-      "feedin": 35.5,
-      "gridConsumption": 0.9,
-      "chargeEnergyToTal": 4.3,
-      "dischargeEnergyToTal": 6.0,
-      "generation": 35.8,
-      "loads": 2.5
+      "feedin": 35.6,
+      "gridConsumption": 1.0,
+      "chargeEnergyToTal": 4.4,
+      "dischargeEnergyToTal": 7.4,
+      "generation": 36.6,
+      "loads": 3.2
     },
     "feedin": [
       0.0,
@@ -58,7 +58,7 @@
       0.0,
       0.0,
       0.0,
-      0.0
+      0.1
     ],
     "gridConsumption": [
       0.1,
@@ -84,7 +84,7 @@
       0.1,
       0.0,
       0.0,
-      0.0
+      0.1
     ],
     "chargeEnergyToTal": [
       0.0,
@@ -108,7 +108,7 @@
       0.0,
       0.0,
       0.0,
-      0.0,
+      0.1,
       0.0,
       0.0
     ],
@@ -134,9 +134,9 @@
       0.1,
       0.4,
       0.9,
-      0.0,
-      0.0,
-      0.0
+      0.3,
+      0.6,
+      0.5
     ],
     "generation": [
       0.2,
@@ -160,9 +160,9 @@
       0.9,
       0.3,
       0.5,
-      0.0,
-      0.0,
-      0.0
+      0.2,
+      0.3,
+      0.3
     ],
     "loads": [
       0.2,
@@ -186,9 +186,9 @@
       0.0,
       0.2,
       0.6,
-      0.0,
-      0.0,
-      0.0
+      0.1,
+      0.4,
+      0.2
     ],
     "is_real_hourly": true
   },
