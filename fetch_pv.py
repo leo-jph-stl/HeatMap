@@ -310,8 +310,52 @@ if api_key and not metrics:
                     print(f"Hinweis: Konnte {archive_file} nicht laden: {ex}")
 
             report_vars = ["feedin", "gridConsumption", "chargeEnergyToTal", "dischargeEnergyToTal", "generation", "loads"]
-            for days_back in range(4):
-                target_date = now - timedelta(days=days_back)
+
+            # 1. Monatsabfragen für August und September 2026 (liefert aggregierte Tagessummen)
+            for m in [8, 9]:
+                if m > now.month and now.year == 2026:
+                    continue
+                time.sleep(1.1)
+                m_res = call_fox_openapi("/op/v0/device/report/query", {
+                    "sn": sn, "year": 2026, "month": m, "dimension": "month",
+                    "variables": report_vars
+                })
+                if m_res and m_res.get("errno") in [0, "0"]:
+                    m_list = m_res.get("result", [])
+                    days_in_m = 31 if m == 8 else 30
+                    for d_idx in range(days_in_m):
+                        day_num = d_idx + 1
+                        if m == now.month and day_num > now.day:
+                            break
+                        d_key = f"2026-{m:02d}-{day_num:02d}"
+                        if d_key not in daily_reports:
+                            daily_reports[d_key] = {"hours": list(range(24)), "totals": {}}
+                        for item in m_list:
+                            v_name = item.get("variable")
+                            vals = item.get("values", [])
+                            if d_idx < len(vals) and isinstance(vals[d_idx], (int, float)):
+                                daily_reports[d_key]["totals"][v_name] = round(float(vals[d_idx]), 2)
+
+            # 2. Stündliche 24h-Vektoren abfragen:
+            # Heute und gestern immer aktualisieren, fehlende Tage ab 01.08.2026 schrittweise nachladen
+            days_to_fetch = [0, 1]  # Heute und gestern
+            start_date = datetime(2026, 8, 1, tzinfo=now.tzinfo)
+            cur = now - timedelta(days=2)
+            missing_days = []
+            while cur >= start_date:
+                d_key = cur.strftime("%Y-%m-%d")
+                entry = daily_reports.get(d_key)
+                has_hourly = entry and isinstance(entry.get("generation"), list) and len(entry["generation"]) == 24 and any(v > 0 for v in entry["generation"])
+                if not has_hourly:
+                    missing_days.append(cur)
+                cur -= timedelta(days=1)
+
+            # Pro Durchlauf bis zu 15 fehlende Tage nachladen (schont FoxESS Rate-Limits)
+            for m_day in missing_days[:15]:
+                days_to_fetch.append(m_day)
+
+            for target_item in days_to_fetch:
+                target_date = target_item if isinstance(target_item, datetime) else (now - timedelta(days=target_item))
                 date_key = target_date.strftime("%Y-%m-%d")
                 time.sleep(1.1)
                 day_res = call_fox_openapi("/op/v0/device/report/query", {
@@ -321,7 +365,8 @@ if api_key and not metrics:
                 })
                 if day_res and day_res.get("errno") in [0, "0"]:
                     res_list = day_res.get("result", [])
-                    day_entry = {"hours": list(range(24)), "totals": {}}
+                    day_entry = daily_reports.get(date_key, {"hours": list(range(24)), "totals": {}})
+                    day_entry["hours"] = list(range(24))
                     for item in res_list:
                         var_name = item.get("variable")
                         vals = [round(float(v), 3) if isinstance(v, (int, float)) else 0.0 for v in item.get("values", [])]
@@ -335,7 +380,7 @@ if api_key and not metrics:
                     if any(day_entry["totals"].get(k, 0) > 0 for k in ["feedin", "generation", "gridConsumption", "loads"]):
                         daily_reports[date_key] = day_entry
 
-                    if days_back == 0:
+                    if date_key == now.strftime("%Y-%m-%d"):
                         totals = day_entry.get("totals", {})
                         if "feedin" in totals: extra_data["today_feedin"] = totals["feedin"]
                         if "gridConsumption" in totals: extra_data["today_grid_import"] = totals["gridConsumption"]
