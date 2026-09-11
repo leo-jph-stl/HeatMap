@@ -3423,6 +3423,94 @@
             return Math.min(pvRevenueConfig.shiftCapKwh, Math.max(1.0, baseReserve));
         }
 
+        // Ermittelt das typische stündliche Haushalts-Lastprofil (24h in kWh):
+        // Differenziert automatisch zwischen Werktagen (Mo-Fr) und Wochenenden (Sa-So)
+        // basierend auf den archivierten FoxESS-Tagesberichten (livePvData.daily_reports).
+        function getTypicalHourlyLoadProfile(targetDateKey) {
+            const fallbackProfile = [
+                0.22, 0.20, 0.20, 0.21, 0.23, 0.35,
+                0.55, 0.65, 0.45, 0.30, 0.25, 0.22,
+                0.25, 0.22, 0.22, 0.24, 0.30, 0.45,
+                0.65, 0.85, 0.75, 0.50, 0.35, 0.25
+            ];
+
+            if (!livePvData || !livePvData.daily_reports) return fallbackProfile;
+
+            const targetDate = targetDateKey ? new Date(targetDateKey + 'T12:00:00') : new Date();
+            const targetDay = targetDate.getDay();
+            const isTargetWeekend = (targetDay === 0 || targetDay === 6);
+
+            const matchingReports = [];
+            for (const [dKey, rep] of Object.entries(livePvData.daily_reports)) {
+                if (targetDateKey && dKey === targetDateKey) continue; // Den Zieltag selbst ausschließen, falls noch unvollständig
+                if (!rep || !Array.isArray(rep.loads) || rep.loads.length < 24) continue;
+                // Sicherstellen, dass der Bericht vollständig ist (Abendstunden > 0)
+                const sumEvening = (rep.loads[20] || 0) + (rep.loads[21] || 0) + (rep.loads[22] || 0);
+                if (sumEvening <= 0.001) continue;
+
+                const d = new Date(dKey + 'T12:00:00');
+                const isWk = (d.getDay() === 0 || d.getDay() === 6);
+                if (isWk === isTargetWeekend) {
+                    matchingReports.push(rep.loads);
+                }
+            }
+
+            // Falls für Wochenende/Werktag noch kein spezifischer Vorbericht vorliegt, alle vollständigen Tage mitteln
+            if (matchingReports.length === 0) {
+                for (const [dKey, rep] of Object.entries(livePvData.daily_reports)) {
+                    if (targetDateKey && dKey === targetDateKey) continue;
+                    if (rep && Array.isArray(rep.loads) && rep.loads.length >= 24) {
+                        const sumEvening = (rep.loads[20] || 0) + (rep.loads[21] || 0) + (rep.loads[22] || 0);
+                        if (sumEvening > 0.001) {
+                            matchingReports.push(rep.loads);
+                        }
+                    }
+                }
+            }
+
+            if (matchingReports.length === 0) return fallbackProfile;
+
+            const avgLoads = new Array(24).fill(0);
+            for (let h = 0; h < 24; h++) {
+                let sum = 0;
+                for (const loads of matchingReports) {
+                    sum += (loads[h] || 0);
+                }
+                avgLoads[h] = Math.round((sum / matchingReports.length) * 1000) / 1000;
+            }
+            return avgLoads;
+        }
+
+        // Liefert die PV-Prognosepunkte ({t, pv}) für die Solareinstrahlung:
+        // Nutzt primär den im Chart gecachten Forecast, ruft falls nötig computePvForecast() auf
+        // und bietet ein physikalisches Clear-Sky-Fallback für 9.6 kWp, falls Wetterdaten fehlen.
+        function getPvForecastPoints() {
+            if (typeof pvChartState !== 'undefined' && pvChartState.forecast && pvChartState.forecast.length > 0) {
+                return pvChartState.forecast;
+            }
+            if (typeof computePvForecast === 'function') {
+                const fc = computePvForecast();
+                if (fc && fc.points && fc.points.length > 0) {
+                    return fc.points;
+                }
+            }
+            // Robuster Clear-Sky Fallback für heutigen Tag
+            const now = Date.now();
+            const dStart = new Date();
+            dStart.setHours(0, 0, 0, 0);
+            const pts = [];
+            for (let t = dStart.getTime(); t <= dStart.getTime() + 24 * 3600 * 1000; t += 15 * 60 * 1000) {
+                const d = new Date(t);
+                const h = d.getHours() + d.getMinutes() / 60;
+                let kw = 0;
+                if (h >= 6.75 && h <= 19.75) {
+                    kw = Math.max(0, Math.sin((h - 6.75) / (19.75 - 6.75) * Math.PI) * 6.8);
+                }
+                pts.push({ t, pv: Math.round(kw * 100) / 100 });
+            }
+            return pts;
+        }
+
         // Wirtschaftlich optimierte und zeitkausale Batterie-Lastverschiebung (Arbitrage):
         // 1. Zweistufige Umwandlungswirkungsgrade: η_in = √η_rt (Laden) und η_out = √η_rt (Entladen).
         //    Bei PV-Überangebot wird die Batterie zu 100% elektrochemisch voll geladen (C_bat),
@@ -3664,10 +3752,14 @@
         }
 
         function getAvailableHistoryDateKeys() {
+            const set = new Set();
             if (livePvData && livePvData.daily_reports) {
-                return Object.keys(livePvData.daily_reports).sort();
+                Object.keys(livePvData.daily_reports).forEach(k => set.add(k));
             }
-            return [];
+            const nowD = new Date();
+            const todayKey = nowD.getFullYear() + '-' + String(nowD.getMonth() + 1).padStart(2, '0') + '-' + String(nowD.getDate()).padStart(2, '0');
+            set.add(todayKey);
+            return Array.from(set).sort();
         }
 
         // Zentrale, konsistente Tages-Bilanzierung & Erlösberechnung:
@@ -3685,10 +3777,111 @@
                 return pt >= dayStart && pt < dayEnd;
             });
 
-            if (!rep && (!dayPts || dayPts.length < 10)) return null;
+            // Prüfen, ob für heute (oder einen unvollständigen Tag) eine 24h-Solar- & Lastprognose synthetisiert werden soll
+            const now = Date.now();
+            const nowD = new Date(now);
+            const todayKey = nowD.getFullYear() + '-' + String(nowD.getMonth() + 1).padStart(2, '0') + '-' + String(nowD.getDate()).padStart(2, '0');
+            const isToday = (dateKey === todayKey);
+
+            let latestMeasuredT = dayStart;
+            if (dayPts && dayPts.length > 0) {
+                latestMeasuredT = Math.max(...dayPts.map(p => new Date(p.t).getTime()));
+            }
+
+            const forecastPoints = getPvForecastPoints();
+            const hasForecast = forecastPoints && forecastPoints.length > 0;
+            let isTodayHybrid = false;
+            let currentHour = new Date(latestMeasuredT).getHours();
+
+            let blendedRep = rep ? JSON.parse(JSON.stringify(rep)) : {
+                hours: Array.from({ length: 24 }, (_, i) => i),
+                generation: new Array(24).fill(0),
+                loads: new Array(24).fill(0),
+                feedin: new Array(24).fill(0),
+                gridConsumption: new Array(24).fill(0)
+            };
+            let blendedDayPts = [...dayPts];
+
+            if (isToday && hasForecast) {
+                isTodayHybrid = true;
+                const typicalLoads = getTypicalHourlyLoadProfile(dateKey);
+
+                // A. 5-Minuten-Punkte ab dem letzten Messwert bis Tagesende (23:55 Uhr) synthetisieren
+                const fiveMinMs = 5 * 60 * 1000;
+                const startSynthT = Math.max(dayStart, Math.floor(latestMeasuredT / fiveMinMs) * fiveMinMs + fiveMinMs);
+
+                const interpPvAtTime = (t) => {
+                    if (!forecastPoints || forecastPoints.length === 0) return 0;
+                    if (t <= forecastPoints[0].t) return forecastPoints[0].pv;
+                    const lastP = forecastPoints[forecastPoints.length - 1];
+                    if (t >= lastP.t) return 0;
+                    for (let i = 0; i < forecastPoints.length - 1; i++) {
+                        const a = forecastPoints[i], b = forecastPoints[i + 1];
+                        if (t >= a.t && t <= b.t) {
+                            if (b.t === a.t) return a.pv;
+                            const f = (t - a.t) / (b.t - a.t);
+                            return a.pv + (b.pv - a.pv) * f;
+                        }
+                    }
+                    return 0;
+                };
+
+                for (let t = startSynthT; t < dayEnd; t += fiveMinMs) {
+                    const h = new Date(t).getHours();
+                    const pvKw = Math.max(0, interpPvAtTime(t));
+                    const loadKw = typicalLoads[h] || 0.25;
+                    const feedinKw = Math.max(0, pvKw - loadKw);
+                    blendedDayPts.push({
+                        t: new Date(t).toISOString(),
+                        pv: pvKw,
+                        feedin: feedinKw,
+                        loads: loadKw,
+                        isForecast: true
+                    });
+                }
+
+                // B. Stündliche Arrays in blendedRep für die verbleibenden Stunden vervollständigen
+                if (!blendedRep.generation) blendedRep.generation = new Array(24).fill(0);
+                if (!blendedRep.loads) blendedRep.loads = new Array(24).fill(0);
+                if (!blendedRep.feedin) blendedRep.feedin = new Array(24).fill(0);
+                if (!blendedRep.gridConsumption) blendedRep.gridConsumption = new Array(24).fill(0);
+
+                for (let h = 0; h < 24; h++) {
+                    const hStart = dayStart + h * 3600 * 1000;
+                    const hEnd = hStart + 3600 * 1000;
+
+                    if (hEnd <= latestMeasuredT) {
+                        // Stunde liegt komplett in der gemessenen Vergangenheit
+                        continue;
+                    } else if (hStart >= latestMeasuredT) {
+                        // Zukünftige Stunde: vollständig aus Prognose und Lastprofil ableiten
+                        const forecastedGen = integrateKwh(forecastPoints, hStart, hEnd);
+                        const typLoad = typicalLoads[h] || 0.25;
+                        blendedRep.generation[h] = Math.round(forecastedGen * 100) / 100;
+                        blendedRep.loads[h] = Math.round(typLoad * 100) / 100;
+                        blendedRep.feedin[h] = Math.max(0, Math.round((forecastedGen - typLoad) * 100) / 100);
+                        blendedRep.gridConsumption[h] = Math.max(0, Math.round((typLoad - forecastedGen) * 100) / 100);
+                    } else {
+                        // Übergangsstunde (aktuelle Stunde): Messwert bis jetzt + Prognose für verbleibende Minuten
+                        const remGen = integrateKwh(forecastPoints, latestMeasuredT, hEnd);
+                        const measuredGen = blendedRep.generation[h] || 0;
+                        blendedRep.generation[h] = Math.round((measuredGen + remGen) * 100) / 100;
+
+                        const elapsedFrac = (latestMeasuredT - hStart) / 3600000;
+                        const remFrac = Math.max(0, 1.0 - elapsedFrac);
+                        const typLoad = typicalLoads[h] || 0.25;
+                        const measuredLoad = blendedRep.loads[h] || 0;
+                        blendedRep.loads[h] = Math.round((measuredLoad + typLoad * remFrac) * 100) / 100;
+                        blendedRep.feedin[h] = Math.max(0, Math.round((blendedRep.generation[h] - blendedRep.loads[h]) * 100) / 100);
+                        blendedRep.gridConsumption[h] = Math.max(0, Math.round((blendedRep.loads[h] - blendedRep.generation[h]) * 100) / 100);
+                    }
+                }
+            }
+
+            if (!blendedRep && (!blendedDayPts || blendedDayPts.length < 10)) return null;
 
             // 1. Extrapolation unter Erhalt des realen Hausverbrauchs
-            const scenario = applyPvScenarioToDayData(dayPts, rep);
+            const scenario = applyPvScenarioToDayData(blendedDayPts, blendedRep);
             const { factor, isScenarioActive, genArr, feedArr, loadArr, gridArr } = scenario;
 
             // 2. Stündliche Börsenpreise
@@ -3776,11 +3969,11 @@
 
             // 5. Summen & Erlöse
             const sumArr = arr => arr.reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
-            const totals = rep ? (rep.totals || {}) : {};
+            const totals = blendedRep ? (blendedRep.totals || {}) : {};
             const genKwh = sumArr(genArr);
-            const initialFeedKwh = isScenarioActive ? sumArr(feedArr) : ((typeof totals.feedin === 'number') ? totals.feedin : sumArr(feedArr));
-            const loadKwh = (typeof totals.loads === 'number') ? totals.loads : sumArr(loadArr);
-            const gridKwh = isScenarioActive ? sumArr(gridArr) : ((typeof totals.gridConsumption === 'number') ? totals.gridConsumption : sumArr(gridArr));
+            const initialFeedKwh = (isScenarioActive || isTodayHybrid) ? sumArr(feedArr) : ((typeof totals.feedin === 'number') ? totals.feedin : sumArr(feedArr));
+            const loadKwh = (isTodayHybrid || typeof totals.loads !== 'number') ? sumArr(loadArr) : totals.loads;
+            const gridKwh = (isScenarioActive || isTodayHybrid) ? sumArr(gridArr) : ((typeof totals.gridConsumption === 'number') ? totals.gridConsumption : sumArr(gridArr));
 
             // Effektive Netzeinspeisung berücksichtigt die tatsächlichen Entladungen und Verluste des Tages:
             const effectiveFeedKwh = (!isEeg && pvRevenueConfig.batteryShift) ? sumArr(shiftedFeed) : initialFeedKwh;
@@ -3816,7 +4009,7 @@
                 dateKey,
                 dayStart,
                 dayEnd,
-                rep,
+                rep: blendedRep,
                 scenario,
                 factor,
                 isScenarioActive,
@@ -3854,7 +4047,9 @@
                 isGrossOptionB,
                 hasSolarSpitzen,
                 eegRate,
-                rep
+                isTodayHybrid,
+                latestMeasuredT,
+                currentHour
             };
         }
 
@@ -3878,7 +4073,7 @@
 
                 const d = new Date(dateKey + 'T12:00:00');
                 const isToday = (dateKey === todayKey);
-                const label = isToday ? 'Heute' : d.toLocaleDateString('de-DE', { weekday: 'short' });
+                const label = isToday ? (dayData.isTodayHybrid ? 'Heute 🔮' : 'Heute') : d.toLocaleDateString('de-DE', { weekday: 'short' });
 
                 const basisKwh = dayData.isGrossOptionB ? dayData.genKwh : dayData.effectiveFeedKwh;
                 rows.push({
@@ -3887,7 +4082,7 @@
                     kwh: basisKwh,
                     rawKwh: dayData.genKwh,
                     eur: dayData.totalEur,
-                    isForecast: false
+                    isForecast: isToday && dayData.isTodayHybrid
                 });
             }
 
@@ -3897,12 +4092,12 @@
                 if (todayData && todayData.genKwh >= 0.05) {
                     const basisKwh = todayData.isGrossOptionB ? todayData.genKwh : todayData.effectiveFeedKwh;
                     rows.push({
-                        label: 'Heute',
+                        label: todayData.isTodayHybrid ? 'Heute 🔮' : 'Heute',
                         dateKey: todayKey,
                         kwh: basisKwh,
                         rawKwh: todayData.genKwh,
                         eur: todayData.totalEur,
-                        isForecast: false
+                        isForecast: !!todayData.isTodayHybrid
                     });
                 }
             }
@@ -4146,13 +4341,6 @@
         // --- FoxESS Historische Detailanalyse (Companion Container) ---
         let currentHistoryDateKey = null;
 
-        function getAvailableHistoryDateKeys() {
-            if (livePvData && livePvData.daily_reports) {
-                return Object.keys(livePvData.daily_reports).sort();
-            }
-            return [];
-        }
-
         function showPvHistory(dateKey) {
             const container = document.getElementById('pv-history-container');
             if (!container) return;
@@ -4267,7 +4455,7 @@
                 loadKwh, gridKwh, selfKwh, selfPct, feedPct, autarkyPct,
                 conversionLossKwh, carryoverToNextDay, initialSoc, lossChargeKwh,
                 isGrossOptionB, isEeg, hasSolarSpitzen, eegRate, simSlots, rep,
-                chargedKwh, dischargedKwh
+                chargedKwh, dischargedKwh, isTodayHybrid, latestMeasuredT, currentHour
             } = dayData;
 
             const isShiftActive = (!isEeg && pvRevenueConfig.batteryShift);
@@ -4277,9 +4465,10 @@
             const fullDateStr = dActive.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 
             if (subEl) {
-                subEl.innerHTML = isScenarioActive
+                const hybridBadge = isTodayHybrid ? ' · <span style="color:#00e5ff; font-weight:700;">🔮 24h-Tagesprognose aktiv</span>' : '';
+                subEl.innerHTML = (isScenarioActive
                     ? `${fullDateStr} · <span style="color:#00e5ff; font-weight:700;">🧪 ${pvScenarioConfig.targetKwp.toFixed(1)} kWp (${factor.toFixed(2)}x)</span>`
-                    : fullDateStr;
+                    : fullDateStr) + hybridBadge;
             }
 
             if (kpiYieldEl) kpiYieldEl.innerText = genKwh.toFixed(1) + ' kWh';
@@ -4500,6 +4689,19 @@
                 hoverEnergySlots += `<rect class="pv-hist-sync-hover" data-h="${h}" x="${sx.toFixed(1)}" y="0" width="${slotW.toFixed(1)}" height="${H}" fill="transparent" style="cursor:crosshair;"></rect>`;
             }
 
+            let nowMarkerSvg = '';
+            if (isTodayHybrid && latestMeasuredT > dayStart && latestMeasuredT < dayEnd) {
+                const nowFrac = Math.max(0, Math.min(1, (latestMeasuredT - dayStart) / (24 * 3600 * 1000)));
+                const nowX = PAD_L + nowFrac * plotW;
+                const dMeas = new Date(latestMeasuredT);
+                const timeStr = `${String(dMeas.getHours()).padStart(2, '0')}:${String(dMeas.getMinutes()).padStart(2, '0')}`;
+                nowMarkerSvg = `
+                    <line x1="${nowX.toFixed(1)}" y1="${PAD_T}" x2="${nowX.toFixed(1)}" y2="${H - PAD_B}" stroke="#00e5ff" stroke-width="1.2" stroke-dasharray="2,2" opacity="0.85"/>
+                    <rect x="${(nowX - 22).toFixed(1)}" y="1" width="44" height="9" rx="2" fill="rgba(10,10,15,0.85)" stroke="rgba(0,229,255,0.4)" stroke-width="0.7"/>
+                    <text x="${nowX.toFixed(1)}" y="7.5" font-size="6" fill="#00e5ff" font-weight="700" text-anchor="middle">Jetzt ${timeStr}</text>
+                `;
+            }
+
             if (energySvg) {
                 energySvg.innerHTML = `
                     ${gridEnergySvg}
@@ -4515,6 +4717,7 @@
                     <polyline points="${loadPts.join(' ')}" fill="none" stroke="#ff9100" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
                     <polyline points="${feedPts.join(' ')}" fill="none" stroke="#b388ff" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
                     <polyline points="${genPts.join(' ')}" fill="none" stroke="#ffdb00" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
+                    ${nowMarkerSvg}
                     <!-- Fadenkreuz-Cursor -->
                     <g id="pvHistEnergyCursor" style="display:none; pointer-events:none;">
                         <line id="pvHistEnergyCursorLine" x1="0" y1="${PAD_T}" x2="0" y2="${H - PAD_B}" stroke="rgba(255,255,255,0.35)" stroke-width="1" stroke-dasharray="2,2"/>
@@ -4796,10 +4999,18 @@
                         }
                     }
 
-                    const slotLabel = `${String(h).padStart(2, '0')}:00 - ${String(h + 1).padStart(2, '0')}:00`;
+                    let slotBadge = '';
+                    if (isTodayHybrid) {
+                        if (h === currentHour) {
+                            slotBadge = ` <span style="font-size:7.5px; color:#00e5ff; font-weight:700; background:rgba(0,229,255,0.12); border-radius:3px; padding:1px 3px;" title="Aktuelle Stunde: Messwert bis jetzt + Prognose für Rest der Stunde">🔮 Jetzt</span>`;
+                        } else if (h > currentHour) {
+                            slotBadge = ` <span style="font-size:7.5px; color:#aaa; background:rgba(255,255,255,0.06); border-radius:3px; padding:1px 3px;" title="24h-Prognose (GFS-Sonneneinstrahlung & Lastprofil)">🔮 Prog.</span>`;
+                        }
+                    }
+                    const slotLabel = `${String(h).padStart(2, '0')}:00 - ${String(h + 1).padStart(2, '0')}:00${slotBadge}`;
                     rowsHtml.push(`
                         <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
-                            <td style="padding: 3.5px 4px; color: #888; font-variant-numeric:tabular-nums;">${slotLabel}</td>
+                            <td style="padding: 3.5px 4px; color: #888; font-variant-numeric:tabular-nums; white-space:nowrap;">${slotLabel}</td>
                             <td style="padding: 3.5px 4px; text-align: right; color: ${gColor}; font-variant-numeric:tabular-nums;">${g.toFixed(2)}</td>
                             <td style="padding: 3.5px 4px; text-align: right; color: ${lColor}; font-variant-numeric:tabular-nums;">${l.toFixed(2)}</td>
                             <td style="padding: 3.5px 4px; text-align: right; font-variant-numeric:tabular-nums;">${batHtml}</td>
@@ -4845,6 +5056,17 @@
                     const footNotesEl = document.getElementById('pvHistFootNotes');
                     if (footNotesEl) {
                         const notes = [];
+                        if (isTodayHybrid) {
+                            const dMeas = new Date(latestMeasuredT);
+                            const tStr = `${String(dMeas.getHours()).padStart(2, '0')}:${String(dMeas.getMinutes()).padStart(2, '0')}`;
+                            const isWk = (new Date(activeDateKey + 'T12:00:00').getDay() === 0 || new Date(activeDateKey + 'T12:00:00').getDay() === 6);
+                            notes.push(`
+                                <div style="background: rgba(0,229,255,0.06); border: 1px solid rgba(0,229,255,0.2); border-radius: 4px; padding: 4px 7px; font-size: 8.5px; color: #00e5ff; display: flex; align-items: center; gap: 5px;">
+                                    <span>🔮</span>
+                                    <div><b>24h-Tagesprognose aktiv:</b> Ab ${tStr} Uhr basierend auf der GFS-Sonneneinstrahlung und dem typischen ${isWk ? 'Wochenend' : 'Werktags'}-Lastprofil (${loadKwh.toFixed(1)} kWh/Tag) synthetisiert.</div>
+                                </div>
+                            `);
+                        }
                         if (initialSoc > 0.05) {
                             notes.push(`
                                 <div style="background: rgba(255,219,0,0.06); border: 1px solid rgba(255,219,0,0.2); border-radius: 4px; padding: 4px 7px; font-size: 8.5px; color: #ffdb00; display: flex; align-items: center; gap: 5px;">
