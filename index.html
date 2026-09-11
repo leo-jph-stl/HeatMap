@@ -3344,6 +3344,76 @@
             return Math.min(pvRevenueConfig.shiftCapKwh, Math.max(1.0, baseReserve));
         }
 
+        // Wirtschaftlich optimierte Batterie-Lastverschiebung (Arbitrage):
+        // Lädt zu den günstigsten Börsenstunden (z.B. Mittagstief/Negativpreise) und entlädt
+        // zu den teuersten Spitzenstunden des Tages (z.B. Abendspitze 19-21 Uhr).
+        // Berücksichtigt Speicherkapazität, Wechselrichter-AC-Limit und Wirkungsgrad (η).
+        function simulateBatteryShift(slots, shiftCap, inverterKw, efficiency) {
+            const fullCap = Math.max(0, shiftCap || 0);
+            const invKw = Math.max(0.1, inverterKw || 5.0);
+            const eff = Math.min(1, Math.max(0.01, efficiency || 0.90));
+
+            const sList = slots.map(s => ({
+                ...s,
+                shiftedOut: 0,
+                shiftedIn: 0,
+                remKwh: Math.max(0, s.kwh || 0)
+            }));
+
+            if (fullCap <= 0.001) return sList;
+            let remCap = fullCap;
+
+            // 1. Entlade-Ziele: teuerste Stunden zuerst (nach Börsenpreis absteigend)
+            const dischargeTargets = [...sList].sort((a, b) => b.ctKwh - a.ctKwh);
+            // 2. Lade-Quellen: günstigste Stunden mit Überschuss zuerst (nach Börsenpreis aufsteigend)
+            const chargeSources = [...sList].filter(s => s.remKwh > 0.001).sort((a, b) => a.ctKwh - b.ctKwh);
+
+            for (const dSlot of dischargeTargets) {
+                if (remCap <= 0.001) break;
+                // Niemals in einen Slot entladen, aus dem bereits Strom geladen wurde
+                if (dSlot.shiftedOut > 0.001) continue;
+
+                // Inverter-AC-Limit für diesen Slot beachten (aktuelle Einspeisung + Entladung <= invKw):
+                const currentExport = dSlot.remKwh + dSlot.shiftedIn;
+                const maxCanReceive = Math.max(0, invKw - currentExport);
+                if (maxCanReceive <= 0.001) continue;
+
+                let neededDischarge = maxCanReceive;
+
+                for (const cSlot of chargeSources) {
+                    if (neededDischarge <= 0.001 || remCap <= 0.001) break;
+                    if (cSlot === dSlot) continue;
+                    if (cSlot.remKwh <= 0.001) continue;
+                    // Slot, der bereits Entladestrom empfängt, kann nicht gleichzeitig Ladequelle sein
+                    if (cSlot.shiftedIn > 0.001) continue;
+
+                    // Wirtschaftlichkeits-Bedingung (Arbitrage-Spread):
+                    // Entladung zu dSlot.ctKwh abzüglich Speicherverluste (eff) MUSS rentabler sein als Direktverkauf zu cSlot.ctKwh:
+                    if (dSlot.ctKwh * eff <= cSlot.ctKwh) {
+                        break; // Da chargeSources aufsteigend sortiert ist, sind nachfolgende Slots noch teurer
+                    }
+
+                    // Inverter-Limit beim Laden im Quell-Slot:
+                    const maxSlotCanProvide = Math.max(0, Math.min(cSlot.remKwh, invKw - cSlot.shiftedOut));
+                    if (maxSlotCanProvide <= 0.001) continue;
+
+                    const maxCharge = Math.min(maxSlotCanProvide, remCap, neededDischarge / eff);
+                    if (maxCharge <= 0.001) continue;
+
+                    const dischargeAmount = maxCharge * eff;
+
+                    cSlot.shiftedOut += maxCharge;
+                    cSlot.remKwh -= maxCharge;
+                    remCap -= maxCharge;
+
+                    dSlot.shiftedIn += dischargeAmount;
+                    neededDischarge -= dischargeAmount;
+                }
+            }
+
+            return sList;
+        }
+
         // Erlös (€) für eine Leistungs-Zeitreihe im Intervall [fromT, toT):
         // Unterstützt EEG (mit/ohne § 51 Solar-Spitzen) sowie Direktvermarktung (mit/ohne Batterie-
         // Lastverschiebung und frei wählbaren theoretischen Wechselrichter- & Batteriegrößen).
@@ -3415,40 +3485,11 @@
             const inverterKw = Math.max(0.1, pvRevenueConfig.inverterAcKw || 5.0);
             const efficiency = Math.min(1, Math.max(0.1, (pvRevenueConfig.efficiencyPct || 90) / 100));
 
-            // Laden: Slots mit Erzeugung nach Börsenpreis aufsteigend sortieren (billigste/negative zuerst)
-            let remainingCharge = shiftCap;
-            const chargingCandidates = slots.filter(s => s.kwh > 0.01).sort((a, b) => a.ctKwh - b.ctKwh);
-            let totalCharged = 0;
-            for (const s of chargingCandidates) {
-                if (remainingCharge <= 0) break;
-                const maxSlotCharge = Math.min(s.kwh, inverterKw * 1.0);
-                const toCharge = Math.min(maxSlotCharge, remainingCharge);
-                s.shiftedOut = toCharge;
-                totalCharged += toCharge;
-                remainingCharge -= toCharge;
-            }
-
-            // Entladen: Slots ohne Ladevorgang nach Börsenpreis absteigend sortieren (teuerste Abend-/Spitzenstunden zuerst)
-            let remainingDischarge = totalCharged * efficiency;
-            const dischargingCandidates = slots.filter(s => s.shiftedOut === 0).sort((a, b) => b.ctKwh - a.ctKwh);
-            for (const s of dischargingCandidates) {
-                if (remainingDischarge <= 0) break;
-                const maxSlotDischarge = inverterKw * 1.0;
-                const toDischarge = Math.min(remainingDischarge, maxSlotDischarge);
-                s.shiftedIn = toDischarge;
-                remainingDischarge -= toDischarge;
-            }
-            if (remainingDischarge > 0) {
-                for (const s of dischargingCandidates) {
-                    if (remainingDischarge <= 0) break;
-                    s.shiftedIn += remainingDischarge;
-                    remainingDischarge = 0;
-                }
-            }
+            const shiftedSlots = simulateBatteryShift(slots, shiftCap, inverterKw, efficiency);
 
             let eur = 0;
-            for (const s of slots) {
-                const effKwh = s.kwh - s.shiftedOut + s.shiftedIn;
+            for (const s of shiftedSlots) {
+                const effKwh = Math.max(0, s.kwh - s.shiftedOut + s.shiftedIn);
                 eur += effKwh * (s.ctKwh / 100);
             }
             return eur;
@@ -4137,25 +4178,8 @@
                 const invKw = Math.max(0.1, pvRevenueConfig.inverterAcKw || 5.0);
                 const eff = Math.min(1, Math.max(0.1, (pvRevenueConfig.efficiencyPct || 90) / 100));
 
-                let remCharge = shiftCap;
-                const chargeCandidates = shiftSlots.filter(s => s.kwh > 0.01).sort((a, b) => a.ctKwh - b.ctKwh);
-                let charged = 0;
-                for (const s of chargeCandidates) {
-                    if (remCharge <= 0) break;
-                    const toCharge = Math.min(s.kwh, invKw * 1.0, remCharge);
-                    s.shiftedOut = toCharge;
-                    charged += toCharge;
-                    remCharge -= toCharge;
-                }
-                let remDischarge = charged * eff;
-                const dischargeCandidates = shiftSlots.filter(s => s.shiftedOut === 0).sort((a, b) => b.ctKwh - a.ctKwh);
-                for (const s of dischargeCandidates) {
-                    if (remDischarge <= 0) break;
-                    const toDischarge = Math.min(remDischarge, invKw * 1.0);
-                    s.shiftedIn = toDischarge;
-                    remDischarge -= toDischarge;
-                }
-                shiftedFeed = shiftSlots.map(s => Math.max(0, s.kwh - s.shiftedOut + s.shiftedIn));
+                const simSlots = simulateBatteryShift(shiftSlots, shiftCap, invKw, eff);
+                shiftedFeed = simSlots.map(s => Math.max(0, s.kwh - s.shiftedOut + s.shiftedIn));
             }
 
             // --- Crosshair & Hover-Werteinspektion ---
@@ -4169,7 +4193,7 @@
                     const f = feedArr[h] || 0;
                     const p = hourlyPrices[h];
 
-                    const basisKwh = isGrossOptionB ? g : (pvRevenueConfig.batteryShift && !isEeg ? (shiftedFeed[h] || 0) : f);
+                    const basisKwh = (pvRevenueConfig.batteryShift && !isEeg) ? (shiftedFeed[h] || 0) : (isGrossOptionB ? g : f);
 
                     let rate = 0;
                     let isSolarSpitzenActive = false;
@@ -4244,7 +4268,7 @@
                     const f = feedArr[h] || 0;
                     const p = hourlyPrices[h];
 
-                    const basisKwh = isGrossOptionB ? g : (pvRevenueConfig.batteryShift && !isEeg ? (shiftedFeed[h] || 0) : f);
+                    const basisKwh = (pvRevenueConfig.batteryShift && !isEeg) ? (shiftedFeed[h] || 0) : (isGrossOptionB ? g : f);
                     totalBasisKwh += basisKwh;
 
                     let rate = 0;
