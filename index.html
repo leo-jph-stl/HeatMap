@@ -653,6 +653,19 @@
         #pv-history-container::-webkit-scrollbar-thumb:hover {
             background: rgba(0, 229, 255, 0.5);
         }
+        #pvHistTableContainer::-webkit-scrollbar {
+            width: 4px;
+        }
+        #pvHistTableContainer::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #pvHistTableContainer::-webkit-scrollbar-thumb {
+            background: rgba(0, 229, 255, 0.25);
+            border-radius: 4px;
+        }
+        #pvHistTableContainer::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 229, 255, 0.5);
+        }
         #pv-history-container .forecast-header {
             position: sticky;
             top: -14px;
@@ -1270,7 +1283,7 @@
                 </div>
                 <!-- Dynamisches Modell-Badge für EEG / Direktvermarktung & Optionen -->
                 <div id="pvHistModelBadge" style="margin-bottom: 5px;"></div>
-                <div id="pvHistTableContainer" style="max-height: 190px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(0,229,255,0.2) transparent;">
+                <div id="pvHistTableContainer" style="max-height: clamp(240px, calc(100vh - 500px), 350px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(0,229,255,0.2) transparent;">
                     <table style="width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 9.5px;">
                         <thead id="pvHistHourlyTableHead" style="position: sticky; top: 0; z-index: 5;">
                             <tr style="color: #888; text-align: right;">
