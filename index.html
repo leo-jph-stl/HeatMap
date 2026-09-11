@@ -6412,7 +6412,7 @@
 
             const titleEl = document.getElementById('timeDisplayTitle');
             if (titleEl) {
-                titleEl.innerText = formatDisplayTime(activeTemp, currentHourOffset);
+                titleEl.innerText = formatDisplayTime(activeTemp, Math.round(currentHourOffset));
             }
 
             let texA = null, texB = null, blend = 0;
@@ -6545,33 +6545,53 @@
 
         const timeSlider = document.getElementById('timeSlider');
         const playBtn = document.getElementById('playBtn');
-        let playInterval = null;
+        let playAnimId = null;
+        let playLastTime = 0;
+        const PLAY_HOURS_PER_SEC = 1000 / 150; // gleiche Gesamtgeschwindigkeit wie zuvor (1h/150ms)
 
-        function togglePlay() {
-            if (playInterval) {
-                clearInterval(playInterval);
-                playInterval = null;
-                playBtn.innerText = '▶ Play';
-            } else {
-                playBtn.innerText = '⏸ Pause';
-                playInterval = setInterval(() => {
-                    let val = parseInt(timeSlider.value) + 1;
-                    if (val > parseInt(timeSlider.max, 10)) val = -24; // dynamisches Max, siehe updateSliderBounds()
-                    timeSlider.value = val;
-                    timeSlider.dispatchEvent(new Event('input'));
-                }, 150); // 1h-Schritte, GPU blendet zwischen den 3h-GFS-Stützstellen weich über
-            }
-        }
-        playBtn.addEventListener('click', togglePlay);
-        
-        timeSlider.addEventListener('input', (e) => {
-            currentHourOffset = parseInt(e.target.value);
+        function setHourOffset(val) {
+            currentHourOffset = val;
             if (solarClimSelection !== 'live') {
                 solarClimSelection = 'live';
                 const sel = document.getElementById('solarClimSelect');
                 if (sel) sel.value = 'live';
             }
             updateActiveData();
+        }
+
+        // Zeit läuft während "Play" kontinuierlich (rAF-getrieben) statt in diskreten 1h-Sprüngen
+        // alle 150ms weiter - bei fester 150ms-Schrittweite blieb das Bild zwischen zwei Ticks
+        // (mehrere Renderframes bei 30/60fps) komplett unverändert stehen und sprang dann abrupt,
+        // was besonders in der Polaufsicht wie ein rhythmisches "Kleben" der Terminatorlinie wirkte.
+        // currentHourOffset wird hier NICHT über timeSlider.value/dispatchEvent geführt, weil das
+        // <input step="1">-Element jede Zuweisung selbst auf ganze Stunden rundet (getestet: .value
+        // = 12.5 liefert beim Auslesen "13") - der Regler dient während Play nur der Anzeige.
+        function togglePlay() {
+            if (playAnimId) {
+                cancelAnimationFrame(playAnimId);
+                playAnimId = null;
+                playBtn.innerText = '▶ Play';
+            } else {
+                playBtn.innerText = '⏸ Pause';
+                playLastTime = performance.now();
+                const step = (now) => {
+                    const dtSec = Math.min(0.25, (now - playLastTime) / 1000);
+                    playLastTime = now;
+                    const min = parseInt(timeSlider.min, 10);
+                    const max = parseInt(timeSlider.max, 10);
+                    let val = currentHourOffset + dtSec * PLAY_HOURS_PER_SEC;
+                    if (val > max) val -= (max - min); // nahtloser Loop statt Hartsprung auf -24
+                    timeSlider.value = val; // nur Reglerposition, wird intern auf ganze Stunden gerundet
+                    setHourOffset(val);
+                    playAnimId = requestAnimationFrame(step);
+                };
+                playAnimId = requestAnimationFrame(step);
+            }
+        }
+        playBtn.addEventListener('click', togglePlay);
+
+        timeSlider.addEventListener('input', (e) => {
+            setHourOffset(parseFloat(e.target.value));
         });
 
         window.addEventListener('resize', () => {
