@@ -3848,7 +3848,8 @@
                 isEeg,
                 isGrossOptionB,
                 hasSolarSpitzen,
-                eegRate
+                eegRate,
+                rep
             };
         }
 
@@ -4647,14 +4648,16 @@
                     let batHoverStr = '';
                     if (isShiftActive && simSlots && simSlots[h]) {
                         const s = simSlots[h];
-                        if (s.shiftedOut > 0.01) {
-                            batHoverStr = `+${s.shiftedOut.toFixed(1)} (${s.socEnd.toFixed(1)})`;
-                        } else if (s.shiftedIn > 0.01) {
-                            batHoverStr = `-${s.shiftedIn.toFixed(1)} (${s.socEnd.toFixed(1)})`;
-                        } else if (s.socEnd > 0.01) {
-                            batHoverStr = `${s.socEnd.toFixed(1)} kWh`;
+                        const netBat = (s.shiftedOut || 0) - (s.shiftedIn || 0);
+                        const soc = s.socEnd || 0;
+                        if (netBat > 0.01) {
+                            batHoverStr = `+${netBat.toFixed(1)} (${soc.toFixed(1)})`;
+                        } else if (netBat < -0.01) {
+                            batHoverStr = `-${(-netBat).toFixed(1)} (${soc.toFixed(1)})`;
+                        } else if (soc > 0.01) {
+                            batHoverStr = `0.0 (${soc.toFixed(1)})`;
                         } else {
-                            batHoverStr = `0.0 kWh`;
+                            batHoverStr = `0.0 (0.0)`;
                         }
                     } else if (rep && ((rep.chargeEnergyToTal && rep.chargeEnergyToTal[h]) || (rep.dischargeEnergyToTal && rep.dischargeEnergyToTal[h]))) {
                         const c = (rep.chargeEnergyToTal && rep.chargeEnergyToTal[h]) || 0;
@@ -4755,15 +4758,15 @@
 
                     let batHtml = '<span style="color:#555;">--</span>';
                     if (isShiftActive && simSlots && simSlots[h]) {
-                        const sOut = simSlots[h].shiftedOut || 0;
-                        const sIn = simSlots[h].shiftedIn || 0;
-                        const soc = simSlots[h].socEnd || 0;
-                        if (sOut > 0.01) {
-                            batHtml = `<span style="color:#00ff88; font-weight:600;" title="Laden: +${sOut.toFixed(2)} kWh (SOC: ${soc.toFixed(1)} kWh)">+${sOut.toFixed(1)} <span style="font-size:7.5px; color:#aaa;">(${soc.toFixed(1)})</span></span>`;
-                        } else if (sIn > 0.01) {
-                            batHtml = `<span style="color:#00e5ff; font-weight:600;" title="Entladen: -${sIn.toFixed(2)} kWh (SOC: ${soc.toFixed(1)} kWh)">-${sIn.toFixed(1)} <span style="font-size:7.5px; color:#aaa;">(${soc.toFixed(1)})</span></span>`;
+                        const s = simSlots[h];
+                        const netBat = (s.shiftedOut || 0) - (s.shiftedIn || 0);
+                        const soc = s.socEnd || 0;
+                        if (netBat > 0.01) {
+                            batHtml = `<span style="color:#00ff88; font-weight:600;" title="Laden: +${netBat.toFixed(2)} kWh (SOC: ${soc.toFixed(1)} kWh)">+${netBat.toFixed(1)} <span style="font-size:7.5px; color:#aaa;">(${soc.toFixed(1)})</span></span>`;
+                        } else if (netBat < -0.01) {
+                            batHtml = `<span style="color:#00e5ff; font-weight:600;" title="Entladen: -${(-netBat).toFixed(2)} kWh (SOC: ${soc.toFixed(1)} kWh)">-${(-netBat).toFixed(1)} <span style="font-size:7.5px; color:#aaa;">(${soc.toFixed(1)})</span></span>`;
                         } else if (soc > 0.01) {
-                            batHtml = `<span style="color:#888;" title="Speicherstand: ${soc.toFixed(2)} kWh">${soc.toFixed(1)}</span>`;
+                            batHtml = `<span style="color:#888;" title="Speicherstand: ${soc.toFixed(2)} kWh">0.0 <span style="font-size:7.5px; color:#666;">(${soc.toFixed(1)})</span></span>`;
                         } else {
                             batHtml = `<span style="color:#444;">0.0</span>`;
                         }
