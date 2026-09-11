@@ -311,25 +311,43 @@ if api_key and not metrics:
 
             report_vars = ["feedin", "gridConsumption", "chargeEnergyToTal", "dischargeEnergyToTal", "generation", "loads"]
 
-            # 1. Monatsabfragen für August und September 2026 (liefert aggregierte Tagessummen)
-            for m in [8, 9]:
-                if m > now.month and now.year == 2026:
-                    continue
-                time.sleep(1.1)
+            # 1. Monatsabfragen ab Mai 2025 bis heute (liefert aggregierte Tagessummen in je 1 API-Call pro Monat)
+            # Insgesamt max. 17 API-Aufrufe (< 1,2% des 1.440er Tageslimits), mit Caching-Check
+            months_to_query = []
+            for y in [2025, 2026]:
+                start_m = 5 if y == 2025 else 1
+                end_m = 12 if y == 2025 else min(now.month, 12)
+                for m in range(start_m, end_m + 1):
+                    # Wenn der Monat in der Vergangenheit liegt und bereits im Archiv ist, überspringen
+                    prefix = f"{y}-{m:02d}-"
+                    days_in_m = 31 if m in [1, 3, 5, 7, 8, 10, 12] else (28 if m == 2 else 30)
+                    is_current_or_prev = (y == now.year and (m == now.month or m == now.month - 1))
+                    if is_current_or_prev:
+                        months_to_query.append((y, m))
+                    else:
+                        cached_days = sum(1 for d in range(1, days_in_m + 1) if f"{prefix}{d:02d}" in daily_reports and daily_reports[f"{prefix}{d:02d}"].get("totals", {}).get("generation", 0) > 0)
+                        if cached_days < days_in_m - 2:
+                            months_to_query.append((y, m))
+
+            print(f"FoxESS Monatsabfragen geplant: {len(months_to_query)} Monate ({months_to_query})")
+            for (y, m) in months_to_query:
+                time.sleep(1.2)
                 m_res = call_fox_openapi("/op/v0/device/report/query", {
-                    "sn": sn, "year": 2026, "month": m, "dimension": "month",
+                    "sn": sn, "year": y, "month": m, "dimension": "month",
                     "variables": report_vars
                 })
                 if m_res and m_res.get("errno") in [0, "0"]:
                     m_list = m_res.get("result", [])
-                    days_in_m = 31 if m == 8 else 30
+                    days_in_m = 31 if m in [1, 3, 5, 7, 8, 10, 12] else (28 if m == 2 else 30)
                     for d_idx in range(days_in_m):
                         day_num = d_idx + 1
-                        if m == now.month and day_num > now.day:
+                        if y == now.year and m == now.month and day_num > now.day:
                             break
-                        d_key = f"2026-{m:02d}-{day_num:02d}"
+                        d_key = f"{y}-{m:02d}-{day_num:02d}"
                         if d_key not in daily_reports:
                             daily_reports[d_key] = {"hours": list(range(24)), "totals": {}}
+                        if "totals" not in daily_reports[d_key]:
+                            daily_reports[d_key]["totals"] = {}
                         for item in m_list:
                             v_name = item.get("variable")
                             vals = item.get("values", [])
@@ -337,7 +355,7 @@ if api_key and not metrics:
                                 daily_reports[d_key]["totals"][v_name] = round(float(vals[d_idx]), 2)
 
             # 2. Stündliche 24h-Vektoren abfragen:
-            # Heute und gestern immer aktualisieren, fehlende Tage ab 01.08.2026 schrittweise nachladen
+            # Heute und gestern immer aktualisieren, fehlende Tage der letzten 14 Tage schrittweise nachladen
             days_to_fetch = [0, 1]  # Heute und gestern
             start_date = datetime(2026, 8, 1, tzinfo=now.tzinfo)
             cur = now - timedelta(days=2)

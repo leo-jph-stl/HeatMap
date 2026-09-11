@@ -1295,7 +1295,10 @@
         </div>
 
         <div id="pvMonthlyBody">
-            <!-- Monats-Auswahl Reiter (Pills: August 2026, September 2026, Gesamt) -->
+            <!-- Jahres-Filter Reiter (Tabs: 2026, 2025, Alle) -->
+            <div id="pvMonthlyYearTabs" style="display: flex; gap: 5px; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 5px;"></div>
+
+            <!-- Monats-Auswahl Reiter (Pills gefiltert nach gewähltem Jahr / Zeitraum) -->
             <div id="pvMonthlyPills" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 8px; scrollbar-width: none;"></div>
 
             <!-- Modell-Badge & Info Zeile -->
@@ -1325,10 +1328,10 @@
                 </div>
             </div>
 
-            <!-- Tägliches Balkendiagramm SVG -->
+            <!-- Tägliches / Monatliches Balkendiagramm SVG -->
             <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 8px 8px; margin-bottom: 10px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                    <div style="font-size: 10px; font-weight: 600; color: #bbb;">Täglicher Ertrags- &amp; Erlösverlauf</div>
+                    <div id="pvMonthChartTitle" style="font-size: 10px; font-weight: 600; color: #bbb;">Täglicher Ertrags- &amp; Erlösverlauf</div>
                     <div id="pvMonthChartHoverInfo" style="font-size: 9px; color: #ffdb00; font-weight: 600;">Klick auf Tag für 24h-Detail</div>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; font-size: 8.5px; margin-bottom: 6px;">
@@ -1347,17 +1350,17 @@
                 </div>
             </div>
 
-            <!-- Tägliche Aufschlüsselungstabelle -->
+            <!-- Tägliche / Monatliche Aufschlüsselungstabelle -->
             <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 7px 8px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                    <div style="font-size: 10px; font-weight: 600; color: #bbb;">Tages-Bilanzübersicht</div>
-                    <div style="font-size: 8px; color: #777;">Zeile anklicken für 24h-Detailanalyse</div>
+                    <div id="pvMonthTableTitle" style="font-size: 10px; font-weight: 600; color: #bbb;">Tages-Bilanzübersicht</div>
+                    <div id="pvMonthTableSub" style="font-size: 8px; color: #777;">Zeile anklicken für 24h-Detailanalyse</div>
                 </div>
                 <div style="max-height: 220px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,219,0,0.25) transparent;">
                     <table style="width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 9.5px;">
                         <thead style="position: sticky; top: 0; z-index: 5;">
                             <tr style="color: #888; text-align: right;">
-                                <th style="width: 68px; text-align: left; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Datum</th>
+                                <th id="pvMonthTableCol1Header" style="width: 68px; text-align: left; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Datum</th>
                                 <th style="width: 48px; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2); color: #ffdb00;">PV kWh</th>
                                 <th style="width: 48px; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2); color: #b388ff;">Einsp.</th>
                                 <th style="width: 46px; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2); color: #00ff88;">Speicher</th>
@@ -2809,12 +2812,17 @@
             }
         }
 
-        // Ermittelt den Day-Ahead-Strompreis für einen konkreten Zeitpunkt (Stundenintervall)
+        // Ermittelt den Day-Ahead-Strompreis für einen konkreten Zeitpunkt (Stundenintervall) via schnellem O(log N) Binärsuch-Algorithmus
         function getPriceAtTime(t) {
             if (!priceData || !priceData.length) return null;
-            for (let i = 0; i < priceData.length; i++) {
-                const r = priceData[i];
+            let low = 0;
+            let high = priceData.length - 1;
+            while (low <= high) {
+                const mid = (low + high) >> 1;
+                const r = priceData[mid];
                 if (t >= r.t && t < r.endT) return r;
+                if (t < r.t) high = mid - 1;
+                else low = mid + 1;
             }
             if (t === priceData[priceData.length - 1].endT) return priceData[priceData.length - 1];
             return null;
@@ -4038,12 +4046,11 @@
             const scenario = applyPvScenarioToDayData(blendedDayPts, blendedRep);
             const { factor, isScenarioActive, genArr, feedArr, loadArr, gridArr } = scenario;
 
-            // 2. Stündliche Börsenpreise
-            const dayPrices = (priceData || []).filter(p => p.endT > dayStart && p.t < dayEnd);
+            // 2. Stündliche Börsenpreise (per schnellem O(log N) Binärsuch-Lookup)
             const hourlyPrices = [];
             for (let h = 0; h < 24; h++) {
                 const slotT = dayStart + h * 3600 * 1000 + 1800 * 1000;
-                const match = dayPrices.find(p => p.t <= slotT && p.endT > slotT);
+                const match = getPriceAtTime(slotT);
                 hourlyPrices.push(match ? match.ctKwh : null);
             }
 
@@ -5253,10 +5260,11 @@
             }
         }
 
-        // --- FoxESS Monats- & Langzeitbilanz (Companion Container) ---
+        // --- FoxESS Monats- & Langzeitbilanz (17-Monats-Hierarchie: Jahre, Monate & 24h-Drill-Down) ---
+        let currentMonthlyYear = '2026';
         let currentMonthlyActiveKey = '2026-09';
 
-        function showPvMonthly(monthKey) {
+        function showPvMonthly(periodKey, targetYear) {
             const container = document.getElementById('pv-monthly-container');
             if (!container) return;
             container.style.display = 'block';
@@ -5265,12 +5273,15 @@
                 closePvHistory();
             }
 
-            if (monthKey) {
-                currentMonthlyActiveKey = monthKey;
+            if (periodKey) {
+                currentMonthlyActiveKey = periodKey;
             } else if (!currentMonthlyActiveKey) {
                 currentMonthlyActiveKey = '2026-09';
             }
-            renderPvMonthlyContainer(currentMonthlyActiveKey);
+            if (targetYear) {
+                currentMonthlyYear = targetYear;
+            }
+            renderPvMonthlyContainer(currentMonthlyActiveKey, currentMonthlyYear);
         }
 
         function closePvMonthly() {
@@ -5280,12 +5291,27 @@
             }
         }
 
-        function computeMonthEnergyAndRevenue(monthKey) {
+        function computeMonthEnergyAndRevenue(periodKey) {
             const allKeys = getAvailableHistoryDateKeys();
-            const dateKeys = (monthKey === 'all') 
-                ? allKeys 
-                : allKeys.filter(k => k.startsWith(monthKey));
-            
+            if (!allKeys.length) return null;
+
+            let isMultiMonth = false;
+            let dateKeys = [];
+
+            if (!periodKey || periodKey === 'all') {
+                periodKey = 'all';
+                dateKeys = allKeys;
+                isMultiMonth = true;
+            } else if (periodKey.length === 4) {
+                // Jahres-Filter, z.B. '2025' oder '2026'
+                dateKeys = allKeys.filter(k => k.startsWith(periodKey));
+                isMultiMonth = true;
+            } else {
+                // Einzelner Monat, z.B. '2026-09'
+                dateKeys = allKeys.filter(k => k.startsWith(periodKey));
+                isMultiMonth = false;
+            }
+
             if (!dateKeys.length) return null;
 
             let totalGen = 0;
@@ -5299,6 +5325,7 @@
             let totalLoss = 0;
 
             const daysData = [];
+            const monthGroups = {};
 
             for (const dKey of dateKeys) {
                 const dayData = computeDayEnergyAndRevenue(dKey, false);
@@ -5328,6 +5355,62 @@
                     conversionLossKwh: dayData.conversionLossKwh,
                     isTodayHybrid: dayData.isTodayHybrid
                 });
+
+                if (isMultiMonth) {
+                    const mKey = dKey.slice(0, 7);
+                    if (!monthGroups[mKey]) {
+                        monthGroups[mKey] = {
+                            monthKey: mKey,
+                            daysCount: 0,
+                            genKwh: 0,
+                            initialFeedKwh: 0,
+                            effectiveFeedKwh: 0,
+                            loadKwh: 0,
+                            gridKwh: 0,
+                            totalEur: 0,
+                            chargedKwh: 0,
+                            dischargedKwh: 0,
+                            conversionLossKwh: 0
+                        };
+                    }
+                    const mg = monthGroups[mKey];
+                    mg.daysCount++;
+                    mg.genKwh += dayData.genKwh;
+                    mg.initialFeedKwh += dayData.initialFeedKwh;
+                    mg.effectiveFeedKwh += dayData.effectiveFeedKwh;
+                    mg.loadKwh += dayData.loadKwh;
+                    mg.gridKwh += dayData.gridKwh;
+                    mg.totalEur += dayData.totalEur;
+                    mg.chargedKwh += dayData.chargedKwh;
+                    mg.dischargedKwh += dayData.dischargedKwh;
+                    mg.conversionLossKwh += dayData.conversionLossKwh;
+                }
+            }
+
+            const monthlyAggregates = [];
+            if (isMultiMonth) {
+                const sortedMKeys = Object.keys(monthGroups).sort();
+                sortedMKeys.forEach(mKey => {
+                    const mg = monthGroups[mKey];
+                    const [y, mon] = mKey.split('-');
+                    const dObj = new Date(parseInt(y), parseInt(mon) - 1, 1);
+                    const shortLabel = dObj.toLocaleDateString('de-DE', { month: 'short', year: '2-digit' });
+                    const fullLabel = dObj.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+                    const avgRate = (mg.effectiveFeedKwh > 0.01) ? (mg.totalEur / mg.effectiveFeedKwh * 100) : 0;
+                    const selfKwh = Math.max(0, mg.genKwh - mg.initialFeedKwh);
+                    const selfPct = (mg.genKwh > 0.1) ? Math.min(100, Math.round((selfKwh / mg.genKwh) * 100)) : 0;
+                    const feedPct = (mg.genKwh > 0.1) ? Math.min(100, Math.round((mg.effectiveFeedKwh / mg.genKwh) * 100)) : 0;
+
+                    monthlyAggregates.push({
+                        ...mg,
+                        shortLabel,
+                        fullLabel,
+                        avgRate,
+                        selfKwh,
+                        selfPct,
+                        feedPct
+                    });
+                });
             }
 
             const selfKwh = Math.max(0, totalGen - totalInitialFeed);
@@ -5343,9 +5426,11 @@
             const realRefEur = totalEur / factor;
 
             return {
-                monthKey,
+                periodKey,
+                isMultiMonth,
                 daysCount: daysData.length,
                 daysData,
+                monthlyAggregates,
                 totalGen,
                 totalInitialFeed,
                 totalEffectiveFeed,
@@ -5368,68 +5453,135 @@
             };
         }
 
-        function renderPvMonthlyContainer(activeMonthKey) {
+        function renderPvMonthlyContainer(activePeriodKey, targetYear) {
             const container = document.getElementById('pv-monthly-container');
             if (!container) return;
 
             const allKeys = getAvailableHistoryDateKeys();
             if (!allKeys.length) return;
 
-            // Verfügbare Monate ermitteln (z.B. '2026-08', '2026-09')
+            // Verfügbare Monate und Jahre ermitteln (z.B. '2025-05' ... '2026-09')
             const monthSet = new Set();
-            allKeys.forEach(k => monthSet.add(k.slice(0, 7)));
+            const yearSet = new Set();
+            allKeys.forEach(k => {
+                monthSet.add(k.slice(0, 7));
+                yearSet.add(k.slice(0, 4));
+            });
             const distinctMonths = Array.from(monthSet).sort();
+            const distinctYears = Array.from(yearSet).sort().reverse(); // [2026, 2025]
 
-            if (!activeMonthKey || (!distinctMonths.includes(activeMonthKey) && activeMonthKey !== 'all')) {
-                activeMonthKey = distinctMonths[distinctMonths.length - 1];
+            // Jahres-Synchronisation
+            if (targetYear) {
+                currentMonthlyYear = targetYear;
+            } else if (activePeriodKey === 'all') {
+                currentMonthlyYear = 'all';
+            } else if (activePeriodKey && activePeriodKey.length === 4) {
+                currentMonthlyYear = activePeriodKey;
+            } else if (activePeriodKey && activePeriodKey.length === 7) {
+                currentMonthlyYear = activePeriodKey.slice(0, 4);
             }
-            currentMonthlyActiveKey = activeMonthKey;
 
-            // 1. Monats-Pills rendern
+            if (!activePeriodKey) {
+                activePeriodKey = distinctMonths[distinctMonths.length - 1];
+            }
+            currentMonthlyActiveKey = activePeriodKey;
+
+            // 1. Jahres-Reiter (Tabs) rendern
+            const yearTabsEl = document.getElementById('pvMonthlyYearTabs');
+            if (yearTabsEl) {
+                const yearTabs = distinctYears.map(y => ({
+                    key: y,
+                    label: y
+                }));
+                yearTabs.push({ key: 'all', label: `Alle (${distinctMonths.length} Monate)` });
+
+                yearTabsEl.innerHTML = yearTabs.map(yt => {
+                    const isTabActive = (yt.key === currentMonthlyYear);
+                    const bg = isTabActive ? 'rgba(255, 219, 0, 0.15)' : 'rgba(255, 255, 255, 0.04)';
+                    const color = isTabActive ? '#ffdb00' : '#888';
+                    const border = isTabActive ? '1px solid #ffdb00' : '1px solid rgba(255, 255, 255, 0.08)';
+                    const weight = isTabActive ? '700' : '500';
+                    return `<button type="button" data-year="${yt.key}" class="pv-year-tab-btn" style="background:${bg}; color:${color}; border:${border}; font-weight:${weight}; padding:3px 9px; border-radius:6px; font-size:9.5px; cursor:pointer; transition:all 0.15s ease;">${yt.label}</button>`;
+                }).join('');
+
+                yearTabsEl.querySelectorAll('.pv-year-tab-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const y = btn.getAttribute('data-year');
+                        currentMonthlyYear = y;
+                        if (y === 'all') {
+                            currentMonthlyActiveKey = 'all';
+                            renderPvMonthlyContainer('all', 'all');
+                        } else {
+                            // Wähle neuesten verfügbaren Monat dieses Jahres oder das Gesamtjahr
+                            const monthsOfY = distinctMonths.filter(m => m.startsWith(y));
+                            const fallbackMonth = monthsOfY.length ? monthsOfY[monthsOfY.length - 1] : y;
+                            const nextKey = (currentMonthlyActiveKey && currentMonthlyActiveKey.startsWith(y))
+                                ? currentMonthlyActiveKey
+                                : fallbackMonth;
+                            renderPvMonthlyContainer(nextKey, y);
+                        }
+                    });
+                });
+            }
+
+            // 2. Monats-Pills rendern (gefiltert nach gewähltem Jahr)
             const pillsEl = document.getElementById('pvMonthlyPills');
             if (pillsEl) {
-                const pills = distinctMonths.map(m => {
+                const filteredMonths = (currentMonthlyYear === 'all')
+                    ? distinctMonths
+                    : distinctMonths.filter(m => m.startsWith(currentMonthlyYear));
+
+                const pills = filteredMonths.map(m => {
                     const [y, mon] = m.split('-');
                     const dObj = new Date(parseInt(y), parseInt(mon) - 1, 1);
-                    const label = dObj.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+                    const label = (currentMonthlyYear === 'all')
+                        ? dObj.toLocaleDateString('de-DE', { month: 'short', year: '2-digit' })
+                        : dObj.toLocaleDateString('de-DE', { month: 'short' });
                     return { key: m, label };
                 });
-                pills.push({ key: 'all', label: `Gesamt (${allKeys.length} Tage)` });
+
+                if (currentMonthlyYear === 'all') {
+                    pills.unshift({ key: 'all', label: `Gesamt (17 Mo.)` });
+                } else {
+                    pills.push({ key: currentMonthlyYear, label: `Jahr ${currentMonthlyYear}` });
+                }
 
                 pillsEl.innerHTML = pills.map(p => {
-                    const isActive = (p.key === activeMonthKey);
+                    const isActive = (p.key === currentMonthlyActiveKey);
                     const bg = isActive ? 'linear-gradient(135deg, #ffdb00, #ff9100)' : 'rgba(255,255,255,0.06)';
                     const color = isActive ? '#0a0a0f' : '#bbb';
                     const border = isActive ? '1px solid #ffdb00' : '1px solid rgba(255,255,255,0.1)';
                     const weight = isActive ? '700' : '500';
-                    return `<button type="button" data-month="${p.key}" class="pv-month-pill-btn" style="background:${bg}; color:${color}; border:${border}; font-weight:${weight}; padding:3px 10px; border-radius:12px; font-size:10px; cursor:pointer; white-space:nowrap; transition:all 0.15s ease;">${p.label}</button>`;
+                    return `<button type="button" data-month="${p.key}" class="pv-month-pill-btn" style="background:${bg}; color:${color}; border:${border}; font-weight:${weight}; padding:3px 9px; border-radius:12px; font-size:9.5px; cursor:pointer; white-space:nowrap; transition:all 0.15s ease;">${p.label}</button>`;
                 }).join('');
 
                 pillsEl.querySelectorAll('.pv-month-pill-btn').forEach(btn => {
                     btn.addEventListener('click', () => {
                         const mKey = btn.getAttribute('data-month');
-                        renderPvMonthlyContainer(mKey);
+                        renderPvMonthlyContainer(mKey, currentMonthlyYear);
                     });
                 });
             }
 
-            const monthData = computeMonthEnergyAndRevenue(activeMonthKey);
+            const monthData = computeMonthEnergyAndRevenue(currentMonthlyActiveKey);
             if (!monthData) return;
 
-            // 2. Subtitle
+            // 3. Subtitle dynamisch aktualisieren
             const subEl = document.getElementById('pvMonthlySubtitle');
             if (subEl) {
-                if (activeMonthKey === 'all') {
-                    subEl.innerText = `${monthData.daysCount} Tage analysiert • August & September 2026`;
+                if (currentMonthlyActiveKey === 'all') {
+                    subEl.innerText = `${monthData.daysCount} Tage analysiert (01.05.2025 – 11.09.2026) • 17 Monate Langzeitbilanz`;
+                } else if (currentMonthlyActiveKey.length === 4) {
+                    subEl.innerText = `Jahr ${currentMonthlyActiveKey} (${monthData.daysCount} Tage) • Jahresbilanz & Erlöse`;
                 } else {
-                    const [y, mon] = activeMonthKey.split('-');
+                    const [y, mon] = currentMonthlyActiveKey.split('-');
                     const dObj = new Date(parseInt(y), parseInt(mon) - 1, 1);
                     const name = dObj.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
                     subEl.innerText = `${name} (${monthData.daysCount} Tage) • Extrapolation & Erlöse`;
                 }
             }
 
-            // 3. Dynamisches Modell-Badge
+            // 4. Dynamisches Modell-Badge
             const modelBadgeEl = document.getElementById('pvMonthlyModelBadge');
             if (modelBadgeEl) {
                 const isEeg = (pvRevenueConfig.mode === 'eeg');
@@ -5455,7 +5607,7 @@
                 `;
             }
 
-            // 4. KPI-Kacheln aktualisieren
+            // 5. KPI-Kacheln aktualisieren
             const kpiGenEl = document.getElementById('pvMonthKpiGen');
             const kpiGenRefEl = document.getElementById('pvMonthKpiGenRef');
             const kpiFeedEl = document.getElementById('pvMonthKpiFeed');
@@ -5480,31 +5632,55 @@
             if (kpiRevEl) kpiRevEl.innerText = `${monthData.totalEur.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
             if (kpiAvgRateEl) kpiAvgRateEl.innerText = `Ø ${monthData.avgRate.toFixed(2).replace('.', ',')} ct/kWh`;
 
-            // 5. Tägliches SVG Balkendiagramm rendern
+            // 6. Header-Texte für Diagramm und Tabelle anpassen
+            const chartTitleEl = document.getElementById('pvMonthChartTitle');
+            const chartHoverInfoEl = document.getElementById('pvMonthChartHoverInfo');
+            const tableTitleEl = document.getElementById('pvMonthTableTitle');
+            const tableSubEl = document.getElementById('pvMonthTableSub');
+            const col1HeaderEl = document.getElementById('pvMonthTableCol1Header');
+
+            if (monthData.isMultiMonth) {
+                if (chartTitleEl) chartTitleEl.innerText = 'Monatlicher Ertrags- & Erlösverlauf';
+                if (chartHoverInfoEl) chartHoverInfoEl.innerText = 'Klick auf Balken für Monats-Detail';
+                if (tableTitleEl) tableTitleEl.innerText = 'Monats-Bilanzübersicht';
+                if (tableSubEl) tableSubEl.innerText = 'Zeile anklicken für Monats-Detail';
+                if (col1HeaderEl) col1HeaderEl.innerText = 'Monat';
+            } else {
+                if (chartTitleEl) chartTitleEl.innerText = 'Täglicher Ertrags- & Erlösverlauf';
+                if (chartHoverInfoEl) chartHoverInfoEl.innerText = 'Klick auf Tag für 24h-Detail';
+                if (tableTitleEl) tableTitleEl.innerText = 'Tages-Bilanzübersicht';
+                if (tableSubEl) tableSubEl.innerText = 'Zeile anklicken für 24h-Detailanalyse';
+                if (col1HeaderEl) col1HeaderEl.innerText = 'Datum';
+            }
+
+            // 7. Balkendiagramm SVG rendern (Monatsbalken bei Multi-Monat, Tagesbalken bei Einzelmonat)
             renderPvMonthBarChart(monthData);
 
-            // 6. Tägliche Bilanzübersichtstabelle rendern
+            // 8. Bilanzübersichtstabelle rendern
             renderPvMonthTable(monthData);
         }
 
         function renderPvMonthBarChart(monthData) {
             const svg = document.getElementById('pvMonthBarChart');
             const hoverInfo = document.getElementById('pvMonthChartHoverInfo');
-            if (!svg || !monthData || !monthData.daysData.length) return;
+            if (!svg || !monthData) return;
 
-            const days = monthData.daysData; // Chronologisch von links nach rechts
-            const N = days.length;
+            const isMulti = monthData.isMultiMonth;
+            const items = isMulti ? monthData.monthlyAggregates : monthData.daysData;
+            if (!items || !items.length) return;
+
+            const N = items.length;
             const W = 400;
             const H = 120;
-            const padL = 32;
-            const padR = 32;
+            const padL = 34;
+            const padR = 34;
             const padT = 14;
             const padB = 22;
             const plotW = W - padL - padR;
             const plotH = H - padT - padB;
 
-            const maxKwh = Math.max(...days.map(d => Math.max(d.genKwh, d.feedKwh)), 10) * 1.08;
-            const maxEur = Math.max(...days.map(d => d.totalEur), 1) * 1.12;
+            const maxKwh = Math.max(...items.map(it => Math.max(it.genKwh, isMulti ? it.effectiveFeedKwh : it.feedKwh)), 10) * 1.08;
+            const maxEur = Math.max(...items.map(it => it.totalEur), 1) * 1.12;
 
             let svgContent = '';
 
@@ -5524,40 +5700,50 @@
             svgContent += `<line x1="${padL}" y1="${padT + plotH}" x2="${W - padR}" y2="${padT + plotH}" stroke="rgba(255,255,255,0.18)" />`;
 
             const slotW = plotW / N;
-            const barW = Math.max(2, Math.min(7, slotW * 0.36));
-
+            const barW = Math.max(2, Math.min(8, slotW * 0.36));
             const revenuePoints = [];
 
-            days.forEach((day, i) => {
+            items.forEach((item, i) => {
                 const xCenter = padL + (i + 0.5) * slotW;
+                const genVal = item.genKwh;
+                const feedVal = isMulti ? item.effectiveFeedKwh : item.feedKwh;
+                const eurVal = item.totalEur;
 
                 // Erzeugungsbalken (gold)
-                const hGen = Math.max(0, (day.genKwh / maxKwh) * plotH);
+                const hGen = Math.max(0, (genVal / maxKwh) * plotH);
                 const yGen = padT + plotH - hGen;
                 const xGen = xCenter - barW - 0.5;
 
                 // Einspeisebalken (lila)
-                const hFeed = Math.max(0, (day.feedKwh / maxKwh) * plotH);
+                const hFeed = Math.max(0, (feedVal / maxKwh) * plotH);
                 const yFeed = padT + plotH - hFeed;
                 const xFeed = xCenter + 0.5;
 
                 // Erlöspunkt (€)
-                const yEur = padT + plotH - Math.max(0, (day.totalEur / maxEur) * plotH);
-                revenuePoints.push({ x: xCenter, y: yEur, day });
+                const yEur = padT + plotH - Math.max(0, (eurVal / maxEur) * plotH);
+                revenuePoints.push({ x: xCenter, y: yEur, item });
 
                 svgContent += `
-                    <g class="pv-month-day-group" data-idx="${i}" data-day="${day.dateKey}">
+                    <g class="pv-month-bar-group" data-idx="${i}">
                         <rect x="${xGen.toFixed(1)}" y="${yGen.toFixed(1)}" width="${barW.toFixed(1)}" height="${hGen.toFixed(1)}" fill="#ffdb00" fill-opacity="0.45" stroke="#ffdb00" stroke-width="0.8" rx="1" />
                         <rect x="${xFeed.toFixed(1)}" y="${yFeed.toFixed(1)}" width="${barW.toFixed(1)}" height="${hFeed.toFixed(1)}" fill="#b388ff" fill-opacity="0.55" stroke="#b388ff" stroke-width="0.8" rx="1" />
                     </g>
                 `;
 
-                // X-Achsenbeschriftung (Datum)
-                const showLabel = (N <= 15) ? true : (N <= 31 ? (i % 3 === 0 || i === N - 1) : (i % 5 === 0 || i === N - 1));
-                if (showLabel) {
-                    const dObj = new Date(day.dateKey + 'T12:00:00');
-                    const dayLabel = String(dObj.getDate()).padStart(2, '0');
-                    svgContent += `<text x="${xCenter.toFixed(1)}" y="${(H - 4).toFixed(1)}" fill="#888" font-size="7.5" text-anchor="middle" font-family="monospace">${dayLabel}</text>`;
+                // X-Achsenbeschriftung
+                if (isMulti) {
+                    const showLabel = (N <= 12) ? true : (i % 2 === 0 || i === N - 1);
+                    if (showLabel) {
+                        const labelText = item.shortLabel;
+                        svgContent += `<text x="${xCenter.toFixed(1)}" y="${(H - 4).toFixed(1)}" fill="#888" font-size="7" text-anchor="middle" font-family="monospace">${labelText}</text>`;
+                    }
+                } else {
+                    const showLabel = (N <= 15) ? true : (N <= 31 ? (i % 3 === 0 || i === N - 1) : (i % 5 === 0 || i === N - 1));
+                    if (showLabel) {
+                        const dObj = new Date(item.dateKey + 'T12:00:00');
+                        const dayLabel = String(dObj.getDate()).padStart(2, '0');
+                        svgContent += `<text x="${xCenter.toFixed(1)}" y="${(H - 4).toFixed(1)}" fill="#888" font-size="7.5" text-anchor="middle" font-family="monospace">${dayLabel}</text>`;
+                    }
                 }
             });
 
@@ -5566,15 +5752,16 @@
                 const pointsStr = revenuePoints.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
                 svgContent += `<polyline points="${pointsStr}" fill="none" stroke="#00ff88" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" />`;
                 revenuePoints.forEach(p => {
-                    svgContent += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2" fill="#00ff88" stroke="#121218" stroke-width="1" />`;
+                    svgContent += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.2" fill="#00ff88" stroke="#121218" stroke-width="1" />`;
                 });
             }
 
-            // Interaktive Klick- & Hover-Targets pro Tag
-            days.forEach((day, i) => {
+            // Interaktive Klick- & Hover-Targets
+            items.forEach((item, i) => {
                 const xSlotStart = padL + i * slotW;
+                const targetKey = isMulti ? item.monthKey : item.dateKey;
                 svgContent += `
-                    <rect class="pv-month-hit-target" data-day="${day.dateKey}" data-idx="${i}" x="${xSlotStart.toFixed(1)}" y="0" width="${slotW.toFixed(1)}" height="${H}" fill="transparent" style="cursor:pointer;" />
+                    <rect class="pv-month-hit-target" data-key="${targetKey}" data-idx="${i}" x="${xSlotStart.toFixed(1)}" y="0" width="${slotW.toFixed(1)}" height="${H}" fill="transparent" style="cursor:pointer;" />
                 `;
             });
 
@@ -5582,34 +5769,42 @@
 
             // Event-Handling für Hover & Klick
             svg.querySelectorAll('.pv-month-hit-target').forEach(hitEl => {
-                const dKey = hitEl.getAttribute('data-day');
+                const key = hitEl.getAttribute('data-key');
                 const idx = parseInt(hitEl.getAttribute('data-idx'));
-                const day = days[idx];
+                const item = items[idx];
 
                 hitEl.addEventListener('mouseenter', () => {
-                    if (hoverInfo && day) {
-                        const dObj = new Date(day.dateKey + 'T12:00:00');
-                        const dateFormatted = dObj.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
-                        hoverInfo.innerHTML = `<b>${dateFormatted}:</b> PV ${day.genKwh.toFixed(1)} kWh | Einsp. ${day.feedKwh.toFixed(1)} kWh | <span style="color:#00ff88;">${day.totalEur.toFixed(2).replace('.', ',')} €</span> (${day.avgRate.toFixed(1)} ct) ➔`;
+                    if (hoverInfo && item) {
+                        if (isMulti) {
+                            hoverInfo.innerHTML = `<b>${item.fullLabel}:</b> PV ${Math.round(item.genKwh)} kWh | Einsp. ${Math.round(item.effectiveFeedKwh)} kWh | <span style="color:#00ff88;">${item.totalEur.toFixed(2).replace('.', ',')} €</span> (${item.avgRate.toFixed(1)} ct) ➔`;
+                        } else {
+                            const dObj = new Date(item.dateKey + 'T12:00:00');
+                            const dateFormatted = dObj.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+                            hoverInfo.innerHTML = `<b>${dateFormatted}:</b> PV ${item.genKwh.toFixed(1)} kWh | Einsp. ${item.feedKwh.toFixed(1)} kWh | <span style="color:#00ff88;">${item.totalEur.toFixed(2).replace('.', ',')} €</span> (${item.avgRate.toFixed(1)} ct) ➔`;
+                        }
                     }
-                    const dayGroup = svg.querySelector(`.pv-month-day-group[data-idx="${idx}"]`);
-                    if (dayGroup) {
-                        dayGroup.querySelectorAll('rect').forEach(r => r.setAttribute('stroke-width', '1.8'));
+                    const barGroup = svg.querySelector(`.pv-month-bar-group[data-idx="${idx}"]`);
+                    if (barGroup) {
+                        barGroup.querySelectorAll('rect').forEach(r => r.setAttribute('stroke-width', '1.8'));
                     }
                 });
 
                 hitEl.addEventListener('mouseleave', () => {
                     if (hoverInfo) {
-                        hoverInfo.innerText = 'Klick auf Tag für 24h-Detail';
+                        hoverInfo.innerText = isMulti ? 'Klick auf Balken für Monats-Detail' : 'Klick auf Tag für 24h-Detail';
                     }
-                    const dayGroup = svg.querySelector(`.pv-month-day-group[data-idx="${idx}"]`);
-                    if (dayGroup) {
-                        dayGroup.querySelectorAll('rect').forEach(r => r.setAttribute('stroke-width', '0.8'));
+                    const barGroup = svg.querySelector(`.pv-month-bar-group[data-idx="${idx}"]`);
+                    if (barGroup) {
+                        barGroup.querySelectorAll('rect').forEach(r => r.setAttribute('stroke-width', '0.8'));
                     }
                 });
 
                 hitEl.addEventListener('click', () => {
-                    showPvHistory(dKey);
+                    if (isMulti) {
+                        renderPvMonthlyContainer(key, key.slice(0, 4));
+                    } else {
+                        showPvHistory(key);
+                    }
                 });
             });
         }
@@ -5617,41 +5812,89 @@
         function renderPvMonthTable(monthData) {
             const tableBody = document.getElementById('pvMonthTableBody');
             const tableFoot = document.getElementById('pvMonthTableFoot');
-            if (!tableBody || !monthData || !monthData.daysData.length) return;
+            if (!tableBody || !monthData) return;
 
-            // Sortierung für die Tabelle: Neueste Tage oben (descending)
-            const sortedDays = [...monthData.daysData].sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+            const isMulti = monthData.isMultiMonth;
 
-            tableBody.innerHTML = sortedDays.map(day => {
-                const dObj = new Date(day.dateKey + 'T12:00:00');
-                const dateStr = dObj.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
-                const isToday = day.isTodayHybrid;
-                const tagBadge = isToday ? '<span style="color:#00e5ff; font-size:8px; font-weight:700; margin-left:3px;">🔮</span>' : '';
-                const shiftText = (day.dischargedKwh > 0.05) 
-                    ? `<span style="color:#00ff88;">+${day.dischargedKwh.toFixed(1)}</span>` 
-                    : '<span style="color:#666;">-</span>';
+            if (isMulti) {
+                // Multi-Monat Ansicht: Zeilen für jeden Monat (neuester Monat oben)
+                const sortedMonths = [...monthData.monthlyAggregates].reverse();
 
-                return `
-                    <tr class="pv-month-table-row" data-day="${day.dateKey}" style="cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.15s ease;">
-                        <td style="padding: 5px 3px; font-family: monospace; font-size: 9px; color: #ccc;">${dateStr}${tagBadge}</td>
-                        <td style="padding: 5px 3px; text-align: right; font-family: monospace; font-weight: 700; color: #ffdb00;">${day.genKwh.toFixed(1)}</td>
-                        <td style="padding: 5px 3px; text-align: right; font-family: monospace; font-weight: 600; color: #b388ff;">${day.feedKwh.toFixed(1)}</td>
-                        <td style="padding: 5px 3px; text-align: right; font-family: monospace; font-size: 8.5px;">${shiftText}</td>
-                        <td style="padding: 5px 3px; text-align: right; font-family: monospace; color: #00e5ff;">${day.avgRate.toFixed(2).replace('.', ',')}</td>
-                        <td style="padding: 5px 3px; text-align: right; font-family: monospace; font-weight: 700; color: #00ff88;">${day.totalEur.toFixed(2).replace('.', ',')} €</td>
-                        <td style="padding: 5px 2px; text-align: center; color: #888; font-size: 9px;">➔</td>
-                    </tr>
-                `;
-            }).join('');
+                tableBody.innerHTML = sortedMonths.map(m => {
+                    const shiftText = (m.dischargedKwh > 0.05)
+                        ? `<span style="color:#00ff88;">+${Math.round(m.dischargedKwh)}</span>`
+                        : '<span style="color:#666;">-</span>';
+
+                    return `
+                        <tr class="pv-month-table-row" data-key="${m.monthKey}" style="cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.15s ease;">
+                            <td style="padding: 5px 3px; font-family: monospace; font-size: 9px; color: #ffdb00; font-weight: 600;">${m.fullLabel}</td>
+                            <td style="padding: 5px 3px; text-align: right; font-family: monospace; font-weight: 700; color: #ffdb00;">${Math.round(m.genKwh)}</td>
+                            <td style="padding: 5px 3px; text-align: right; font-family: monospace; font-weight: 600; color: #b388ff;">${Math.round(m.effectiveFeedKwh)}</td>
+                            <td style="padding: 5px 3px; text-align: right; font-family: monospace; font-size: 8.5px;">${shiftText}</td>
+                            <td style="padding: 5px 3px; text-align: right; font-family: monospace; color: #00e5ff;">${m.avgRate.toFixed(2).replace('.', ',')}</td>
+                            <td style="padding: 5px 3px; text-align: right; font-family: monospace; font-weight: 700; color: #00ff88;">${m.totalEur.toFixed(2).replace('.', ',')} €</td>
+                            <td style="padding: 5px 2px; text-align: center; color: #888; font-size: 9px;">➔</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                tableBody.querySelectorAll('.pv-month-table-row').forEach(row => {
+                    const key = row.getAttribute('data-key');
+                    row.addEventListener('click', () => {
+                        renderPvMonthlyContainer(key, key.slice(0, 4));
+                    });
+                    row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,219,0,0.08)'; });
+                    row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+                });
+            } else {
+                // Einzelner Monat: Zeilen für jeden Tag (neuester Tag oben)
+                const sortedDays = [...monthData.daysData].sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+
+                tableBody.innerHTML = sortedDays.map(day => {
+                    const dObj = new Date(day.dateKey + 'T12:00:00');
+                    const dateStr = dObj.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+                    const isToday = day.isTodayHybrid;
+                    const tagBadge = isToday ? '<span style="color:#00e5ff; font-size:8px; font-weight:700; margin-left:3px;">🔮</span>' : '';
+                    const shiftText = (day.dischargedKwh > 0.05) 
+                        ? `<span style="color:#00ff88;">+${day.dischargedKwh.toFixed(1)}</span>` 
+                        : '<span style="color:#666;">-</span>';
+
+                    return `
+                        <tr class="pv-month-table-row" data-key="${day.dateKey}" style="cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.15s ease;">
+                            <td style="padding: 5px 3px; font-family: monospace; font-size: 9px; color: #ccc;">${dateStr}${tagBadge}</td>
+                            <td style="padding: 5px 3px; text-align: right; font-family: monospace; font-weight: 700; color: #ffdb00;">${day.genKwh.toFixed(1)}</td>
+                            <td style="padding: 5px 3px; text-align: right; font-family: monospace; font-weight: 600; color: #b388ff;">${day.feedKwh.toFixed(1)}</td>
+                            <td style="padding: 5px 3px; text-align: right; font-family: monospace; font-size: 8.5px;">${shiftText}</td>
+                            <td style="padding: 5px 3px; text-align: right; font-family: monospace; color: #00e5ff;">${day.avgRate.toFixed(2).replace('.', ',')}</td>
+                            <td style="padding: 5px 3px; text-align: right; font-family: monospace; font-weight: 700; color: #00ff88;">${day.totalEur.toFixed(2).replace('.', ',')} €</td>
+                            <td style="padding: 5px 2px; text-align: center; color: #888; font-size: 9px;">➔</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                tableBody.querySelectorAll('.pv-month-table-row').forEach(row => {
+                    const key = row.getAttribute('data-key');
+                    row.addEventListener('click', () => {
+                        showPvHistory(key);
+                    });
+                    row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,219,0,0.08)'; });
+                    row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+                });
+            }
 
             // Foot / Totals
             if (tableFoot) {
-                const shiftTot = (monthData.totalDischarged > 0.05) ? `+${monthData.totalDischarged.toFixed(1)}` : '-';
+                const shiftTot = (monthData.totalDischarged > 0.05) 
+                    ? `+${isMulti ? Math.round(monthData.totalDischarged) : monthData.totalDischarged.toFixed(1)}` 
+                    : '-';
+                const genStr = isMulti ? Math.round(monthData.totalGen).toLocaleString('de-DE') : monthData.totalGen.toFixed(1);
+                const feedStr = isMulti ? Math.round(monthData.totalEffectiveFeed).toLocaleString('de-DE') : monthData.totalEffectiveFeed.toFixed(1);
+
                 tableFoot.innerHTML = `
                     <tr style="background: rgba(255,255,255,0.07); font-weight: 700; border-top: 1px solid rgba(255,219,0,0.4);">
                         <td style="padding: 6px 3px; text-align: left; color: #ffdb00;">Summe</td>
-                        <td style="padding: 6px 3px; text-align: right; font-family: monospace; color: #ffdb00;">${monthData.totalGen.toFixed(1)}</td>
-                        <td style="padding: 6px 3px; text-align: right; font-family: monospace; color: #b388ff;">${monthData.totalEffectiveFeed.toFixed(1)}</td>
+                        <td style="padding: 6px 3px; text-align: right; font-family: monospace; color: #ffdb00;">${genStr}</td>
+                        <td style="padding: 6px 3px; text-align: right; font-family: monospace; color: #b388ff;">${feedStr}</td>
                         <td style="padding: 6px 3px; text-align: right; font-family: monospace; font-size: 8.5px; color: #00ff88;">${shiftTot}</td>
                         <td style="padding: 6px 3px; text-align: right; font-family: monospace; color: #00e5ff;">${monthData.avgRate.toFixed(2).replace('.', ',')}</td>
                         <td style="padding: 6px 3px; text-align: right; font-family: monospace; color: #00ff88;">${monthData.totalEur.toFixed(2).replace('.', ',')} €</td>
@@ -5659,20 +5902,6 @@
                     </tr>
                 `;
             }
-
-            // Klick auf Tabellenzeile öffnet 24h-Detail
-            tableBody.querySelectorAll('.pv-month-table-row').forEach(row => {
-                const dKey = row.getAttribute('data-day');
-                row.addEventListener('click', () => {
-                    showPvHistory(dKey);
-                });
-                row.addEventListener('mouseenter', () => {
-                    row.style.background = 'rgba(255,219,0,0.08)';
-                });
-                row.addEventListener('mouseleave', () => {
-                    row.style.background = 'transparent';
-                });
-            });
         }
 
         function refreshActivePvAnalysisContainers() {
