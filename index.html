@@ -913,6 +913,17 @@
                             </select>
                         </div>
 
+                        <!-- Anlagengröße & Extrapolation (Szenario) -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.06);">
+                            <span style="color: #bbb;" title="Reale Referenzgröße vs. hypothetische Anlagengröße">Anlagengröße (kWp):</span>
+                            <div style="display: flex; align-items: center; gap: 4px;">
+                                <input id="pvBaseKwpInput" type="number" step="0.1" min="0.5" max="100" value="9.6" title="Reale Basisgröße der Anlage (9.6 kWp)" style="width: 44px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.18); color: #aaa; border-radius: 4px; padding: 1px 3px; font-size: 10px; text-align: right;">
+                                <span style="color: #666;">→</span>
+                                <input id="pvTargetKwpInput" type="number" step="0.1" min="0.5" max="100" value="9.6" title="Hypothetische Zielgröße zur Extrapolation" style="width: 46px; background: rgba(0,0,0,0.6); border: 1px solid rgba(0,229,255,0.35); color: #00e5ff; border-radius: 4px; padding: 1px 3px; font-size: 10px; text-align: right; font-weight: 700;">
+                                <span style="color: #888; font-size: 9px;">kWp</span>
+                            </div>
+                        </div>
+
                         <!-- EEG-spezifisch -->
                         <div id="pvEegControls" style="display: block;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -950,7 +961,7 @@
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                                     <span style="color: #aaa;">Wechselrichter AC:</span>
                                     <div style="display: flex; align-items: center; gap: 3px;">
-                                        <input id="pvInverterKwInput" type="number" step="0.5" min="0.5" max="50" value="5.0" style="width: 44px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.18); color: #fff; border-radius: 4px; padding: 1px 3px; font-size: 10px; text-align: right;">
+                                        <input id="pvInverterKwInput" type="number" step="0.5" min="0.5" max="50" value="10.0" style="width: 44px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.18); color: #fff; border-radius: 4px; padding: 1px 3px; font-size: 10px; text-align: right;">
                                         <span style="color: #888;">kW max</span>
                                     </div>
                                 </div>
@@ -1064,7 +1075,29 @@
 
         <div id="pvHistoryBody">
             <!-- Tages-Auswahl Reiter -->
-            <div id="pvHistoryDayPills" style="display: flex; gap: 5px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 9px; scrollbar-width: none;"></div>
+            <div id="pvHistoryDayPills" style="display: flex; gap: 5px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 7px; scrollbar-width: none;"></div>
+
+            <!-- Interaktive PV-Extrapolation & Szenarien (Hypothetische Anlagengröße X) -->
+            <div id="pvScenarioBar" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(0,229,255,0.22); border-radius: 8px; padding: 6px 8px; margin-bottom: 8px; font-size: 9.5px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <span style="color: #00e5ff; font-weight: 600;">⚡ Extrapolation:</span>
+                        <span id="pvScenarioFactorBadge" style="background: rgba(0,229,255,0.12); color: #00e5ff; border: 1px solid rgba(0,229,255,0.3); border-radius: 4px; padding: 1px 5px; font-size: 8.5px; font-weight: 700;">1.00x (Real)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        <input id="pvScenarioKwpInput" type="number" step="0.1" min="0.5" max="100" value="9.6" title="Hypothetische Anlagengröße in kWp" style="width: 48px; background: rgba(0,0,0,0.6); border: 1px solid rgba(0,229,255,0.35); color: #00e5ff; border-radius: 4px; padding: 1.5px 3px; font-size: 10px; text-align: right; font-weight: 700; font-family: monospace;">
+                        <span style="color: #888; font-size: 9px;">kWp</span>
+                        <button id="pvScenarioResetBtn" type="button" title="Auf reale Referenzanlage (9.6 kWp) zurücksetzen" style="display: none; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #ffdb00; border-radius: 4px; font-size: 8.5px; padding: 1.5px 5px; cursor: pointer;">↺ Real</button>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 4px; align-items: center;">
+                    <span style="font-size: 8px; color: #666; white-space: nowrap;">Szenario:</span>
+                    <button type="button" class="pv-quick-kwp-btn" data-kwp="9.6" style="flex: 1; background: rgba(0,229,255,0.15); border: 1px solid rgba(0,229,255,0.4); color: #00e5ff; border-radius: 4px; font-size: 8.5px; padding: 2px 0; cursor: pointer; font-weight: 600;">9.6 kWp (Real)</button>
+                    <button type="button" class="pv-quick-kwp-btn" data-kwp="12.0" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8.5px; padding: 2px 0; cursor: pointer;">12 kWp</button>
+                    <button type="button" class="pv-quick-kwp-btn" data-kwp="15.0" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8.5px; padding: 2px 0; cursor: pointer;">15 kWp</button>
+                    <button type="button" class="pv-quick-kwp-btn" data-kwp="20.0" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8.5px; padding: 2px 0; cursor: pointer;">20 kWp</button>
+                </div>
+            </div>
 
             <!-- Tages-KPIs Energiebilanz (4 Boxen) -->
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px;">
@@ -3066,7 +3099,7 @@
             batteryShift: false,       // Batterie-Lastverschiebung aktivieren
             selfProtect: true,         // Eigenverbrauchs-Schutz (Nacht-Puffer)
             shiftCapKwh: 8.0,          // Batterie Speicherkapazität in kWh (theoretisch anpassbar)
-            inverterAcKw: 5.0,         // Wechselrichter AC-Leistung in kW (max. Lade/Entlade-Limit pro Stunde)
+            inverterAcKw: 10.0,        // Wechselrichter AC-Leistung in kW (max. Lade/Entlade-Limit pro Stunde)
             efficiencyPct: 90          // Rundenwirkungsgrad in % (η)
         };
 
@@ -3088,6 +3121,164 @@
             } catch (e) {
                 console.warn('Fehler beim Speichern von pvRevenueConfig:', e);
             }
+        }
+
+        // --- PV-Extrapolations- & Szenario-Konfiguration (Anlagengröße X) ---
+        let pvScenarioConfig = {
+            baseKwp: 9.6,              // Reale Basis-Anlagengröße (exakt 9.6 kWp in Hochheim)
+            targetKwp: 9.6,            // Vom Nutzer gewählte hypothetische Anlagengröße
+            profile: 'linear_real',    // Bereit für künftige Profile: 'linear_real', 'south_35', 'east_west', etc.
+            inverterScaleMode: 'clipping' // 'clipping': Wechselrichter AC-Limit wirkt als Obergrenze
+        };
+
+        function loadScenarioConfig() {
+            try {
+                const saved = localStorage.getItem('pvScenarioConfig');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    pvScenarioConfig = Object.assign({}, pvScenarioConfig, parsed);
+                }
+            } catch (e) {
+                console.warn('Fehler beim Laden von pvScenarioConfig:', e);
+            }
+        }
+
+        function saveScenarioConfig() {
+            try {
+                localStorage.setItem('pvScenarioConfig', JSON.stringify(pvScenarioConfig));
+            } catch (e) {
+                console.warn('Fehler beim Speichern von pvScenarioConfig:', e);
+            }
+        }
+
+        function getPvScenarioFactor() {
+            const base = Math.max(0.1, pvScenarioConfig.baseKwp || 9.6);
+            const target = Math.max(0.1, pvScenarioConfig.targetKwp || 9.6);
+            return target / base;
+        }
+
+        function applyPvScenarioToDayData(dayPts, rep) {
+            const factor = getPvScenarioFactor();
+            const isScenarioActive = Math.abs(factor - 1.0) > 0.005;
+            const inverterKw = Math.max(0.1, pvRevenueConfig.inverterAcKw || 10.0);
+
+            // 1. Echte Basis-Arrays aus FoxESS-Tagesbericht
+            const feedArr = (rep && rep.feedin) ? rep.feedin : [];
+            const loadArr = (rep && rep.loads) ? rep.loads : [];
+            const gridArr = (rep && rep.gridConsumption) ? rep.gridConsumption : [];
+
+            let realGenArr = [];
+            if (dayPts && dayPts.length >= 10) {
+                const hourlySolarKwh = new Array(24).fill(0);
+                const hourlySolarCounts = new Array(24).fill(0);
+                dayPts.forEach(p => {
+                    const hour = new Date(p.t).getHours();
+                    if (hour >= 0 && hour < 24) {
+                        hourlySolarKwh[hour] += (typeof p.pv === 'number' ? p.pv : 0);
+                        hourlySolarCounts[hour]++;
+                    }
+                });
+                realGenArr = hourlySolarKwh.map((sum, h) => {
+                    const count = hourlySolarCounts[h];
+                    return count > 0 ? (sum / count) : 0;
+                });
+            } else {
+                const rawGen = (rep && rep.generation) ? rep.generation : [];
+                realGenArr = rawGen.map((v, h) => (h < 6 || h > 20 ? 0.0 : (typeof v === 'number' ? v : 0)));
+            }
+
+            if (!isScenarioActive) {
+                return {
+                    factor: 1.0,
+                    isScenarioActive: false,
+                    genArr: realGenArr,
+                    feedArr: [...feedArr],
+                    loadArr: [...loadArr],
+                    gridArr: [...gridArr],
+                    dayPts: dayPts || []
+                };
+            }
+
+            // 2. Extrapolierte Stundenscheiben unter Berücksichtigung von Energieerhaltung & Wechselrichter AC-Limit
+            const simGenArr = [];
+            const simFeedArr = [];
+            const simGridArr = [];
+
+            for (let h = 0; h < 24; h++) {
+                const gReal = realGenArr[h] || 0;
+                const fReal = feedArr[h] || 0;
+                const lReal = loadArr[h] || 0;
+                const grReal = gridArr[h] || 0;
+
+                // AC-Wechselrichter Begrenzung (Clipping bei Wechselrichterlimit)
+                const gSimRaw = gReal * factor;
+                const gSim = Math.min(gSimRaw, inverterKw);
+                const deltaG = gSim - gReal;
+
+                let fSim = fReal;
+                let grSim = grReal;
+
+                if (deltaG >= 0) {
+                    // PV-Vergrößerung: Überschuss deckt eventuellen Netzbezug bei Tag, Rest wird eingespeist
+                    const coveredGrid = Math.min(grReal, deltaG);
+                    grSim = Math.max(0, grReal - coveredGrid);
+                    fSim = fReal + (deltaG - coveredGrid);
+                } else {
+                    // PV-Verkleinerung (Faktor < 1): Zuerst sinkt Einspeisung, Rest wird Netzbezug
+                    const lostPv = -deltaG;
+                    const reducedFeed = Math.min(fReal, lostPv);
+                    fSim = Math.max(0, fReal - reducedFeed);
+                    grSim = grReal + (lostPv - reducedFeed);
+                }
+
+                // Einspeisung kann AC-Limit des Wechselrichters nicht überschreiten
+                fSim = Math.min(fSim, inverterKw);
+
+                simGenArr.push(gSim);
+                simFeedArr.push(fSim);
+                simGridArr.push(grSim);
+            }
+
+            // 3. Extrapolierte 5-Minuten-Punkte für den hochauflösenden SVG-Energiefluss-Chart (inkl. Inverter-Clipping)
+            const simDayPts = (dayPts || []).map(p => {
+                const pvReal = (typeof p.pv === 'number') ? p.pv : 0;
+                const feedReal = (typeof p.feedin === 'number') ? p.feedin : 0;
+                const loadReal = (typeof p.loads === 'number') ? p.loads : 0;
+
+                const pvSimRaw = pvReal * factor;
+                const pvSim = Math.min(pvSimRaw, inverterKw);
+                const deltaPv = pvSim - pvReal;
+
+                let feedSim = feedReal;
+                if (deltaPv >= 0) {
+                    const deficit = Math.max(0, loadReal - pvReal);
+                    const coveredDeficit = Math.min(deficit, deltaPv);
+                    feedSim = feedReal + (deltaPv - coveredDeficit);
+                } else {
+                    const lost = -deltaPv;
+                    const reduced = Math.min(feedReal, lost);
+                    feedSim = Math.max(0, feedReal - reduced);
+                }
+
+                feedSim = Math.min(feedSim, inverterKw);
+
+                return {
+                    t: p.t,
+                    pv: pvSim,
+                    feedin: feedSim,
+                    loads: loadReal
+                };
+            });
+
+            return {
+                factor,
+                isScenarioActive: true,
+                genArr: simGenArr,
+                feedArr: simFeedArr,
+                loadArr: [...loadArr],
+                gridArr: simGridArr,
+                dayPts: simDayPts
+            };
         }
 
         function getFeedinRatio() {
@@ -3308,12 +3499,24 @@
                         if (rawKwh === null) {
                             rawKwh = integrateKwh(data, segStart, segEnd);
                         }
+
+                        const sFactor = getPvScenarioFactor();
+                        const isScenarioActive = Math.abs(sFactor - 1.0) > 0.005;
+                        if (isScenarioActive) {
+                            rawKwh = rawKwh * sFactor;
+                        }
+
                         if (kwh === null) {
                             kwh = rawKwh * basisFactor;
+                        } else if (isScenarioActive) {
+                            kwh = kwh * sFactor;
                         }
 
                         if (rawKwh >= 0.05) {
-                            const eur = estimateRevenueEur(data, segStart, segEnd);
+                            let eur = estimateRevenueEur(data, segStart, segEnd);
+                            if (eur !== null && isScenarioActive) {
+                                eur = eur * sFactor;
+                            }
                             rows.push({ label, dateKey, kwh, rawKwh, eur, isForecast: false });
                         }
                     }
@@ -3321,10 +3524,15 @@
                 }
             }
 
+            const sFactor = getPvScenarioFactor();
+            const isScenarioActive = Math.abs(sFactor - 1.0) > 0.005;
+
             computeForecastCheckpoints().forEach(cp => {
-                const rawKwh = cp.rawKwh !== undefined ? cp.rawKwh : cp.kwh;
-                const kwh = rawKwh * basisFactor;
-                const eur = cp.points ? estimateRevenueEur(cp.points, cp.fromT, cp.toT) : cp.eur;
+                let rawKwh = cp.rawKwh !== undefined ? cp.rawKwh : cp.kwh;
+                if (isScenarioActive) rawKwh = rawKwh * sFactor;
+                let kwh = rawKwh * basisFactor;
+                let eur = cp.points ? estimateRevenueEur(cp.points, cp.fromT, cp.toT) : cp.eur;
+                if (eur !== null && isScenarioActive) eur = eur * sFactor;
                 rows.push({ label: cp.label, kwh, rawKwh, eur, isForecast: true });
             });
             return rows;
@@ -3356,6 +3564,10 @@
                         ? `Batterie-Verschiebung (${pvRevenueConfig.shiftCapKwh} kWh, WR ${pvRevenueConfig.inverterAcKw} kW, η=${pvRevenueConfig.efficiencyPct}%, ${pvRevenueConfig.selfProtect ? 'Schutz aktiv' : 'ohne Puffer'}).`
                         : 'Ohne Batterie-Verschiebung.';
                     hintEl.innerHTML = `Direktvermarktung (EPEX Day-Ahead) · ${basisText} · ${batText}`;
+                }
+                const sFactor = getPvScenarioFactor();
+                if (Math.abs(sFactor - 1.0) > 0.005) {
+                    hintEl.innerHTML += `<br><span style="color:#00e5ff; font-weight:700;">🧪 Szenario: ${pvScenarioConfig.targetKwp.toFixed(1)} kWp (${sFactor.toFixed(2)}x · WR ${pvRevenueConfig.inverterAcKw.toFixed(1)} kW)</span>`;
                 }
             }
 
@@ -3455,6 +3667,56 @@
             if (shiftCapInput) shiftCapInput.value = pvRevenueConfig.shiftCapKwh;
             if (inverterKwInput) inverterKwInput.value = pvRevenueConfig.inverterAcKw;
             if (efficiencyInput) efficiencyInput.value = pvRevenueConfig.efficiencyPct;
+            updatePvScenarioUI();
+        }
+
+        function updatePvScenarioUI() {
+            const factor = getPvScenarioFactor();
+            const isScenarioActive = Math.abs(factor - 1.0) > 0.005;
+
+            const kwpInput = document.getElementById('pvScenarioKwpInput');
+            const badge = document.getElementById('pvScenarioFactorBadge');
+            const resetBtn = document.getElementById('pvScenarioResetBtn');
+            const baseInput = document.getElementById('pvBaseKwpInput');
+            const targetInput = document.getElementById('pvTargetKwpInput');
+
+            if (kwpInput) kwpInput.value = pvScenarioConfig.targetKwp.toFixed(1);
+            if (targetInput) targetInput.value = pvScenarioConfig.targetKwp.toFixed(1);
+            if (baseInput) baseInput.value = pvScenarioConfig.baseKwp.toFixed(1);
+
+            if (badge) {
+                if (isScenarioActive) {
+                    badge.innerText = `${factor.toFixed(2)}x (Szenario)`;
+                    badge.style.background = 'rgba(255,219,0,0.16)';
+                    badge.style.color = '#ffdb00';
+                    badge.style.borderColor = 'rgba(255,219,0,0.35)';
+                } else {
+                    badge.innerText = '1.00x (Real)';
+                    badge.style.background = 'rgba(0,229,255,0.12)';
+                    badge.style.color = '#00e5ff';
+                    badge.style.borderColor = 'rgba(0,229,255,0.3)';
+                }
+            }
+
+            if (resetBtn) {
+                resetBtn.style.display = isScenarioActive ? 'inline-block' : 'none';
+            }
+
+            document.querySelectorAll('.pv-quick-kwp-btn').forEach(btn => {
+                const kwp = parseFloat(btn.getAttribute('data-kwp'));
+                const isSelected = Math.abs(kwp - pvScenarioConfig.targetKwp) < 0.05;
+                if (isSelected) {
+                    btn.style.background = 'rgba(0,229,255,0.2)';
+                    btn.style.borderColor = '#00e5ff';
+                    btn.style.color = '#00e5ff';
+                    btn.style.fontWeight = '700';
+                } else {
+                    btn.style.background = 'rgba(255,255,255,0.05)';
+                    btn.style.borderColor = 'rgba(255,255,255,0.1)';
+                    btn.style.color = '#aaa';
+                    btn.style.fontWeight = '500';
+                }
+            });
         }
 
         // --- FoxESS Historische Detailanalyse (Companion Container) ---
@@ -3563,9 +3825,8 @@
 
             const dActive = new Date(activeDateKey + 'T12:00:00');
             const fullDateStr = dActive.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-            if (subEl) subEl.innerText = fullDateStr;
 
-            // 2. Echte Solar-Erzeugung und hochauflösende 5-Minuten-Telemetrie prüfen
+            // 2. Echte Solar-Erzeugung, 5-Minuten-Telemetrie & Extrapolations-Szenario
             const dayStart = new Date(activeDateKey + 'T00:00:00').getTime();
             const dayEnd = dayStart + 24 * 3600 * 1000;
 
@@ -3575,39 +3836,27 @@
                 return pt >= dayStart && pt < dayEnd;
             });
 
-            const feedArr = rep.feedin || [];
-            const loadArr = rep.loads || [];
-            const gridArr = rep.gridConsumption || [];
+            // Extrapolations-Szenario auf Tagesdaten anwenden (inkl. AC-Limit des Wechselrichters)
+            const scenario = applyPvScenarioToDayData(dayPts, rep);
+            const { factor, isScenarioActive } = scenario;
+            const genArr = scenario.genArr;
+            const feedArr = scenario.feedArr;
+            const loadArr = scenario.loadArr;
+            const gridArr = scenario.gridArr;
+            const effectiveDayPts = scenario.dayPts;
 
-            let genArr = [];
-            if (dayPts.length >= 10) {
-                // Echte 5-Minuten-Solartelemetrie zu exakten Stunden-kWh integrieren (nachts physikalisch exakt 0.00 kWh)
-                const hourlySolarKwh = new Array(24).fill(0);
-                const hourlySolarCounts = new Array(24).fill(0);
-                dayPts.forEach(p => {
-                    const hour = new Date(p.t).getHours();
-                    if (hour >= 0 && hour < 24) {
-                        hourlySolarKwh[hour] += (typeof p.pv === 'number' ? p.pv : 0);
-                        hourlySolarCounts[hour]++;
-                    }
-                });
-                genArr = hourlySolarKwh.map((sum, h) => {
-                    const count = hourlySolarCounts[h];
-                    return count > 0 ? (sum / count) : 0;
-                });
-            } else {
-                // Fallback für ältere Berichte: Nachtstunden (0-5 Uhr & 21-23 Uhr) auf 0 klemmen,
-                // da FoxESS Inverter-Batterieentladung fälschlich als "generation" deklariert
-                const rawGen = rep.generation || [];
-                genArr = rawGen.map((v, h) => (h < 6 || h > 20 ? 0.0 : (typeof v === 'number' ? v : 0)));
+            if (subEl) {
+                subEl.innerHTML = isScenarioActive
+                    ? `${fullDateStr} · <span style="color:#00e5ff; font-weight:700;">🧪 ${pvScenarioConfig.targetKwp.toFixed(1)} kWp (${factor.toFixed(2)}x)</span>`
+                    : fullDateStr;
             }
 
             const sumArr = arr => arr.reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
             const totals = rep.totals || {};
             const genKwh = sumArr(genArr);
-            const feedKwh = (typeof totals.feedin === 'number') ? totals.feedin : sumArr(feedArr);
+            const feedKwh = isScenarioActive ? sumArr(feedArr) : ((typeof totals.feedin === 'number') ? totals.feedin : sumArr(feedArr));
             const loadKwh = (typeof totals.loads === 'number') ? totals.loads : sumArr(loadArr);
-            const gridKwh = (typeof totals.gridConsumption === 'number') ? totals.gridConsumption : sumArr(gridArr);
+            const gridKwh = isScenarioActive ? sumArr(gridArr) : ((typeof totals.gridConsumption === 'number') ? totals.gridConsumption : sumArr(gridArr));
 
             const selfKwh = Math.max(0, genKwh - feedKwh);
             const selfPct = (genKwh > 0.05) ? Math.min(100, Math.round((selfKwh / genKwh) * 100)) : 0;
@@ -3640,8 +3889,8 @@
             for (let h = 0; h < 24; h++) {
                 maxEnergy = Math.max(maxEnergy, genArr[h] || 0, feedArr[h] || 0, loadArr[h] || 0);
             }
-            if (dayPts.length >= 10) {
-                for (const p of dayPts) {
+            if (effectiveDayPts.length >= 10) {
+                for (const p of effectiveDayPts) {
                     maxEnergy = Math.max(maxEnergy, p.pv || 0, p.feedin || 0, p.loads || 0);
                 }
             }
@@ -3649,14 +3898,14 @@
             const yE = (v) => (H - PAD_B) - Math.min(1, Math.max(0, (v || 0) / maxEnergy)) * plotH;
 
             // Sortierte 5-Minuten-Punkte
-            const sortedPts = [...dayPts].sort((a, b) => new Date(a.t).getTime() - new Date(b.t).getTime());
+            const sortedPts = [...effectiveDayPts].sort((a, b) => new Date(a.t).getTime() - new Date(b.t).getTime());
             const hasHighResFeed = sortedPts.some(p => typeof p.feedin === 'number');
             const hasHighResLoad = sortedPts.some(p => typeof p.loads === 'number');
 
             // 1. PV-Kurve: Hochauflösende 5-Minuten-Punkte (Gelb)
             let genPts = [];
             let genAreaPts = '';
-            if (dayPts.length >= 10) {
+            if (effectiveDayPts.length >= 10) {
                 genPts = sortedPts.map(p => {
                     const ptTime = new Date(p.t).getTime();
                     const frac = Math.max(0, Math.min(1, (ptTime - dayStart) / (24 * 3600 * 1000)));
@@ -3673,10 +3922,10 @@
                 genAreaPts = `${PAD_L},${H - PAD_B} ` + genPts.join(' ') + ` ${W - PAD_R},${H - PAD_B}`;
             }
 
-            // 2. Einspeisung: Hochauflösende 5-Minuten-Punkte (Cyan)
+            // 2. Einspeisung: Hochauflösende 5-Minuten-Punkte (Lila)
             let feedPts = [];
             let feedAreaPts = '';
-            if (dayPts.length >= 10 && hasHighResFeed) {
+            if (effectiveDayPts.length >= 10 && hasHighResFeed) {
                 feedPts = sortedPts.map(p => {
                     const ptTime = new Date(p.t).getTime();
                     const frac = Math.max(0, Math.min(1, (ptTime - dayStart) / (24 * 3600 * 1000)));
@@ -3696,7 +3945,7 @@
             // 3. Hausverbrauch: Hochauflösende 5-Minuten-Punkte (Orange)
             let loadPts = [];
             let loadAreaPts = '';
-            if (dayPts.length >= 10 && hasHighResLoad) {
+            if (effectiveDayPts.length >= 10 && hasHighResLoad) {
                 loadPts = sortedPts.map(p => {
                     const ptTime = new Date(p.t).getTime();
                     const frac = Math.max(0, Math.min(1, (ptTime - dayStart) / (24 * 3600 * 1000)));
@@ -3835,6 +4084,10 @@
                     const basisBadge = isGrossOptionB
                         ? '<span style="color:#ffdb00; font-weight:600;">Option B (100% Gesamterzeugung)</span>'
                         : '<span style="color:#b388ff; font-weight:600;">Option A (Netzeinspeisung)</span>';
+                    const inverterKw = Math.max(0.1, pvRevenueConfig.inverterAcKw || 10.0);
+                    const scenarioBadge = isScenarioActive
+                        ? `<span style="color:#555;">•</span><span style="color:#00e5ff; font-weight:700;" title="Extrapoliert von Basis ${pvScenarioConfig.baseKwp.toFixed(1)} kWp">🧪 ${pvScenarioConfig.targetKwp.toFixed(1)} kWp (${factor.toFixed(2)}x · WR ${inverterKw.toFixed(1)} kW)</span>`
+                        : '';
                     modelBadgeEl.innerHTML = `
                         <div style="display:flex; flex-wrap:wrap; align-items:center; gap:5px; font-size:8.5px; background:rgba(255,219,0,0.08); border:1px solid rgba(255,219,0,0.22); border-radius:6px; padding:3px 7px; color:#ccc;">
                             <span style="color:#ffdb00; font-weight:700;">☀️ EEG: ${eegRate.toFixed(2)} ct/kWh</span>
@@ -3842,6 +4095,7 @@
                             <span>${basisBadge}</span>
                             <span style="color:#555;">•</span>
                             <span>${spitzenBadge}</span>
+                            ${scenarioBadge}
                         </div>
                     `;
                 } else {
@@ -3849,8 +4103,12 @@
                         ? '<span style="color:#ffdb00; font-weight:600;">Option B (100% Gesamterzeugung)</span>'
                         : '<span style="color:#b388ff; font-weight:600;">Option A (Netzeinspeisung)</span>';
                     const shiftBadge = pvRevenueConfig.batteryShift
-                        ? `<span style="color:#00ff88; font-weight:600;">Batterie-Shift aktiv (${pvRevenueConfig.shiftCapKwh || 8} kWh, WR ${pvRevenueConfig.inverterAcKw || 5} kW, η=${pvRevenueConfig.efficiencyPct || 90}%)</span>`
+                        ? `<span style="color:#00ff88; font-weight:600;">Batterie-Shift aktiv (${pvRevenueConfig.shiftCapKwh || 8} kWh, WR ${pvRevenueConfig.inverterAcKw || 10} kW, η=${pvRevenueConfig.efficiencyPct || 90}%)</span>`
                         : '<span style="color:#aaa;">Echtzeit-Einspeisung (ohne Shift)</span>';
+                    const inverterKw = Math.max(0.1, pvRevenueConfig.inverterAcKw || 10.0);
+                    const scenarioBadge = isScenarioActive
+                        ? `<span style="color:#555;">•</span><span style="color:#00e5ff; font-weight:700;" title="Extrapoliert von Basis ${pvScenarioConfig.baseKwp.toFixed(1)} kWp">🧪 ${pvScenarioConfig.targetKwp.toFixed(1)} kWp (${factor.toFixed(2)}x · WR ${inverterKw.toFixed(1)} kW)</span>`
+                        : '';
                     modelBadgeEl.innerHTML = `
                         <div style="display:flex; flex-wrap:wrap; align-items:center; gap:5px; font-size:8.5px; background:rgba(0,229,255,0.08); border:1px solid rgba(0,229,255,0.22); border-radius:6px; padding:3px 7px; color:#ccc;">
                             <span style="color:#00e5ff; font-weight:700;">⚡ Direktvermarktung (EPEX Day-Ahead)</span>
@@ -3858,6 +4116,7 @@
                             <span>${basisBadge}</span>
                             <span style="color:#555;">•</span>
                             <span>${shiftBadge}</span>
+                            ${scenarioBadge}
                         </div>
                     `;
                 }
@@ -4055,6 +4314,7 @@
 
         function initPvEuroToggle() {
             loadRevenueConfig();
+            loadScenarioConfig();
             const btn = document.getElementById('pvEuroToggle');
             const body = document.getElementById('pvEuroBody');
             const chevron = document.getElementById('pvEuroChevron');
@@ -4170,6 +4430,66 @@
                     }
                 });
             }
+
+            // PV-Extrapolation & Szenario-Events (Anlagengröße X)
+            const baseKwpInput = document.getElementById('pvBaseKwpInput');
+            const targetKwpInput = document.getElementById('pvTargetKwpInput');
+            const scenarioKwpInput = document.getElementById('pvScenarioKwpInput');
+            const scenarioResetBtn = document.getElementById('pvScenarioResetBtn');
+
+            function handleTargetKwpChange(newVal) {
+                const val = parseFloat(newVal);
+                if (!isNaN(val) && val > 0) {
+                    pvScenarioConfig.targetKwp = Math.round(val * 10) / 10;
+                    saveScenarioConfig();
+                    updatePvScenarioUI();
+                    renderEuroTable();
+                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                }
+            }
+
+            function handleBaseKwpChange(newVal) {
+                const val = parseFloat(newVal);
+                if (!isNaN(val) && val > 0) {
+                    pvScenarioConfig.baseKwp = Math.round(val * 10) / 10;
+                    saveScenarioConfig();
+                    updatePvScenarioUI();
+                    renderEuroTable();
+                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                }
+            }
+
+            if (baseKwpInput) {
+                baseKwpInput.addEventListener('input', (e) => handleBaseKwpChange(e.target.value));
+            }
+            if (targetKwpInput) {
+                targetKwpInput.addEventListener('input', (e) => handleTargetKwpChange(e.target.value));
+            }
+            if (scenarioKwpInput) {
+                scenarioKwpInput.addEventListener('input', (e) => handleTargetKwpChange(e.target.value));
+            }
+            if (scenarioResetBtn) {
+                scenarioResetBtn.addEventListener('click', () => {
+                    pvScenarioConfig.targetKwp = pvScenarioConfig.baseKwp;
+                    saveScenarioConfig();
+                    updatePvScenarioUI();
+                    renderEuroTable();
+                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                });
+            }
+
+            document.querySelectorAll('.pv-quick-kwp-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const kwp = parseFloat(btn.getAttribute('data-kwp'));
+                    if (!isNaN(kwp) && kwp > 0) {
+                        pvScenarioConfig.targetKwp = kwp;
+                        saveScenarioConfig();
+                        updatePvScenarioUI();
+                        renderEuroTable();
+                        if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                    }
+                });
+            });
 
             if (openHistBtn) {
                 openHistBtn.addEventListener('click', () => {
