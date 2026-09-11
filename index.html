@@ -3754,6 +3754,14 @@
             const lossDischarge = new Array(M).fill(0);
             const soc = new Array(M).fill(Math.min(fullCap, Math.max(0, initialSoc)));
 
+            const pvChargeKwh = new Array(M).fill(0);
+            const merchantChargeKwh = new Array(M).fill(0);
+            const merchantChargeCostEur = new Array(M).fill(0);
+            const merchantDischargeKwh = new Array(M).fill(0);
+            const merchantDischargeRevEur = new Array(M).fill(0);
+            const gridArbitrageKwh = new Array(M).fill(0);
+            const gridArbitrageEur = new Array(M).fill(0);
+
             // A. Anfangs-Ladezustand (initialSoc aus Vortag) kann frühmorgens (vor PV-Produktion) entladen werden:
             let remInit = Math.min(fullCap, Math.max(0, initialSoc));
             if (remInit > 0.001) {
@@ -3779,76 +3787,128 @@
                 }
             }
 
-            // B. Kausales Matching: Ladeslot c (nur Stunden von Tag D) lädt in spätere Entladeslots d > c
-            // Entladekandidaten: alle Stunden d ∈ [0, M-1], sortiert nach Börsenpreis absteigend
-            const dischargeHours = Array.from({ length: M }, (_, i) => i)
-                .sort((a, b) => (allSlots[b].ctKwh || 0) - (allSlots[a].ctKwh || 0));
+            // B. Opportunitätskosten-basierte Co-Optimierung (PV-Eigenstrom & § 118 EnWG Handelsarbitrage):
+            // Löst das Problem rigider Lade-Reihenfolgen: An Tagen mit negativen Mittags- oder Nachmittagspreisen
+            // wird PV-Strom am Morgen direkt mit Erlös ins Netz verkauft, anstatt den Speicher voreilig zu füllen.
+            // Die Speicherkapazität wird stattdessen für Tiefst- oder Negativpreis-Netzladungen reserviert und
+            // in der Abendspitze gewinnbringend entladen.
+            const allowMerchant = !!(pvRevenueConfig && pvRevenueConfig.enableMerchantArbitrage);
+            const arbGridFeeCt = (pvRevenueConfig && typeof pvRevenueConfig.arbitrageGridFeeCt === 'number') ? pvRevenueConfig.arbitrageGridFeeCt : 0.0;
+            const minSpreadCt = (pvRevenueConfig && typeof pvRevenueConfig.arbitrageMinSpreadCt === 'number') ? pvRevenueConfig.arbitrageMinSpreadCt : 2.5;
 
-            // Ladekandidaten: nur Stunden von Tag D (c < N), sortiert nach Börsenpreis aufsteigend
-            const chargeHours = Array.from({ length: N }, (_, i) => i)
-                .filter(i => (allSlots[i].kwh || 0) > 0.001)
-                .sort((a, b) => (allSlots[a].ctKwh || 0) - (allSlots[b].ctKwh || 0));
+            const actions = [];
 
-            for (const d of dischargeHours) {
-                const currentExp = (allSlots[d].kwh || 0) - charge[d] + discharge[d];
-                let maxCanDischarge = Math.max(0, invKw - currentExp);
-                if (maxCanDischarge <= 0.001) continue;
+            // 1. PV-Ladekandidaten: PV-Erzeugung in Stunde c wird in spätere Stunde d > c verschoben
+            for (let c = 0; c < N; c++) {
+                const pvAvail = allSlots[c].kwh || 0;
+                if (pvAvail <= 0.001) continue;
+                const pC = allSlots[c].ctKwh || 0;
+                // Opportunitätskosten des Speicherns statt Sofortverkaufs:
+                // Ist pC <= 0, droht Abregelung (0 ct), Opportunitätskosten = 0 (PV retten hat höchste Prio).
+                // Ist pC > 0, entgeht dem Betreiber der Sofortverkaufserlös pC.
+                const oppCost = Math.max(0, pC);
 
-                for (const c of chargeHours) {
-                    // STRIKTE KAUSALITÄT: Ein Ladeslot c kann nur in ZUKÜNFTIGE Stunden d > c entladen!
-                    if (c >= d) continue;
-                    if (maxCanDischarge <= 0.001) break;
-
+                for (let d = c + 1; d < M; d++) {
                     const pD = allSlots[d].ctKwh || 0;
-                    const pC = allSlots[c].ctKwh || 0;
-                    // Arbitrage-Spread: Erlös bei d abzüglich Gesamtwirkungsgrad muss profitabler sein als Direktverkauf bei c:
-                    if (pD * eff <= pC) break;
-
-                    const remSurplus = (allSlots[c].kwh || 0) - charge[c];
-                    const invChargeRoom = invKw - charge[c];
-                    const maxDrawAvailable = Math.max(0, Math.min(remSurplus, invChargeRoom));
-                    if (maxDrawAvailable <= 0.001) continue;
-
-                    // Maximaler Speicher-Puffer in den Batteriezellen zwischen c und d-1:
-                    let maxCellHeadroom = fullCap;
-                    for (let t = c; t < d; t++) {
-                        maxCellHeadroom = Math.min(maxCellHeadroom, fullCap - soc[t]);
-                    }
-                    if (maxCellHeadroom <= 0.001) continue;
-
-                    // Elektrochemische Netto-Ladung in die Batteriezellen:
-                    const deltaSoc = Math.min(
-                        maxCellHeadroom,
-                        maxDrawAvailable * etaIn,
-                        maxCanDischarge / etaOut
-                    );
-                    if (deltaSoc <= 0.001) continue;
-
-                    const eDraw = deltaSoc / etaIn;
-                    const eGrid = deltaSoc * etaOut;
-
-                    charge[c] += eDraw;
-                    lossCharge[c] += (eDraw - deltaSoc);
-
-                    discharge[d] += eGrid;
-                    lossDischarge[d] += (deltaSoc - eGrid);
-                    maxCanDischarge -= eGrid;
-
-                    for (let t = c; t < d; t++) {
-                        soc[t] += deltaSoc;
+                    const netSpread = pD * eff - oppCost;
+                    if (netSpread > 0.001) {
+                        actions.push({
+                            type: 'pv',
+                            c,
+                            d,
+                            pC,
+                            pD,
+                            cost: oppCost,
+                            netSpread
+                        });
                     }
                 }
             }
 
-            // C. Multi-Use Netzbezug-Arbitrage:
-            // Wenn der Endkundenpreis (Börse + Steuern/Umlagen/Netzentgelte) tatsächlich negativ ist (z.B. p < -19 ct/kWh),
-            // verdient der Betreiber Geld beim Netzladen! Freie Batteriekapazität wird aus dem Netz nachgeladen.
+            // 2. Handelsarbitrage-Ladekandidaten (§ 118 EnWG Netzbezug):
+            if (allowMerchant) {
+                for (let c = 0; c < N; c++) {
+                    const pC = allSlots[c].ctKwh || 0;
+                    const buyCost = pC + arbGridFeeCt;
+
+                    for (let d = c + 1; d < M; d++) {
+                        const pD = allSlots[d].ctKwh || 0;
+                        const netSpread = pD * eff - buyCost;
+                        if (netSpread >= minSpreadCt) {
+                            actions.push({
+                                type: 'grid',
+                                c,
+                                d,
+                                pC,
+                                pD,
+                                cost: buyCost,
+                                netSpread
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Greedy Zuteilung: Sortierung aller Aktionen nach Netto-Spread absteigend
+            actions.sort((a, b) => b.netSpread - a.netSpread);
+
+            for (const act of actions) {
+                const { type, c, d, pC, pD, cost } = act;
+
+                // Wechselrichter-Ladeleistung in Stunde c:
+                const invChargeRoom = Math.max(0, invKw - charge[c]);
+                if (invChargeRoom <= 0.001) continue;
+
+                // Bei PV zusätzlich durch verbleibenden Solarüberschuss begrenzt:
+                let maxDrawAvailable = invChargeRoom;
+                if (type === 'pv') {
+                    const remPv = Math.max(0, (allSlots[c].kwh || 0) - pvChargeKwh[c]);
+                    if (remPv <= 0.001) continue;
+                    maxDrawAvailable = Math.min(maxDrawAvailable, remPv);
+                }
+
+                // Wechselrichter-Entladeleistung in Stunde d:
+                const currentExpD = (allSlots[d].kwh || 0) - charge[d] + discharge[d];
+                const maxCanDischarge = Math.max(0, invKw - currentExpD);
+                if (maxCanDischarge <= 0.001) continue;
+
+                // Speicher-Puffer in den Batteriezellen zwischen c und d-1:
+                let maxCellHeadroom = fullCap;
+                for (let t = c; t < d; t++) {
+                    maxCellHeadroom = Math.min(maxCellHeadroom, fullCap - soc[t]);
+                }
+                if (maxCellHeadroom <= 0.001) continue;
+
+                const deltaSoc = Math.min(maxCellHeadroom, maxDrawAvailable * etaIn, maxCanDischarge / etaOut);
+                if (deltaSoc <= 0.001) continue;
+
+                const actualDraw = deltaSoc / etaIn;
+                const actualDischarge = deltaSoc * etaOut;
+
+                charge[c] += actualDraw;
+                discharge[d] += actualDischarge;
+                lossCharge[c] += (actualDraw - deltaSoc);
+                lossDischarge[d] += (deltaSoc - actualDischarge);
+
+                if (type === 'pv') {
+                    pvChargeKwh[c] += actualDraw;
+                } else {
+                    merchantChargeKwh[c] += actualDraw;
+                    merchantChargeCostEur[c] += actualDraw * (cost / 100);
+                    merchantDischargeKwh[d] += actualDischarge;
+                    merchantDischargeRevEur[d] += actualDischarge * (pD / 100);
+                }
+
+                for (let t = c; t < d; t++) {
+                    soc[t] = Math.min(fullCap, soc[t] + deltaSoc);
+                }
+            }
+
+            // C. Fallback: Retail-Netzbezug bei echten Negativpreisen für den Endkunden (nur wenn Merchant Arbitrage aus ist):
             const gridFeeCt = (pvRevenueConfig && typeof pvRevenueConfig.gridFeeCt === 'number') ? pvRevenueConfig.gridFeeCt : 19.0;
             const allowGrid = (pvRevenueConfig && pvRevenueConfig.allowGridArbitrage !== false);
-            const gridArbitrageKwh = new Array(M).fill(0);
-            const gridArbitrageEur = new Array(M).fill(0);
 
-            if (allowGrid) {
+            if (!allowMerchant && allowGrid) {
                 for (let c = 0; c < N; c++) {
                     const pC = allSlots[c].ctKwh || 0;
                     const netRetailPrice = pC + gridFeeCt;
@@ -3873,72 +3933,6 @@
                 }
             }
 
-            // D. Handels- & Netzarbitrage (§ 118 EnWG / 0 ct Netzentgelte für reine Wiedereinspeisung):
-            // Nutzt freie Speicherkapazitäten und ungenutzte Wechselrichter-Leistung, um in Tiefstpreisstunden
-            // aus dem Netz zu laden und in Hochpreisstunden (z.B. Morgenspitze oder Abendpeak) wieder einzuspeisen.
-            const merchantChargeKwh = new Array(M).fill(0);
-            const merchantChargeCostEur = new Array(M).fill(0);
-            const merchantDischargeKwh = new Array(M).fill(0);
-            const merchantDischargeRevEur = new Array(M).fill(0);
-
-            if (pvRevenueConfig && pvRevenueConfig.enableMerchantArbitrage) {
-                const arbGridFeeCt = (typeof pvRevenueConfig.arbitrageGridFeeCt === 'number') ? pvRevenueConfig.arbitrageGridFeeCt : 0.0;
-                const minSpreadCt = (typeof pvRevenueConfig.arbitrageMinSpreadCt === 'number') ? pvRevenueConfig.arbitrageMinSpreadCt : 2.5;
-
-                // Alle profitablen Paare (c = Ladeslot, d = Entladeslot mit d > c) ermitteln
-                const arbPairs = [];
-                for (let c = 0; c < N; c++) {
-                    const pC = allSlots[c].ctKwh || 0;
-                    const buyCost = pC + arbGridFeeCt;
-                    for (let d = c + 1; d < M; d++) {
-                        const pD = allSlots[d].ctKwh || 0;
-                        const netSpread = pD * eff - buyCost;
-                        if (netSpread >= minSpreadCt) {
-                            arbPairs.push({ c, d, pC, pD, buyCost, netSpread });
-                        }
-                    }
-                }
-
-                // Paare mit dem höchsten Netto-Spread zuerst bedienen
-                arbPairs.sort((a, b) => b.netSpread - a.netSpread);
-
-                for (const pair of arbPairs) {
-                    const { c, d, pC, pD, buyCost } = pair;
-                    const invChargeRoom = Math.max(0, invKw - charge[c]);
-                    if (invChargeRoom <= 0.001) continue;
-
-                    const currentExpD = (allSlots[d].kwh || 0) - charge[d] + discharge[d];
-                    const maxCanDischarge = Math.max(0, invKw - currentExpD);
-                    if (maxCanDischarge <= 0.001) continue;
-
-                    let maxCellHeadroom = fullCap;
-                    for (let t = c; t < d; t++) {
-                        maxCellHeadroom = Math.min(maxCellHeadroom, fullCap - soc[t]);
-                    }
-                    if (maxCellHeadroom <= 0.001) continue;
-
-                    const deltaSoc = Math.min(maxCellHeadroom, invChargeRoom * etaIn, maxCanDischarge / etaOut);
-                    if (deltaSoc <= 0.001) continue;
-
-                    const actualDraw = deltaSoc / etaIn;
-                    const actualDischarge = deltaSoc * etaOut;
-
-                    charge[c] += actualDraw;
-                    discharge[d] += actualDischarge;
-                    lossCharge[c] += (actualDraw - deltaSoc);
-                    lossDischarge[d] += (deltaSoc - actualDischarge);
-
-                    merchantChargeKwh[c] += actualDraw;
-                    merchantChargeCostEur[c] += actualDraw * (buyCost / 100);
-                    merchantDischargeKwh[d] += actualDischarge;
-                    merchantDischargeRevEur[d] += actualDischarge * (pD / 100);
-
-                    for (let t = c; t < d; t++) {
-                        soc[t] = Math.min(fullCap, soc[t] + deltaSoc);
-                    }
-                }
-            }
-
             const daySlots = slots.map((s, h) => {
                 const finalFeed = Math.max(0, (s.kwh || 0) - charge[h] + discharge[h]);
                 return {
@@ -3949,6 +3943,7 @@
                     socEnd: soc[h],
                     lossCharge: lossCharge[h],
                     lossDischarge: lossDischarge[h],
+                    pvChargeKwh: pvChargeKwh[h],
                     gridArbitrageKwh: gridArbitrageKwh[h],
                     gridArbitrageEur: gridArbitrageEur[h],
                     merchantChargeKwh: merchantChargeKwh[h],
@@ -4055,7 +4050,7 @@
             let eur = 0;
             for (const s of shiftedSlots) {
                 const effKwh = Math.max(0, (s.finalFeed !== undefined ? s.finalFeed : (s.kwh - s.shiftedOut + s.shiftedIn)));
-                eur += effKwh * (s.ctKwh / 100);
+                eur += effKwh * (s.ctKwh / 100) - (s.merchantChargeCostEur || 0) + (s.gridArbitrageEur || 0);
             }
             return eur;
         }
