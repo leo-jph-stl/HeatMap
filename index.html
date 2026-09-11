@@ -4194,6 +4194,7 @@
                 hasSolarSpitzen,
                 eegRate,
                 isTodayHybrid,
+                isRealHourly: !!(rep && rep.is_real_hourly === true),
                 latestMeasuredT,
                 currentHour
             };
@@ -4616,9 +4617,12 @@
 
             if (subEl) {
                 const hybridBadge = isTodayHybrid ? ' · <span style="color:#00e5ff; font-weight:700;">🔮 24h-Tagesprognose aktiv</span>' : '';
+                const realBadge = dayData.isRealHourly 
+                    ? ' · <span style="color:#00ff88; font-weight:600; font-size:9.5px;">✓ FoxESS Inverterdaten</span>'
+                    : ' · <span style="color:#ffaa00; font-weight:600; font-size:9.5px;">⏳ Backfill ausstehend</span>';
                 subEl.innerHTML = (isScenarioActive
                     ? `${fullDateStr} · <span style="color:#00e5ff; font-weight:700;">🧪 ${pvScenarioConfig.targetKwp.toFixed(1)} kWp (${factor.toFixed(2)}x)</span>`
-                    : fullDateStr) + hybridBadge;
+                    : fullDateStr) + hybridBadge + realBadge;
             }
 
             if (kpiYieldEl) kpiYieldEl.innerText = genKwh.toFixed(1) + ' kWh';
@@ -5338,7 +5342,8 @@
                     chargedKwh: dayData.chargedKwh,
                     dischargedKwh: dayData.dischargedKwh,
                     conversionLossKwh: dayData.conversionLossKwh,
-                    isTodayHybrid: dayData.isTodayHybrid
+                    isTodayHybrid: dayData.isTodayHybrid,
+                    isRealHourly: !!dayData.isRealHourly
                 });
 
                 if (isMultiMonth) {
@@ -5347,6 +5352,7 @@
                         monthGroups[mKey] = {
                             monthKey: mKey,
                             daysCount: 0,
+                            realDaysCount: 0,
                             genKwh: 0,
                             initialFeedKwh: 0,
                             effectiveFeedKwh: 0,
@@ -5360,6 +5366,7 @@
                     }
                     const mg = monthGroups[mKey];
                     mg.daysCount++;
+                    if (dayData.isRealHourly) mg.realDaysCount++;
                     mg.genKwh += dayData.genKwh;
                     mg.initialFeedKwh += dayData.initialFeedKwh;
                     mg.effectiveFeedKwh += dayData.effectiveFeedKwh;
@@ -5414,6 +5421,7 @@
                 periodKey,
                 isMultiMonth,
                 daysCount: daysData.length,
+                realDaysCount: daysData.filter(d => d.isRealHourly).length,
                 daysData,
                 monthlyAggregates,
                 totalGen,
@@ -5532,7 +5540,12 @@
                 const detailKpisEl = document.getElementById('pvMonthlyDetailKpis');
 
                 if (detailTitleEl) detailTitleEl.innerText = monthName;
-                if (detailDaysEl) detailDaysEl.innerText = `(${monthData.daysCount} Tage)`;
+                if (detailDaysEl) {
+                    const realBadge = (monthData.realDaysCount === monthData.daysCount)
+                        ? '<span style="color:#00ff88; font-size:8px; font-weight:700; margin-left:4px;">✓ 100% FoxESS Inverterdaten</span>'
+                        : `<span style="color:#ffaa00; font-size:8px; font-weight:600; margin-left:4px;">⏳ ${monthData.realDaysCount}/${monthData.daysCount} Tage real (Backfill läuft)</span>`;
+                    detailDaysEl.innerHTML = `(${monthData.daysCount} Tage) ${realBadge}`;
+                }
                 if (detailKpisEl) {
                     detailKpisEl.innerHTML = `
                         <span style="color:#ffdb00;">${Math.round(monthData.totalGen)} kWh</span> • 
@@ -5583,9 +5596,19 @@
                             else col = 'rgba(255,255,255,0.2)';
 
                             const dNum = parseInt(d.dateKey.slice(8));
-                            const tip = `Tag ${dNum} (${d.dateKey}): PV ${d.genKwh.toFixed(1)} kWh • Einsp. ${d.feedKwh.toFixed(1)} kWh • ${d.totalEur.toFixed(2).replace('.', ',')} €`;
-                            return `<div title="${tip}" style="flex:1; height:${hPct}%; background:${col}; border-radius:1px; min-width:2px;"></div>`;
+                            const realNote = d.isRealHourly ? '✓ Echte FoxESS-Messung' : '⏳ Backfill ausstehend';
+                            const tip = `Tag ${dNum} (${d.dateKey}) [${realNote}]: PV ${d.genKwh.toFixed(1)} kWh • Einsp. ${d.feedKwh.toFixed(1)} kWh • ${d.totalEur.toFixed(2).replace('.', ',')} €`;
+                            const barStyle = d.isRealHourly 
+                                ? `flex:1; height:${hPct}%; background:${col}; border-radius:1px; min-width:2px;`
+                                : `flex:1; height:${hPct}%; background:${col}; opacity:0.4; border-radius:1px; min-width:2px; outline:1px dashed rgba(255,255,255,0.4);`;
+                            return `<div title="${tip}" style="${barStyle}"></div>`;
                         }).join('');
+
+                        const statusBadge = (m.realDaysCount === m.daysCount)
+                            ? '<span style="color:#00ff88; font-size:7.5px; background:rgba(0,255,136,0.12); border:1px solid rgba(0,255,136,0.3); padding:1px 4px; border-radius:3px; margin-left:4px;">✓ Real</span>'
+                            : (m.realDaysCount > 0 
+                                ? `<span style="color:#ffaa00; font-size:7.5px; background:rgba(255,170,0,0.12); border:1px solid rgba(255,170,0,0.3); padding:1px 4px; border-radius:3px; margin-left:4px;">⏳ ${m.realDaysCount}/${m.daysCount}</span>`
+                                : '<span style="color:#888; font-size:7.5px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); padding:1px 4px; border-radius:3px; margin-left:4px;">⏳ Warteschlange</span>');
 
                         return `
                             <div class="pv-month-card" data-month="${m.monthKey}" style="background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.08); border-radius: 9px; padding: 7px 9px; cursor: pointer; transition: all 0.15s ease;">
@@ -5593,6 +5616,7 @@
                                     <div>
                                         <span style="color: #ffdb00; font-weight: 700; font-size: 11px;">${m.fullLabel}</span>
                                         <span style="color: #777; font-size: 8.5px; margin-left: 5px;">${m.daysCount} Tage</span>
+                                        ${statusBadge}
                                     </div>
                                     <div style="font-family: monospace; font-size: 9.5px;">
                                         <span style="color: #ffdb00; font-weight: 700;">${Math.round(m.genKwh)} kWh</span>
@@ -5769,10 +5793,13 @@
                 const dateStr = dObj.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
                 const isToday = day.isTodayHybrid;
                 const tagBadge = isToday ? '<span style="color:#00e5ff; font-size:8px; font-weight:700; margin-left:3px;">🔮</span>' : '';
+                const realBadge = day.isRealHourly 
+                    ? '<span title="Echte stündliche FoxESS Inverter-Messung" style="color:#00ff88; font-size:8.5px; font-weight:700; margin-left:3px;">✓</span>'
+                    : '<span title="FoxESS Stundendaten werden per GitHub Actions nachgeladen" style="color:#ffaa00; font-size:8px; font-weight:600; margin-left:3px;">⏳</span>';
 
                 return `
                     <tr class="pv-month-table-row" data-day="${day.dateKey}" style="cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.15s ease;">
-                        <td style="padding: 4px 3px; font-family: monospace; font-size: 8.5px; color: #ccc;">${dateStr}${tagBadge}</td>
+                        <td style="padding: 4px 3px; font-family: monospace; font-size: 8.5px; color: #ccc;">${dateStr}${tagBadge}${realBadge}</td>
                         <td style="padding: 4px 3px; text-align: right; font-family: monospace; font-weight: 700; color: #ffdb00;">${day.genKwh.toFixed(1)}</td>
                         <td style="padding: 4px 3px; text-align: right; font-family: monospace; font-weight: 600; color: #b388ff;">${day.feedKwh.toFixed(1)}</td>
                         <td style="padding: 4px 3px; text-align: right; font-family: monospace; color: #00e5ff;">${day.avgRate.toFixed(2).replace('.', ',')}</td>
