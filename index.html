@@ -3281,12 +3281,37 @@
             };
         }
 
-        function getFeedinRatio() {
-            if (livePvData && typeof livePvData.today_yield === 'number' && livePvData.today_yield > 0
+        function getFeedinRatio(targetTime) {
+            // 1. Falls für den konkreten Tag ein Tagesbericht vorliegt und bereits signifikante Erzeugung hat:
+            if (targetTime && livePvData && livePvData.daily_reports) {
+                const d = new Date(targetTime);
+                const k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                const rep = livePvData.daily_reports[k];
+                if (rep && rep.totals && typeof rep.totals.generation === 'number' && rep.totals.generation >= 2.0
+                    && typeof rep.totals.feedin === 'number') {
+                    return Math.min(1, Math.max(0, rep.totals.feedin / rep.totals.generation));
+                }
+            }
+            // 2. Historischer Durchschnitt aller abgeschlossenen Tagesberichte (vermeidet 01:00-Uhr-Nacht-Artefakte)
+            if (livePvData && livePvData.daily_reports) {
+                const reps = Object.values(livePvData.daily_reports);
+                let sumGen = 0, sumFeed = 0;
+                for (const r of reps) {
+                    if (r && r.totals && typeof r.totals.generation === 'number' && r.totals.generation >= 2.0) {
+                        sumGen += r.totals.generation;
+                        sumFeed += (r.totals.feedin || 0);
+                    }
+                }
+                if (sumGen > 1.0) {
+                    return Math.min(1, Math.max(0, sumFeed / sumGen));
+                }
+            }
+            // 3. Heutiger Live-Zählerstand (nur wenn tagsüber bereits Erzeugung stattfand)
+            if (livePvData && typeof livePvData.today_yield === 'number' && livePvData.today_yield >= 2.0
                 && typeof livePvData.today_feedin === 'number' && livePvData.today_feedin >= 0) {
                 return Math.min(1, Math.max(0, livePvData.today_feedin / livePvData.today_yield));
             }
-            return 1.0;
+            return 0.85;
         }
 
         // Berechnet den typischen Haus-Energiebedarf für Abend, Nacht und frühen Morgen (18:00 - 07:00 Uhr)
@@ -3344,74 +3369,113 @@
             return Math.min(pvRevenueConfig.shiftCapKwh, Math.max(1.0, baseReserve));
         }
 
-        // Wirtschaftlich optimierte Batterie-Lastverschiebung (Arbitrage):
-        // Lädt zu den günstigsten Börsenstunden (z.B. Mittagstief/Negativpreise) und entlädt
-        // zu den teuersten Spitzenstunden des Tages (z.B. Abendspitze 19-21 Uhr).
-        // Berücksichtigt Speicherkapazität, Wechselrichter-AC-Limit und Wirkungsgrad (η).
-        function simulateBatteryShift(slots, shiftCap, inverterKw, efficiency) {
+        // Wirtschaftlich optimierte und zeitkausale Batterie-Lastverschiebung (Arbitrage):
+        // Physikalische Kausalität: Ein Ladeslot c kann Strom NUR in spätere Entladeslots d > c einspeisen.
+        // Entladung am Frühmorgen ist nur möglich, falls aus dem Vortag / der Nacht noch Restladung vorhanden ist (initialSoc).
+        // Berücksichtigt Speicherkapazität, Wechselrichter-AC-Limit und Umwandlungsverluste (η).
+        function simulateBatteryShift(slots, shiftCap, inverterKw, efficiency, initialSoc = 0) {
             const fullCap = Math.max(0, shiftCap || 0);
             const invKw = Math.max(0.1, inverterKw || 5.0);
             const eff = Math.min(1, Math.max(0.01, efficiency || 0.90));
+            const N = slots.length;
 
-            const sList = slots.map(s => ({
-                ...s,
-                shiftedOut: 0,
-                shiftedIn: 0,
-                remKwh: Math.max(0, s.kwh || 0)
-            }));
+            if (fullCap <= 0.001 || N === 0) {
+                return slots.map(s => ({
+                    ...s,
+                    shiftedOut: 0,
+                    shiftedIn: 0,
+                    finalFeed: Math.max(0, s.kwh || 0),
+                    socEnd: 0
+                }));
+            }
 
-            if (fullCap <= 0.001) return sList;
-            let remCap = fullCap;
+            const charge = new Array(N).fill(0);
+            const discharge = new Array(N).fill(0);
+            const soc = new Array(N).fill(Math.min(fullCap, Math.max(0, initialSoc)));
 
-            // 1. Entlade-Ziele: teuerste Stunden zuerst (nach Börsenpreis absteigend)
-            const dischargeTargets = [...sList].sort((a, b) => b.ctKwh - a.ctKwh);
-            // 2. Lade-Quellen: günstigste Stunden mit Überschuss zuerst (nach Börsenpreis aufsteigend)
-            const chargeSources = [...sList].filter(s => s.remKwh > 0.001).sort((a, b) => a.ctKwh - b.ctKwh);
+            // 1. Entlade-Ziele: nach Börsenpreis absteigend sortiert (teuerste Stunden zuerst)
+            const dischargeHours = Array.from({ length: N }, (_, i) => i)
+                .sort((a, b) => (slots[b].ctKwh || 0) - (slots[a].ctKwh || 0));
 
-            for (const dSlot of dischargeTargets) {
-                if (remCap <= 0.001) break;
-                // Niemals in einen Slot entladen, aus dem bereits Strom geladen wurde
-                if (dSlot.shiftedOut > 0.001) continue;
+            // 2. Lade-Quellen: nach Börsenpreis aufsteigend sortiert (günstigste Stunden zuerst)
+            const chargeHours = Array.from({ length: N }, (_, i) => i)
+                .filter(i => (slots[i].kwh || 0) > 0.001)
+                .sort((a, b) => (slots[a].ctKwh || 0) - (slots[b].ctKwh || 0));
 
-                // Inverter-AC-Limit für diesen Slot beachten (aktuelle Einspeisung + Entladung <= invKw):
-                const currentExport = dSlot.remKwh + dSlot.shiftedIn;
-                const maxCanReceive = Math.max(0, invKw - currentExport);
-                if (maxCanReceive <= 0.001) continue;
+            // A. Falls ein Anfangs-Ladezustand aus der Nacht/dem Vortag vorliegt, kann dieser frühmorgens entladen werden:
+            let remInit = Math.min(fullCap, Math.max(0, initialSoc));
+            if (remInit > 0.001) {
+                for (const d of dischargeHours) {
+                    if (remInit <= 0.001) break;
+                    const currentExp = (slots[d].kwh || 0) - charge[d] + discharge[d];
+                    const maxCanDischarge = Math.max(0, invKw - currentExp);
+                    if (maxCanDischarge <= 0.001) continue;
 
-                let neededDischarge = maxCanReceive;
-
-                for (const cSlot of chargeSources) {
-                    if (neededDischarge <= 0.001 || remCap <= 0.001) break;
-                    if (cSlot === dSlot) continue;
-                    if (cSlot.remKwh <= 0.001) continue;
-                    // Slot, der bereits Entladestrom empfängt, kann nicht gleichzeitig Ladequelle sein
-                    if (cSlot.shiftedIn > 0.001) continue;
-
-                    // Wirtschaftlichkeits-Bedingung (Arbitrage-Spread):
-                    // Entladung zu dSlot.ctKwh abzüglich Speicherverluste (eff) MUSS rentabler sein als Direktverkauf zu cSlot.ctKwh:
-                    if (dSlot.ctKwh * eff <= cSlot.ctKwh) {
-                        break; // Da chargeSources aufsteigend sortiert ist, sind nachfolgende Slots noch teurer
+                    const toDischarge = Math.min(remInit * eff, maxCanDischarge);
+                    if (toDischarge > 0.001) {
+                        discharge[d] += toDischarge;
+                        const storageUsed = toDischarge / eff;
+                        remInit -= storageUsed;
+                        for (let t = 0; t < d; t++) {
+                            soc[t] = Math.max(0, soc[t] - storageUsed);
+                        }
                     }
-
-                    // Inverter-Limit beim Laden im Quell-Slot:
-                    const maxSlotCanProvide = Math.max(0, Math.min(cSlot.remKwh, invKw - cSlot.shiftedOut));
-                    if (maxSlotCanProvide <= 0.001) continue;
-
-                    const maxCharge = Math.min(maxSlotCanProvide, remCap, neededDischarge / eff);
-                    if (maxCharge <= 0.001) continue;
-
-                    const dischargeAmount = maxCharge * eff;
-
-                    cSlot.shiftedOut += maxCharge;
-                    cSlot.remKwh -= maxCharge;
-                    remCap -= maxCharge;
-
-                    dSlot.shiftedIn += dischargeAmount;
-                    neededDischarge -= dischargeAmount;
                 }
             }
 
-            return sList;
+            // B. Kausales Matching: Ladeslot c lädt NUR in spätere Entladeslots d > c
+            for (const d of dischargeHours) {
+                const currentExp = (slots[d].kwh || 0) - charge[d] + discharge[d];
+                let maxCanDischarge = Math.max(0, invKw - currentExp);
+                if (maxCanDischarge <= 0.001) continue;
+
+                for (const c of chargeHours) {
+                    // STRIKTE KAUSALITÄT: Ein Ladeslot c kann nur in ZUKÜNFTIGE Stunden d > c entladen!
+                    if (c >= d) continue;
+                    if (maxCanDischarge <= 0.001) break;
+
+                    const pD = slots[d].ctKwh || 0;
+                    const pC = slots[c].ctKwh || 0;
+                    // Arbitrage-Spread: Erlös bei d abzüglich Umwandlungsverlusten muss größer sein als Direktverkauf bei c:
+                    if (pD * eff <= pC) break;
+
+                    const remSurplus = (slots[c].kwh || 0) - charge[c];
+                    const invChargeRoom = invKw - charge[c];
+                    const maxChargeSlot = Math.max(0, Math.min(remSurplus, invChargeRoom));
+                    if (maxChargeSlot <= 0.001) continue;
+
+                    // Speicher-Puffer: In allen Stunden zwischen c und d-1 darf die Kapazität nicht überschritten werden:
+                    let maxStorageHeadroom = fullCap;
+                    for (let t = c; t < d; t++) {
+                        maxStorageHeadroom = Math.min(maxStorageHeadroom, fullCap - soc[t]);
+                    }
+                    if (maxStorageHeadroom <= 0.001) continue;
+
+                    const amountToCharge = Math.min(maxChargeSlot, maxStorageHeadroom, maxCanDischarge / eff);
+                    if (amountToCharge <= 0.001) continue;
+
+                    const amountDischarged = amountToCharge * eff;
+
+                    charge[c] += amountToCharge;
+                    discharge[d] += amountDischarged;
+                    maxCanDischarge -= amountDischarged;
+
+                    for (let t = c; t < d; t++) {
+                        soc[t] += amountToCharge;
+                    }
+                }
+            }
+
+            return slots.map((s, h) => {
+                const finalFeed = Math.max(0, (s.kwh || 0) - charge[h] + discharge[h]);
+                return {
+                    ...s,
+                    shiftedOut: charge[h],
+                    shiftedIn: discharge[h],
+                    finalFeed,
+                    socEnd: soc[h]
+                };
+            });
         }
 
         // Erlös (€) für eine Leistungs-Zeitreihe im Intervall [fromT, toT):
@@ -3419,7 +3483,7 @@
         // Lastverschiebung und frei wählbaren theoretischen Wechselrichter- & Batteriegrößen).
         function estimateRevenueEur(points, fromT, toT) {
             if (!points || points.length < 2) return null;
-            const basisFactor = pvRevenueConfig.feedinBasis === 'feedin' ? getFeedinRatio() : 1.0;
+            const basisFactor = pvRevenueConfig.feedinBasis === 'feedin' ? getFeedinRatio(fromT) : 1.0;
 
             // --- EEG-Vergütungsmodell ---
             if (pvRevenueConfig.mode === 'eeg') {
@@ -3483,16 +3547,159 @@
             const nightReserve = (!isGrossOptionB && pvRevenueConfig.selfProtect !== false) ? getTypicalNightReserveKwh(fromT) : 0;
             const shiftCap = Math.max(0, fullShiftCap - nightReserve);
             const inverterKw = Math.max(0.1, pvRevenueConfig.inverterAcKw || 5.0);
-            const efficiency = Math.min(1, Math.max(0.1, (pvRevenueConfig.efficiencyPct || 90) / 100));
+            const efficiency = Math.min(1, Math.max(0.01, (pvRevenueConfig.efficiencyPct || 90) / 100));
 
-            const shiftedSlots = simulateBatteryShift(slots, shiftCap, inverterKw, efficiency);
+            const shiftedSlots = simulateBatteryShift(slots, shiftCap, inverterKw, efficiency, 0);
 
             let eur = 0;
             for (const s of shiftedSlots) {
-                const effKwh = Math.max(0, s.kwh - s.shiftedOut + s.shiftedIn);
+                const effKwh = Math.max(0, (s.finalFeed !== undefined ? s.finalFeed : (s.kwh - s.shiftedOut + s.shiftedIn)));
                 eur += effKwh * (s.ctKwh / 100);
             }
             return eur;
+        }
+
+        function getAvailableHistoryDateKeys() {
+            if (livePvData && livePvData.daily_reports) {
+                return Object.keys(livePvData.daily_reports).sort();
+            }
+            return [];
+        }
+
+        // Zentrale, konsistente Tages-Bilanzierung & Erlösberechnung:
+        // Wird synchron von der linken Erlöskarte (buildEuroRows) UND dem rechten Detail-Container (renderPvHistoryContainer) genutzt.
+        // Garantiert absolute Konsistenz, konstanten Haushaltsverbrauch und exakte Bilanzierung von Umwandlungsverlusten.
+        function computeDayEnergyAndRevenue(dateKey) {
+            if (!dateKey) return null;
+            const rep = (livePvData && livePvData.daily_reports) ? livePvData.daily_reports[dateKey] : null;
+            const dayStart = new Date(dateKey + 'T00:00:00').getTime();
+            const dayEnd = dayStart + 24 * 3600 * 1000;
+
+            const history3d = (livePvData && livePvData.history_3d) ? livePvData.history_3d : [];
+            const dayPts = history3d.filter(p => {
+                const pt = new Date(p.t).getTime();
+                return pt >= dayStart && pt < dayEnd;
+            });
+
+            if (!rep && (!dayPts || dayPts.length < 10)) return null;
+
+            // 1. Extrapolation unter Erhalt des realen Hausverbrauchs
+            const scenario = applyPvScenarioToDayData(dayPts, rep);
+            const { factor, isScenarioActive, genArr, feedArr, loadArr, gridArr } = scenario;
+
+            // 2. Stündliche Börsenpreise
+            const dayPrices = (priceData || []).filter(p => p.endT > dayStart && p.t < dayEnd);
+            const hourlyPrices = [];
+            for (let h = 0; h < 24; h++) {
+                const slotT = dayStart + h * 3600 * 1000 + 1800 * 1000;
+                const match = dayPrices.find(p => p.t <= slotT && p.endT > slotT);
+                hourlyPrices.push(match ? match.ctKwh : null);
+            }
+
+            // 3. Vergütungsmodell
+            const isEeg = (pvRevenueConfig.mode === 'eeg');
+            const isGrossOptionB = (pvRevenueConfig.feedinBasis === 'gross');
+            const hasSolarSpitzen = !!pvRevenueConfig.applySolarSpitzen;
+            const eegRate = Math.max(0, pvRevenueConfig.eegRateCt || 8.20);
+
+            // 4. Kausale Batterie-Lastverschiebung
+            let shiftedFeed = [...feedArr];
+            let chargedKwh = 0;
+            let dischargedKwh = 0;
+            let conversionLossKwh = 0;
+
+            if (!isEeg && pvRevenueConfig.batteryShift) {
+                const shiftSlots = [];
+                for (let h = 0; h < 24; h++) {
+                    const baseM = isGrossOptionB ? (genArr[h] || 0) : (feedArr[h] || 0);
+                    shiftSlots.push({ h, kwh: baseM, ctKwh: hourlyPrices[h] !== null ? hourlyPrices[h] : 0 });
+                }
+                const fullCap = Math.max(0, pvRevenueConfig.shiftCapKwh || 8.0);
+                const nightRes = (!isGrossOptionB && pvRevenueConfig.selfProtect !== false) ? getTypicalNightReserveKwh(dayStart) : 0;
+                const shiftCap = Math.max(0, fullCap - nightRes);
+                const invKw = Math.max(0.1, pvRevenueConfig.inverterAcKw || 5.0);
+                const eff = Math.min(1, Math.max(0.01, (pvRevenueConfig.efficiencyPct || 90) / 100));
+
+                const simSlots = simulateBatteryShift(shiftSlots, shiftCap, invKw, eff, 0);
+                shiftedFeed = simSlots.map(s => s.finalFeed);
+                chargedKwh = simSlots.reduce((sum, s) => sum + s.shiftedOut, 0);
+                dischargedKwh = simSlots.reduce((sum, s) => sum + s.shiftedIn, 0);
+                conversionLossKwh = Math.max(0, chargedKwh - dischargedKwh);
+            }
+
+            // 5. Summen & Erlöse
+            const sumArr = arr => arr.reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
+            const totals = rep ? (rep.totals || {}) : {};
+            const genKwh = sumArr(genArr);
+            const initialFeedKwh = isScenarioActive ? sumArr(feedArr) : ((typeof totals.feedin === 'number') ? totals.feedin : sumArr(feedArr));
+            const loadKwh = (typeof totals.loads === 'number') ? totals.loads : sumArr(loadArr);
+            const gridKwh = isScenarioActive ? sumArr(gridArr) : ((typeof totals.gridConsumption === 'number') ? totals.gridConsumption : sumArr(gridArr));
+
+            // Effektive Netzeinspeisung berücksichtigt die Umwandlungsverluste der Batterie:
+            const effectiveFeedKwh = (!isEeg && pvRevenueConfig.batteryShift) ? sumArr(shiftedFeed) : initialFeedKwh;
+            const selfKwh = Math.max(0, genKwh - initialFeedKwh);
+            const selfPct = (genKwh > 0.05) ? Math.min(100, Math.round((selfKwh / genKwh) * 100)) : 0;
+            const feedPct = (genKwh > 0.05) ? Math.min(100, Math.round((effectiveFeedKwh / genKwh) * 100)) : 0;
+            const autarkyPct = (loadKwh > 0.05) ? Math.min(100, Math.max(0, Math.round(((loadKwh - gridKwh) / loadKwh) * 100))) : 100;
+
+            let totalEur = 0;
+            let totalBasisKwh = 0;
+            for (let h = 0; h < 24; h++) {
+                const g = genArr[h] || 0;
+                const f = feedArr[h] || 0;
+                const p = hourlyPrices[h];
+                const basisKwh = (pvRevenueConfig.batteryShift && !isEeg) ? (shiftedFeed[h] || 0) : (isGrossOptionB ? g : f);
+                totalBasisKwh += basisKwh;
+
+                let rate = 0;
+                if (isEeg) {
+                    if (hasSolarSpitzen && p !== null && p < 0) {
+                        rate = 0.0;
+                    } else {
+                        rate = eegRate;
+                    }
+                } else {
+                    rate = (p !== null) ? p : eegRate;
+                }
+                totalEur += basisKwh * (rate / 100);
+            }
+            const avgRate = (totalBasisKwh > 0.001) ? (totalEur / totalBasisKwh * 100) : (isEeg ? eegRate : 0);
+
+            return {
+                dateKey,
+                dayStart,
+                dayEnd,
+                rep,
+                scenario,
+                factor,
+                isScenarioActive,
+                genArr,
+                feedArr,
+                loadArr,
+                gridArr,
+                effectiveDayPts: scenario.dayPts,
+                shiftedFeed,
+                hourlyPrices,
+                genKwh,
+                initialFeedKwh,
+                effectiveFeedKwh,
+                loadKwh,
+                gridKwh,
+                selfKwh,
+                selfPct,
+                feedPct,
+                autarkyPct,
+                chargedKwh,
+                dischargedKwh,
+                conversionLossKwh,
+                totalEur,
+                totalBasisKwh,
+                avgRate,
+                isEeg,
+                isGrossOptionB,
+                hasSolarSpitzen,
+                eegRate
+            };
         }
 
         // Baut die Zeilen für das €-Panel: vergangene Kalendertage (Ist-Werte)
@@ -3501,81 +3708,60 @@
             const rows = [];
             const dayMs = 24 * 3600 * 1000;
             const now = Date.now();
-            const data = pvChartState.data;
-            const basisFactor = pvRevenueConfig.feedinBasis === 'feedin' ? getFeedinRatio() : 1.0;
-
-            if (data.length) {
-                const dataStart = data[0].t;
-                const dFirst = new Date(dataStart);
-                // Lokaler Mitternachtsbeginn der Anlage (vermeidet UTC-Verschiebung um 2 Stunden):
-                let dayStart = new Date(dFirst.getFullYear(), dFirst.getMonth(), dFirst.getDate()).getTime();
-                while (dayStart < now) {
-                    const dayEnd = dayStart + dayMs;
-                    const segStart = Math.max(dayStart, dataStart);
-                    const segEnd = Math.min(dayEnd, now);
-                    if (segEnd > segStart) {
-                        const d = new Date(dayStart);
-                        const dateKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-                        const isToday = (dayEnd >= now);
-                        const label = isToday ? 'Heute' : d.toLocaleDateString('de-DE', { weekday: 'short' });
-
-                        // Falls der offizielle FoxESS-Zählerstand vorliegt, diesen bevorzugen:
-                        let rawKwh = null;
-                        let kwh = null;
-                        if (isToday && livePvData && typeof livePvData.today_yield === 'number' && livePvData.today_yield > 0) {
-                            rawKwh = livePvData.today_yield;
-                            if (pvRevenueConfig.feedinBasis === 'feedin' && typeof livePvData.today_feedin === 'number') {
-                                kwh = livePvData.today_feedin;
-                            }
-                        } else if (livePvData && livePvData.daily_reports && livePvData.daily_reports[dateKey] && livePvData.daily_reports[dateKey].totals) {
-                            const repTotals = livePvData.daily_reports[dateKey].totals;
-                            if (typeof repTotals.generation === 'number' && repTotals.generation > 0) {
-                                rawKwh = repTotals.generation;
-                                if (pvRevenueConfig.feedinBasis === 'feedin' && typeof repTotals.feedin === 'number') {
-                                    kwh = repTotals.feedin;
-                                }
-                            }
-                        }
-
-                        if (rawKwh === null) {
-                            rawKwh = integrateKwh(data, segStart, segEnd);
-                        }
-
-                        const sFactor = getPvScenarioFactor();
-                        const isScenarioActive = Math.abs(sFactor - 1.0) > 0.005;
-                        if (isScenarioActive) {
-                            rawKwh = rawKwh * sFactor;
-                        }
-
-                        if (kwh === null) {
-                            kwh = rawKwh * basisFactor;
-                        } else if (isScenarioActive) {
-                            kwh = kwh * sFactor;
-                        }
-
-                        if (rawKwh >= 0.05) {
-                            let eur = estimateRevenueEur(data, segStart, segEnd);
-                            if (eur !== null && isScenarioActive) {
-                                eur = eur * sFactor;
-                            }
-                            rows.push({ label, dateKey, kwh, rawKwh, eur, isForecast: false });
-                        }
-                    }
-                    dayStart += dayMs;
-                }
-            }
+            const nowD = new Date();
+            const todayKey = nowD.getFullYear() + '-' + String(nowD.getMonth() + 1).padStart(2, '0') + '-' + String(nowD.getDate()).padStart(2, '0');
 
             const sFactor = getPvScenarioFactor();
             const isScenarioActive = Math.abs(sFactor - 1.0) > 0.005;
 
+            // 1. Historische Tage aus daily_reports & history_3d (synchron mit Detailanalyse):
+            const dateKeys = getAvailableHistoryDateKeys();
+            for (const dateKey of dateKeys) {
+                const dayData = computeDayEnergyAndRevenue(dateKey);
+                if (!dayData || dayData.genKwh < 0.05) continue;
+
+                const d = new Date(dateKey + 'T12:00:00');
+                const isToday = (dateKey === todayKey);
+                const label = isToday ? 'Heute' : d.toLocaleDateString('de-DE', { weekday: 'short' });
+
+                const basisKwh = dayData.isGrossOptionB ? dayData.genKwh : dayData.effectiveFeedKwh;
+                rows.push({
+                    label,
+                    dateKey,
+                    kwh: basisKwh,
+                    rawKwh: dayData.genKwh,
+                    eur: dayData.totalEur,
+                    isForecast: false
+                });
+            }
+
+            // Falls heute noch nicht in daily_reports archiviert ist, aber Live-Messpunkte vorliegen:
+            if (!rows.some(r => r.dateKey === todayKey)) {
+                const todayData = computeDayEnergyAndRevenue(todayKey);
+                if (todayData && todayData.genKwh >= 0.05) {
+                    const basisKwh = todayData.isGrossOptionB ? todayData.genKwh : todayData.effectiveFeedKwh;
+                    rows.push({
+                        label: 'Heute',
+                        dateKey: todayKey,
+                        kwh: basisKwh,
+                        rawKwh: todayData.genKwh,
+                        eur: todayData.totalEur,
+                        isForecast: false
+                    });
+                }
+            }
+
+            // 2. Rollierende Prognose-Fenster:
             computeForecastCheckpoints().forEach(cp => {
                 let rawKwh = cp.rawKwh !== undefined ? cp.rawKwh : cp.kwh;
                 if (isScenarioActive) rawKwh = rawKwh * sFactor;
+                const basisFactor = pvRevenueConfig.feedinBasis === 'feedin' ? getFeedinRatio(cp.fromT) : 1.0;
                 let kwh = rawKwh * basisFactor;
                 let eur = cp.points ? estimateRevenueEur(cp.points, cp.fromT, cp.toT) : cp.eur;
                 if (eur !== null && isScenarioActive) eur = eur * sFactor;
                 rows.push({ label: cp.label, kwh, rawKwh, eur, isForecast: true });
             });
+
             return rows;
         }
 
@@ -3861,30 +4047,19 @@
                 });
             }
 
-            const rep = (livePvData && livePvData.daily_reports) ? livePvData.daily_reports[activeDateKey] : null;
-            if (!rep) return;
+            const dayData = computeDayEnergyAndRevenue(activeDateKey);
+            if (!dayData) return;
+
+            const {
+                dayStart, dayEnd, factor, isScenarioActive,
+                genArr, feedArr, loadArr, gridArr, effectiveDayPts,
+                shiftedFeed, hourlyPrices, genKwh, initialFeedKwh, effectiveFeedKwh,
+                loadKwh, gridKwh, selfKwh, selfPct, feedPct, autarkyPct,
+                conversionLossKwh, isGrossOptionB, isEeg, hasSolarSpitzen, eegRate
+            } = dayData;
 
             const dActive = new Date(activeDateKey + 'T12:00:00');
             const fullDateStr = dActive.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-
-            // 2. Echte Solar-Erzeugung, 5-Minuten-Telemetrie & Extrapolations-Szenario
-            const dayStart = new Date(activeDateKey + 'T00:00:00').getTime();
-            const dayEnd = dayStart + 24 * 3600 * 1000;
-
-            const history3d = (livePvData && livePvData.history_3d) ? livePvData.history_3d : [];
-            const dayPts = history3d.filter(p => {
-                const pt = new Date(p.t).getTime();
-                return pt >= dayStart && pt < dayEnd;
-            });
-
-            // Extrapolations-Szenario auf Tagesdaten anwenden (inkl. AC-Limit des Wechselrichters)
-            const scenario = applyPvScenarioToDayData(dayPts, rep);
-            const { factor, isScenarioActive } = scenario;
-            const genArr = scenario.genArr;
-            const feedArr = scenario.feedArr;
-            const loadArr = scenario.loadArr;
-            const gridArr = scenario.gridArr;
-            const effectiveDayPts = scenario.dayPts;
 
             if (subEl) {
                 subEl.innerHTML = isScenarioActive
@@ -3892,31 +4067,15 @@
                     : fullDateStr;
             }
 
-            const sumArr = arr => arr.reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
-            const totals = rep.totals || {};
-            const genKwh = sumArr(genArr);
-            const feedKwh = isScenarioActive ? sumArr(feedArr) : ((typeof totals.feedin === 'number') ? totals.feedin : sumArr(feedArr));
-            const loadKwh = (typeof totals.loads === 'number') ? totals.loads : sumArr(loadArr);
-            const gridKwh = isScenarioActive ? sumArr(gridArr) : ((typeof totals.gridConsumption === 'number') ? totals.gridConsumption : sumArr(gridArr));
-
-            const selfKwh = Math.max(0, genKwh - feedKwh);
-            const selfPct = (genKwh > 0.05) ? Math.min(100, Math.round((selfKwh / genKwh) * 100)) : 0;
-            const feedPct = (genKwh > 0.05) ? Math.min(100, Math.round((feedKwh / genKwh) * 100)) : 0;
-            const autarkyPct = (loadKwh > 0.05) ? Math.min(100, Math.max(0, Math.round(((loadKwh - gridKwh) / loadKwh) * 100))) : 100;
-
             if (kpiYieldEl) kpiYieldEl.innerText = genKwh.toFixed(1) + ' kWh';
             if (kpiSelfEl) kpiSelfEl.innerHTML = `${selfKwh.toFixed(1)} kWh <span style="font-size:9.5px; font-weight:normal; color:#888;">(${selfPct} %)</span>`;
-            if (kpiFeedEl) kpiFeedEl.innerHTML = `${feedKwh.toFixed(1)} kWh <span style="font-size:9.5px; font-weight:normal; color:#888;">(${feedPct} %)</span>`;
-            if (kpiAutarkyEl) kpiAutarkyEl.innerHTML = `${gridKwh.toFixed(1)} kWh <span style="font-size:9.5px; font-weight:normal; color:#888;">· ${autarkyPct} %</span>`;
-
-            // 3. Stündliche Börsenpreise finden
-            const dayPrices = (priceData || []).filter(p => p.endT > dayStart && p.t < dayEnd);
-            const hourlyPrices = [];
-            for (let h = 0; h < 24; h++) {
-                const slotT = dayStart + h * 3600 * 1000 + 1800 * 1000;
-                const match = dayPrices.find(p => p.t <= slotT && p.endT > slotT);
-                hourlyPrices.push(match ? match.ctKwh : null);
+            if (kpiFeedEl) {
+                const lossNote = (!isEeg && pvRevenueConfig.batteryShift && conversionLossKwh > 0.01)
+                    ? ` · Verlust ${conversionLossKwh.toFixed(1)} kWh`
+                    : '';
+                kpiFeedEl.innerHTML = `${effectiveFeedKwh.toFixed(1)} kWh <span style="font-size:9.5px; font-weight:normal; color:#888;">(${feedPct} %${lossNote})</span>`;
             }
+            if (kpiAutarkyEl) kpiAutarkyEl.innerHTML = `${gridKwh.toFixed(1)} kWh <span style="font-size:9.5px; font-weight:normal; color:#888;">· ${autarkyPct} %</span>`;
 
             // 4. 24h Energiefluss SVG Chart (Detailgetreu wie links)
             const W = 380, H = 100;
@@ -4096,11 +4255,6 @@
             }
 
             // 5. Modell-Konfiguration (EEG vs. Direktvermarktung, Option A/B, Solar-Spitzen § 51, Batterie-Shift)
-            const isGrossOptionB = (pvRevenueConfig.feedinBasis === 'gross');
-            const isEeg = (pvRevenueConfig.mode === 'eeg');
-            const eegRate = (typeof pvRevenueConfig.eegRateCt === 'number') ? pvRevenueConfig.eegRateCt : 8.20;
-            const hasSolarSpitzen = isEeg && !!pvRevenueConfig.applySolarSpitzen;
-
             const modelBadgeEl = document.getElementById('pvHistModelBadge');
             const colBasisEl = document.getElementById('pvHistColBasis');
             const colRateEl = document.getElementById('pvHistColRate');
@@ -4163,24 +4317,6 @@
                 }
             }
 
-            // Falls Direktvermarktung mit Batterie-Shift aktiv ist:
-            // Simuliere stündliche Lastverschiebung für den Tag:
-            let shiftedFeed = [...feedArr];
-            if (!isEeg && pvRevenueConfig.batteryShift) {
-                const shiftSlots = [];
-                for (let h = 0; h < 24; h++) {
-                    const baseM = isGrossOptionB ? (genArr[h] || 0) : (feedArr[h] || 0);
-                    shiftSlots.push({ h, kwh: baseM, ctKwh: hourlyPrices[h] !== null ? hourlyPrices[h] : 0, shiftedOut: 0, shiftedIn: 0 });
-                }
-                const fullCap = Math.max(0, pvRevenueConfig.shiftCapKwh || 8.0);
-                const nightRes = (!isGrossOptionB && pvRevenueConfig.selfProtect !== false) ? getTypicalNightReserveKwh(dayStart) : 0;
-                const shiftCap = Math.max(0, fullCap - nightRes);
-                const invKw = Math.max(0.1, pvRevenueConfig.inverterAcKw || 5.0);
-                const eff = Math.min(1, Math.max(0.1, (pvRevenueConfig.efficiencyPct || 90) / 100));
-
-                const simSlots = simulateBatteryShift(shiftSlots, shiftCap, invKw, eff);
-                shiftedFeed = simSlots.map(s => Math.max(0, s.kwh - s.shiftedOut + s.shiftedIn));
-            }
 
             // --- Crosshair & Hover-Werteinspektion ---
             const syncHoverEls = container.querySelectorAll('.pv-hist-sync-hover');
@@ -4319,7 +4455,7 @@
 
                 if (tableFoot) {
                     const avgRate = (totalBasisKwh > 0.001) ? (totalEur / totalBasisKwh * 100) : (isEeg ? eegRate : 0);
-                    const basisColTotal = isGrossOptionB ? genKwh : feedKwh;
+                    const basisColTotal = totalBasisKwh;
                     const basisColColor = isGrossOptionB ? '#ffdb00' : '#b388ff';
                     const eurColor = (totalEur > 0.005) ? '#00ff88' : (totalEur < -0.005 ? '#ff5252' : '#aaa');
                     tableFoot.innerHTML = `
