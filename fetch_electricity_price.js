@@ -1,16 +1,13 @@
 // Day-Ahead-Strompreis (EPEX, deutsche/luxemburgische Gebotszone) über die kostenlose,
-// keyfreie aWATTar-API. Liefert Ist-Preise für mehrere Tage zurück (echte Historie, keine
-// Momentaufnahme wie bei solar_data.js) und Zukunftspreise nur soweit die Börse sie schon
-// veröffentlicht hat - üblicherweise der Rest des heutigen Tages plus der morgige Tag, sobald
-// die Auktion dafür (meist gegen 13-14 Uhr MEZ) durchgelaufen ist. Für Tag 2/3 der PV-Prognose
-// gibt es deshalb bewusst keine erfundenen Platzhalterpreise, siehe computeEuroSummary() in
-// index.html, die mit dieser Lücke ehrlich umgeht statt sie zu verschweigen.
+// keyfreie aWATTar-API. Liefert Ist-Preise (inkl. Monats-Historie ab August 2026) und Zukunftspreise
+// soweit die Börse sie schon veröffentlicht hat.
 const fs = require('fs');
 const https = require('https');
 
 const API_URL = 'https://api.awattar.de/v1/marketdata';
-const HISTORY_DAYS = 5; // etwas mehr als die 3 Tage des PV-Charts, für Puffer
-const FUTURE_DAYS = 3;  // real meist nur ~1.5 Tage gefüllt, Rest bleibt schlicht leer
+// Fester Start ab 01.08.2026 für vollständige Monatsanalysen (August, September)
+const MIN_HISTORY_START = new Date('2026-08-01T00:00:00Z').getTime();
+const FUTURE_DAYS = 3;
 
 function fetchJson(url) {
     return new Promise((resolve, reject) => {
@@ -27,7 +24,7 @@ function fetchJson(url) {
 
 async function run() {
     try {
-        const start = Date.now() - HISTORY_DAYS * 24 * 3600 * 1000;
+        const start = MIN_HISTORY_START;
         const end = Date.now() + FUTURE_DAYS * 24 * 3600 * 1000;
         const url = `${API_URL}?start=${start}&end=${end}`;
         console.log('Rufe Day-Ahead-Preise ab:', url);
@@ -36,10 +33,20 @@ async function run() {
         if (!rows.length) throw new Error('aWATTar lieferte keine Preisdaten');
 
         // EUR/MWh -> ct/kWh: 1 EUR/MWh = 0.1 ct/kWh
-        const priceData = rows
+        const fetchedPrices = rows
             .filter(r => typeof r.start_timestamp === 'number' && typeof r.marketprice === 'number')
-            .map(r => ({ t: r.start_timestamp, endT: r.end_timestamp, ctKwh: Math.round(r.marketprice * 0.1 * 100) / 100 }))
-            .sort((a, b) => a.t - b.t);
+            .map(r => ({ t: r.start_timestamp, endT: r.end_timestamp, ctKwh: Math.round(r.marketprice * 0.1 * 100) / 100 }));
+
+        // Bestehende Preise mergen (sofern vorhanden), um Lücken zu vermeiden
+        let existingPrices = [];
+        if (fs.existsSync('electricity_price.json')) {
+            try { existingPrices = JSON.parse(fs.readFileSync('electricity_price.json', 'utf8')); } catch (e) {}
+        }
+        const priceMap = new Map();
+        existingPrices.forEach(p => priceMap.set(p.t, p));
+        fetchedPrices.forEach(p => priceMap.set(p.t, p));
+
+        const priceData = Array.from(priceMap.values()).sort((a, b) => a.t - b.t);
 
         const fileContent = `// Day-Ahead-Strompreis (EPEX DE/LU) in ct/kWh, stündlich. Quelle: aWATTar API (api.awattar.de).
 // Netto-Marktpreis ohne Steuern/Abgaben/Netzentgelte - nicht identisch mit einem konkreten Endkundentarif.

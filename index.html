@@ -666,6 +666,57 @@
             border-top-right-radius: 16px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         }
+
+        /* FOXESS MONATS- & LANGZEITBILANZ (SIDE-BY-SIDE CONTAINER) */
+        #pv-monthly-container {
+            position: absolute;
+            top: 76px;
+            left: 802px;
+            width: 440px;
+            max-width: calc(100vw - 820px);
+            max-height: calc(100vh - 96px);
+            overflow-y: auto;
+            overflow-x: hidden;
+            overscroll-behavior: contain;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 219, 0, 0.25) transparent;
+            z-index: 45;
+            background: rgba(18, 18, 24, 0.95);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 219, 0, 0.35);
+            border-radius: 16px;
+            padding: 14px 16px;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.8), 0 0 24px rgba(255, 219, 0, 0.10);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+            color: #fff;
+            display: none;
+            transition: opacity 0.25s ease;
+        }
+        #pv-monthly-container::-webkit-scrollbar { width: 4px; }
+        #pv-monthly-container::-webkit-scrollbar-thumb { background: rgba(255, 219, 0, 0.25); border-radius: 4px; }
+        #pv-monthly-container .forecast-header {
+            position: sticky;
+            top: -14px;
+            margin: -14px -16px 8px -16px;
+            padding: 12px 16px 6px 16px;
+            background: rgba(18, 18, 24, 0.98);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            z-index: 10;
+            border-top-left-radius: 16px;
+            border-top-right-radius: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        @media (max-width: 1260px) {
+            #pv-monthly-container {
+                left: 366px;
+                width: 420px;
+                max-width: calc(100vw - 390px);
+                z-index: 48;
+            }
+        }
         .pv-badge-btn {
             background: rgba(255, 215, 0, 0.15);
             border: 1px solid rgba(255, 215, 0, 0.4);
@@ -1021,9 +1072,14 @@
                         </table>
                     </div>
 
-                    <button id="pvOpenHistoryBtn" type="button" style="width: 100%; background: rgba(0, 229, 255, 0.10); border: 1px solid rgba(0, 229, 255, 0.3); color: #00e5ff; border-radius: 6px; padding: 5px 8px; font-size: 10px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 7px; transition: all 0.15s ease;">
-                        <span>📊 Historische Detailanalyse öffnen</span>
-                    </button>
+                    <div style="display: flex; gap: 6px; margin-top: 7px;">
+                        <button id="pvOpenHistoryBtn" type="button" style="flex: 1; background: rgba(0, 229, 255, 0.10); border: 1px solid rgba(0, 229, 255, 0.3); color: #00e5ff; border-radius: 6px; padding: 5px 6px; font-size: 10px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all 0.15s ease;">
+                            <span>📊 24h-Historie</span>
+                        </button>
+                        <button id="pvOpenMonthlyBtn" type="button" style="flex: 1; background: rgba(255, 219, 0, 0.12); border: 1px solid rgba(255, 219, 0, 0.35); color: #ffdb00; border-radius: 6px; padding: 5px 6px; font-size: 10px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all 0.15s ease;">
+                            <span>📅 Monats-Bilanz</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -1084,7 +1140,8 @@
                 </div>
                 <div id="pvHistorySubtitle" class="forecast-sub">Tagesauswertung &amp; stündliche Energieflüsse</div>
             </div>
-            <div class="forecast-btn-group">
+            <div class="forecast-btn-group" style="display: flex; gap: 6px; align-items: center;">
+                <button id="pvHistSwitchToMonthBtn" class="forecast-action-btn" title="Zur Monats- & Langzeitbilanz wechseln" style="font-size: 9px; padding: 2px 7px; color: #ffdb00; border-color: rgba(255,219,0,0.35);">📅 Monatsbilanz</button>
                 <button id="pvHistoryCloseBtn" class="forecast-action-btn" title="Schließen">✕</button>
             </div>
         </div>
@@ -1218,6 +1275,101 @@
                 </div>
                 <!-- Externe Zusatzbemerkungen (Vortags- & Speicherübertrag) außerhalb der scrollbaren Tabelle -->
                 <div id="pvHistFootNotes" style="display:none; margin-top: 6px; flex-direction: column; gap: 4px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FoxESS Monats- & Langzeitbilanz (Side-by-Side Companion Container) -->
+    <div id="pv-monthly-container">
+        <div class="forecast-header">
+            <div class="forecast-title-box">
+                <div class="forecast-place" style="color: #ffdb00; display: flex; align-items: center; gap: 6px;">
+                    📅 FoxESS Monats- &amp; Langzeitbilanz
+                </div>
+                <div id="pvMonthlySubtitle" class="forecast-sub">August &amp; September 2026 • Extrapolation &amp; Erlöse</div>
+            </div>
+            <div class="forecast-btn-group" style="display: flex; gap: 6px; align-items: center;">
+                <button id="pvMonthSwitchToDayBtn" class="forecast-action-btn" title="Zur 24h-Detailanalyse wechseln" style="font-size: 9px; padding: 2px 7px; color: #00e5ff; border-color: rgba(0,229,255,0.35);">📊 24h-Tag</button>
+                <button id="pvMonthlyCloseBtn" class="forecast-action-btn" title="Schließen">✕</button>
+            </div>
+        </div>
+
+        <div id="pvMonthlyBody">
+            <!-- Monats-Auswahl Reiter (Pills: August 2026, September 2026, Gesamt) -->
+            <div id="pvMonthlyPills" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 8px; scrollbar-width: none;"></div>
+
+            <!-- Modell-Badge & Info Zeile -->
+            <div id="pvMonthlyModelBadge" style="margin-bottom: 8px;"></div>
+
+            <!-- Monats-KPI Zusammenfassung (4 Kacheln) -->
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 10px;">
+                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 6px 4px; text-align: center;">
+                    <div style="font-size: 8.5px; color: #888;">PV-Erzeugung</div>
+                    <div id="pvMonthKpiGen" style="font-size: 11.5px; font-weight: 700; color: #ffdb00; margin-top: 2px;">-- kWh</div>
+                    <div id="pvMonthKpiGenRef" style="font-size: 8px; color: #666; margin-top: 1px;"></div>
+                </div>
+                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 6px 4px; text-align: center;">
+                    <div style="font-size: 8.5px; color: #888;">Einspeisung</div>
+                    <div id="pvMonthKpiFeed" style="font-size: 11.5px; font-weight: 700; color: #b388ff; margin-top: 2px;">-- kWh</div>
+                    <div id="pvMonthKpiFeedPct" style="font-size: 8px; color: #666; margin-top: 1px;"></div>
+                </div>
+                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 6px 4px; text-align: center;">
+                    <div style="font-size: 8.5px; color: #888;">Speicher-Shift</div>
+                    <div id="pvMonthKpiBat" style="font-size: 11.5px; font-weight: 700; color: #00ff88; margin-top: 2px;">-- kWh</div>
+                    <div id="pvMonthKpiBatSub" style="font-size: 8px; color: #666; margin-top: 1px;"></div>
+                </div>
+                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(0,255,136,0.15); border-radius: 8px; padding: 6px 4px; text-align: center;">
+                    <div style="font-size: 8.5px; color: #aaa;">Gesamterlös</div>
+                    <div id="pvMonthKpiRev" style="font-size: 11.5px; font-weight: 700; color: #00ff88; margin-top: 2px;">-- €</div>
+                    <div id="pvMonthKpiAvgRate" style="font-size: 8px; color: #00e5ff; margin-top: 1px;"></div>
+                </div>
+            </div>
+
+            <!-- Tägliches Balkendiagramm SVG -->
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 8px 8px; margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <div style="font-size: 10px; font-weight: 600; color: #bbb;">Täglicher Ertrags- &amp; Erlösverlauf</div>
+                    <div id="pvMonthChartHoverInfo" style="font-size: 9px; color: #ffdb00; font-weight: 600;">Klick auf Tag für 24h-Detail</div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center; font-size: 8.5px; margin-bottom: 6px;">
+                    <span style="color: #ffdb00; display: inline-flex; align-items: center; gap: 3px;">
+                        <span style="display:inline-block; width:8px; height:8px; background:rgba(255,219,0,0.4); border:1px solid #ffdb00; border-radius:1px;"></span>Erzeugung
+                    </span>
+                    <span style="color: #b388ff; display: inline-flex; align-items: center; gap: 3px;">
+                        <span style="display:inline-block; width:8px; height:8px; background:rgba(179,136,255,0.5); border:1px solid #b388ff; border-radius:1px;"></span>Einspeisung
+                    </span>
+                    <span style="color: #00ff88; display: inline-flex; align-items: center; gap: 3px;">
+                        <span style="display:inline-block; width:10px; height:0; border-top:2px solid #00ff88;"></span>Erlös (€)
+                    </span>
+                </div>
+                <div id="pvMonthChartSvgWrapper" style="width: 100%; position: relative; overflow-x: auto;">
+                    <svg id="pvMonthBarChart" viewBox="0 0 400 120" preserveAspectRatio="none" style="width: 100%; height: 120px; display: block; overflow: visible; cursor: pointer;"></svg>
+                </div>
+            </div>
+
+            <!-- Tägliche Aufschlüsselungstabelle -->
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 7px 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                    <div style="font-size: 10px; font-weight: 600; color: #bbb;">Tages-Bilanzübersicht</div>
+                    <div style="font-size: 8px; color: #777;">Zeile anklicken für 24h-Detailanalyse</div>
+                </div>
+                <div style="max-height: 220px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,219,0,0.25) transparent;">
+                    <table style="width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 9.5px;">
+                        <thead style="position: sticky; top: 0; z-index: 5;">
+                            <tr style="color: #888; text-align: right;">
+                                <th style="width: 68px; text-align: left; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);">Datum</th>
+                                <th style="width: 48px; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2); color: #ffdb00;">PV kWh</th>
+                                <th style="width: 48px; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2); color: #b388ff;">Einsp.</th>
+                                <th style="width: 46px; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2); color: #00ff88;">Speicher</th>
+                                <th style="width: 44px; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2); color: #00e5ff;">Ø ct/kWh</th>
+                                <th style="width: 48px; padding: 5px 3px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2); color: #00ff88;">Erlös</th>
+                                <th style="width: 22px; text-align: center; padding: 5px 2px; background: #151821; position: sticky; top: 0; z-index: 6; border-bottom: 1px solid rgba(255,255,255,0.2);"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="pvMonthTableBody"></tbody>
+                        <tfoot id="pvMonthTableFoot" style="position: sticky; bottom: 0; z-index: 5;"></tfoot>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -2652,6 +2804,9 @@
             drawPriceChart();
             const euroBody = document.getElementById('pvEuroBody');
             if (euroBody && euroBody.style.display !== 'none') renderEuroTable();
+            if (typeof refreshActivePvAnalysisContainers === 'function') {
+                refreshActivePvAnalysisContainers();
+            }
         }
 
         // Ermittelt den Day-Ahead-Strompreis für einen konkreten Zeitpunkt (Stundenintervall)
@@ -2831,6 +2986,12 @@
                     const c = document.getElementById('pv-history-container');
                     if (c && c.style.display === 'block') {
                         renderPvHistoryContainer(currentHistoryDateKey);
+                    }
+                }
+                if (typeof renderPvMonthlyContainer === 'function' && typeof currentMonthlyActiveKey !== 'undefined' && currentMonthlyActiveKey) {
+                    const c = document.getElementById('pv-monthly-container');
+                    if (c && c.style.display === 'block') {
+                        renderPvMonthlyContainer(currentMonthlyActiveKey);
                     }
                 }
             }
@@ -4339,6 +4500,10 @@
             if (!container) return;
             container.style.display = 'block';
 
+            if (window.innerWidth < 1260) {
+                closePvMonthly();
+            }
+
             const available = getAvailableHistoryDateKeys();
             if (dateKey && available.includes(dateKey)) {
                 currentHistoryDateKey = dateKey;
@@ -5088,6 +5253,440 @@
             }
         }
 
+        // --- FoxESS Monats- & Langzeitbilanz (Companion Container) ---
+        let currentMonthlyActiveKey = '2026-09';
+
+        function showPvMonthly(monthKey) {
+            const container = document.getElementById('pv-monthly-container');
+            if (!container) return;
+            container.style.display = 'block';
+
+            if (window.innerWidth < 1260) {
+                closePvHistory();
+            }
+
+            if (monthKey) {
+                currentMonthlyActiveKey = monthKey;
+            } else if (!currentMonthlyActiveKey) {
+                currentMonthlyActiveKey = '2026-09';
+            }
+            renderPvMonthlyContainer(currentMonthlyActiveKey);
+        }
+
+        function closePvMonthly() {
+            const container = document.getElementById('pv-monthly-container');
+            if (container) {
+                container.style.display = 'none';
+            }
+        }
+
+        function computeMonthEnergyAndRevenue(monthKey) {
+            const allKeys = getAvailableHistoryDateKeys();
+            const dateKeys = (monthKey === 'all') 
+                ? allKeys 
+                : allKeys.filter(k => k.startsWith(monthKey));
+            
+            if (!dateKeys.length) return null;
+
+            let totalGen = 0;
+            let totalInitialFeed = 0;
+            let totalEffectiveFeed = 0;
+            let totalLoad = 0;
+            let totalGrid = 0;
+            let totalEur = 0;
+            let totalCharged = 0;
+            let totalDischarged = 0;
+            let totalLoss = 0;
+
+            const daysData = [];
+
+            for (const dKey of dateKeys) {
+                const dayData = computeDayEnergyAndRevenue(dKey, false);
+                if (!dayData) continue;
+
+                totalGen += dayData.genKwh;
+                totalInitialFeed += dayData.initialFeedKwh;
+                totalEffectiveFeed += dayData.effectiveFeedKwh;
+                totalLoad += dayData.loadKwh;
+                totalGrid += dayData.gridKwh;
+                totalEur += dayData.totalEur;
+                totalCharged += dayData.chargedKwh;
+                totalDischarged += dayData.dischargedKwh;
+                totalLoss += dayData.conversionLossKwh;
+
+                daysData.push({
+                    dateKey: dKey,
+                    dayData,
+                    genKwh: dayData.genKwh,
+                    feedKwh: dayData.effectiveFeedKwh,
+                    loadKwh: dayData.loadKwh,
+                    gridKwh: dayData.gridKwh,
+                    totalEur: dayData.totalEur,
+                    avgRate: dayData.avgRate,
+                    chargedKwh: dayData.chargedKwh,
+                    dischargedKwh: dayData.dischargedKwh,
+                    conversionLossKwh: dayData.conversionLossKwh,
+                    isTodayHybrid: dayData.isTodayHybrid
+                });
+            }
+
+            const selfKwh = Math.max(0, totalGen - totalInitialFeed);
+            const selfPct = (totalGen > 0.1) ? Math.min(100, Math.round((selfKwh / totalGen) * 100)) : 0;
+            const feedPct = (totalGen > 0.1) ? Math.min(100, Math.round((totalEffectiveFeed / totalGen) * 100)) : 0;
+            const autarkyPct = (totalLoad > 0.1) ? Math.min(100, Math.max(0, Math.round(((totalLoad - totalGrid) / totalLoad) * 100))) : 100;
+            const avgRate = (totalEffectiveFeed > 0.01) ? (totalEur / totalEffectiveFeed * 100) : 0;
+
+            const factor = getPvScenarioFactor();
+            const isScenario = (Math.abs(factor - 1.0) > 0.001);
+            const realRefGen = totalGen / factor;
+            const realRefFeed = totalEffectiveFeed / factor;
+            const realRefEur = totalEur / factor;
+
+            return {
+                monthKey,
+                daysCount: daysData.length,
+                daysData,
+                totalGen,
+                totalInitialFeed,
+                totalEffectiveFeed,
+                totalLoad,
+                totalGrid,
+                selfKwh,
+                selfPct,
+                feedPct,
+                autarkyPct,
+                totalEur,
+                avgRate,
+                totalCharged,
+                totalDischarged,
+                totalLoss,
+                isScenario,
+                factor,
+                realRefGen,
+                realRefFeed,
+                realRefEur
+            };
+        }
+
+        function renderPvMonthlyContainer(activeMonthKey) {
+            const container = document.getElementById('pv-monthly-container');
+            if (!container) return;
+
+            const allKeys = getAvailableHistoryDateKeys();
+            if (!allKeys.length) return;
+
+            // Verfügbare Monate ermitteln (z.B. '2026-08', '2026-09')
+            const monthSet = new Set();
+            allKeys.forEach(k => monthSet.add(k.slice(0, 7)));
+            const distinctMonths = Array.from(monthSet).sort();
+
+            if (!activeMonthKey || (!distinctMonths.includes(activeMonthKey) && activeMonthKey !== 'all')) {
+                activeMonthKey = distinctMonths[distinctMonths.length - 1];
+            }
+            currentMonthlyActiveKey = activeMonthKey;
+
+            // 1. Monats-Pills rendern
+            const pillsEl = document.getElementById('pvMonthlyPills');
+            if (pillsEl) {
+                const pills = distinctMonths.map(m => {
+                    const [y, mon] = m.split('-');
+                    const dObj = new Date(parseInt(y), parseInt(mon) - 1, 1);
+                    const label = dObj.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+                    return { key: m, label };
+                });
+                pills.push({ key: 'all', label: `Gesamt (${allKeys.length} Tage)` });
+
+                pillsEl.innerHTML = pills.map(p => {
+                    const isActive = (p.key === activeMonthKey);
+                    const bg = isActive ? 'linear-gradient(135deg, #ffdb00, #ff9100)' : 'rgba(255,255,255,0.06)';
+                    const color = isActive ? '#0a0a0f' : '#bbb';
+                    const border = isActive ? '1px solid #ffdb00' : '1px solid rgba(255,255,255,0.1)';
+                    const weight = isActive ? '700' : '500';
+                    return `<button type="button" data-month="${p.key}" class="pv-month-pill-btn" style="background:${bg}; color:${color}; border:${border}; font-weight:${weight}; padding:3px 10px; border-radius:12px; font-size:10px; cursor:pointer; white-space:nowrap; transition:all 0.15s ease;">${p.label}</button>`;
+                }).join('');
+
+                pillsEl.querySelectorAll('.pv-month-pill-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const mKey = btn.getAttribute('data-month');
+                        renderPvMonthlyContainer(mKey);
+                    });
+                });
+            }
+
+            const monthData = computeMonthEnergyAndRevenue(activeMonthKey);
+            if (!monthData) return;
+
+            // 2. Subtitle
+            const subEl = document.getElementById('pvMonthlySubtitle');
+            if (subEl) {
+                if (activeMonthKey === 'all') {
+                    subEl.innerText = `${monthData.daysCount} Tage analysiert • August & September 2026`;
+                } else {
+                    const [y, mon] = activeMonthKey.split('-');
+                    const dObj = new Date(parseInt(y), parseInt(mon) - 1, 1);
+                    const name = dObj.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+                    subEl.innerText = `${name} (${monthData.daysCount} Tage) • Extrapolation & Erlöse`;
+                }
+            }
+
+            // 3. Dynamisches Modell-Badge
+            const modelBadgeEl = document.getElementById('pvMonthlyModelBadge');
+            if (modelBadgeEl) {
+                const isEeg = (pvRevenueConfig.mode === 'eeg');
+                const isShift = (!isEeg && !!pvRevenueConfig.batteryShift);
+                let badgeText = '';
+                if (isEeg) {
+                    badgeText = `⚡ EEG-Festeinspeisung: ${pvRevenueConfig.eegRateCt.toFixed(2).replace('.', ',')} ct/kWh`;
+                } else if (isShift) {
+                    badgeText = `📈 Direktvermarktung (EPEX) + Lastverschiebung (${pvRevenueConfig.shiftCapKwh.toFixed(1)} kWh, max ${pvRevenueConfig.inverterAcKw.toFixed(1)} kW AC)`;
+                } else {
+                    badgeText = `📈 Direktvermarktung (EPEX Day-Ahead Spotmarkt)`;
+                }
+                const factor = getPvScenarioFactor();
+                const scenarioText = (Math.abs(factor - 1.0) > 0.001)
+                    ? ` • <b>${pvScenarioConfig.targetKwp.toFixed(1)} kWp</b> (${factor.toFixed(2)}x)`
+                    : ` • <b>${pvScenarioConfig.baseKwp.toFixed(1)} kWp</b> (Real)`;
+
+                modelBadgeEl.innerHTML = `
+                    <div style="background: rgba(255,219,0,0.08); border: 1px solid rgba(255,219,0,0.25); border-radius: 6px; padding: 4px 8px; font-size: 8.5px; color: #ffdb00; display: flex; justify-content: space-between; align-items: center;">
+                        <span>${badgeText}</span>
+                        <span style="color: #00e5ff;">${scenarioText}</span>
+                    </div>
+                `;
+            }
+
+            // 4. KPI-Kacheln aktualisieren
+            const kpiGenEl = document.getElementById('pvMonthKpiGen');
+            const kpiGenRefEl = document.getElementById('pvMonthKpiGenRef');
+            const kpiFeedEl = document.getElementById('pvMonthKpiFeed');
+            const kpiFeedPctEl = document.getElementById('pvMonthKpiFeedPct');
+            const kpiBatEl = document.getElementById('pvMonthKpiBat');
+            const kpiBatSubEl = document.getElementById('pvMonthKpiBatSub');
+            const kpiRevEl = document.getElementById('pvMonthKpiRev');
+            const kpiAvgRateEl = document.getElementById('pvMonthKpiAvgRate');
+
+            if (kpiGenEl) kpiGenEl.innerText = `${Math.round(monthData.totalGen).toLocaleString('de-DE')} kWh`;
+            if (kpiGenRefEl) {
+                kpiGenRefEl.innerText = monthData.isScenario 
+                    ? `Real: ${Math.round(monthData.realRefGen).toLocaleString('de-DE')} kWh` 
+                    : 'Reale Referenz';
+            }
+            if (kpiFeedEl) kpiFeedEl.innerText = `${Math.round(monthData.totalEffectiveFeed).toLocaleString('de-DE')} kWh`;
+            if (kpiFeedPctEl) kpiFeedPctEl.innerText = `${monthData.feedPct}% Einspeisequote`;
+
+            if (kpiBatEl) kpiBatEl.innerText = `${Math.round(monthData.totalDischarged).toLocaleString('de-DE')} kWh`;
+            if (kpiBatSubEl) kpiBatSubEl.innerText = `${Math.round(monthData.totalCharged).toLocaleString('de-DE')} kWh geladen`;
+
+            if (kpiRevEl) kpiRevEl.innerText = `${monthData.totalEur.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+            if (kpiAvgRateEl) kpiAvgRateEl.innerText = `Ø ${monthData.avgRate.toFixed(2).replace('.', ',')} ct/kWh`;
+
+            // 5. Tägliches SVG Balkendiagramm rendern
+            renderPvMonthBarChart(monthData);
+
+            // 6. Tägliche Bilanzübersichtstabelle rendern
+            renderPvMonthTable(monthData);
+        }
+
+        function renderPvMonthBarChart(monthData) {
+            const svg = document.getElementById('pvMonthBarChart');
+            const hoverInfo = document.getElementById('pvMonthChartHoverInfo');
+            if (!svg || !monthData || !monthData.daysData.length) return;
+
+            const days = monthData.daysData; // Chronologisch von links nach rechts
+            const N = days.length;
+            const W = 400;
+            const H = 120;
+            const padL = 32;
+            const padR = 32;
+            const padT = 14;
+            const padB = 22;
+            const plotW = W - padL - padR;
+            const plotH = H - padT - padB;
+
+            const maxKwh = Math.max(...days.map(d => Math.max(d.genKwh, d.feedKwh)), 10) * 1.08;
+            const maxEur = Math.max(...days.map(d => d.totalEur), 1) * 1.12;
+
+            let svgContent = '';
+
+            // Horizontale Hilfslinien (25%, 50%, 75%, 100%)
+            [0.25, 0.5, 0.75, 1.0].forEach(frac => {
+                const y = padT + plotH * (1 - frac);
+                const kwhVal = Math.round(maxKwh * frac);
+                const eurVal = (maxEur * frac).toFixed(1);
+                svgContent += `
+                    <line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="2,2" />
+                    <text x="${padL - 3}" y="${(y + 3).toFixed(1)}" fill="#666" font-size="7.5" text-anchor="end" font-family="monospace">${kwhVal}</text>
+                    <text x="${W - padR + 3}" y="${(y + 3).toFixed(1)}" fill="#00ff88" opacity="0.6" font-size="7.5" text-anchor="start" font-family="monospace">${eurVal}€</text>
+                `;
+            });
+
+            // Null-Linie
+            svgContent += `<line x1="${padL}" y1="${padT + plotH}" x2="${W - padR}" y2="${padT + plotH}" stroke="rgba(255,255,255,0.18)" />`;
+
+            const slotW = plotW / N;
+            const barW = Math.max(2, Math.min(7, slotW * 0.36));
+
+            const revenuePoints = [];
+
+            days.forEach((day, i) => {
+                const xCenter = padL + (i + 0.5) * slotW;
+
+                // Erzeugungsbalken (gold)
+                const hGen = Math.max(0, (day.genKwh / maxKwh) * plotH);
+                const yGen = padT + plotH - hGen;
+                const xGen = xCenter - barW - 0.5;
+
+                // Einspeisebalken (lila)
+                const hFeed = Math.max(0, (day.feedKwh / maxKwh) * plotH);
+                const yFeed = padT + plotH - hFeed;
+                const xFeed = xCenter + 0.5;
+
+                // Erlöspunkt (€)
+                const yEur = padT + plotH - Math.max(0, (day.totalEur / maxEur) * plotH);
+                revenuePoints.push({ x: xCenter, y: yEur, day });
+
+                svgContent += `
+                    <g class="pv-month-day-group" data-idx="${i}" data-day="${day.dateKey}">
+                        <rect x="${xGen.toFixed(1)}" y="${yGen.toFixed(1)}" width="${barW.toFixed(1)}" height="${hGen.toFixed(1)}" fill="#ffdb00" fill-opacity="0.45" stroke="#ffdb00" stroke-width="0.8" rx="1" />
+                        <rect x="${xFeed.toFixed(1)}" y="${yFeed.toFixed(1)}" width="${barW.toFixed(1)}" height="${hFeed.toFixed(1)}" fill="#b388ff" fill-opacity="0.55" stroke="#b388ff" stroke-width="0.8" rx="1" />
+                    </g>
+                `;
+
+                // X-Achsenbeschriftung (Datum)
+                const showLabel = (N <= 15) ? true : (N <= 31 ? (i % 3 === 0 || i === N - 1) : (i % 5 === 0 || i === N - 1));
+                if (showLabel) {
+                    const dObj = new Date(day.dateKey + 'T12:00:00');
+                    const dayLabel = String(dObj.getDate()).padStart(2, '0');
+                    svgContent += `<text x="${xCenter.toFixed(1)}" y="${(H - 4).toFixed(1)}" fill="#888" font-size="7.5" text-anchor="middle" font-family="monospace">${dayLabel}</text>`;
+                }
+            });
+
+            // Erlöslinie (€) als Polyline
+            if (revenuePoints.length > 1) {
+                const pointsStr = revenuePoints.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+                svgContent += `<polyline points="${pointsStr}" fill="none" stroke="#00ff88" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" />`;
+                revenuePoints.forEach(p => {
+                    svgContent += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2" fill="#00ff88" stroke="#121218" stroke-width="1" />`;
+                });
+            }
+
+            // Interaktive Klick- & Hover-Targets pro Tag
+            days.forEach((day, i) => {
+                const xSlotStart = padL + i * slotW;
+                svgContent += `
+                    <rect class="pv-month-hit-target" data-day="${day.dateKey}" data-idx="${i}" x="${xSlotStart.toFixed(1)}" y="0" width="${slotW.toFixed(1)}" height="${H}" fill="transparent" style="cursor:pointer;" />
+                `;
+            });
+
+            svg.innerHTML = svgContent;
+
+            // Event-Handling für Hover & Klick
+            svg.querySelectorAll('.pv-month-hit-target').forEach(hitEl => {
+                const dKey = hitEl.getAttribute('data-day');
+                const idx = parseInt(hitEl.getAttribute('data-idx'));
+                const day = days[idx];
+
+                hitEl.addEventListener('mouseenter', () => {
+                    if (hoverInfo && day) {
+                        const dObj = new Date(day.dateKey + 'T12:00:00');
+                        const dateFormatted = dObj.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+                        hoverInfo.innerHTML = `<b>${dateFormatted}:</b> PV ${day.genKwh.toFixed(1)} kWh | Einsp. ${day.feedKwh.toFixed(1)} kWh | <span style="color:#00ff88;">${day.totalEur.toFixed(2).replace('.', ',')} €</span> (${day.avgRate.toFixed(1)} ct) ➔`;
+                    }
+                    const dayGroup = svg.querySelector(`.pv-month-day-group[data-idx="${idx}"]`);
+                    if (dayGroup) {
+                        dayGroup.querySelectorAll('rect').forEach(r => r.setAttribute('stroke-width', '1.8'));
+                    }
+                });
+
+                hitEl.addEventListener('mouseleave', () => {
+                    if (hoverInfo) {
+                        hoverInfo.innerText = 'Klick auf Tag für 24h-Detail';
+                    }
+                    const dayGroup = svg.querySelector(`.pv-month-day-group[data-idx="${idx}"]`);
+                    if (dayGroup) {
+                        dayGroup.querySelectorAll('rect').forEach(r => r.setAttribute('stroke-width', '0.8'));
+                    }
+                });
+
+                hitEl.addEventListener('click', () => {
+                    showPvHistory(dKey);
+                });
+            });
+        }
+
+        function renderPvMonthTable(monthData) {
+            const tableBody = document.getElementById('pvMonthTableBody');
+            const tableFoot = document.getElementById('pvMonthTableFoot');
+            if (!tableBody || !monthData || !monthData.daysData.length) return;
+
+            // Sortierung für die Tabelle: Neueste Tage oben (descending)
+            const sortedDays = [...monthData.daysData].sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+
+            tableBody.innerHTML = sortedDays.map(day => {
+                const dObj = new Date(day.dateKey + 'T12:00:00');
+                const dateStr = dObj.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+                const isToday = day.isTodayHybrid;
+                const tagBadge = isToday ? '<span style="color:#00e5ff; font-size:8px; font-weight:700; margin-left:3px;">🔮</span>' : '';
+                const shiftText = (day.dischargedKwh > 0.05) 
+                    ? `<span style="color:#00ff88;">+${day.dischargedKwh.toFixed(1)}</span>` 
+                    : '<span style="color:#666;">-</span>';
+
+                return `
+                    <tr class="pv-month-table-row" data-day="${day.dateKey}" style="cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.15s ease;">
+                        <td style="padding: 5px 3px; font-family: monospace; font-size: 9px; color: #ccc;">${dateStr}${tagBadge}</td>
+                        <td style="padding: 5px 3px; text-align: right; font-family: monospace; font-weight: 700; color: #ffdb00;">${day.genKwh.toFixed(1)}</td>
+                        <td style="padding: 5px 3px; text-align: right; font-family: monospace; font-weight: 600; color: #b388ff;">${day.feedKwh.toFixed(1)}</td>
+                        <td style="padding: 5px 3px; text-align: right; font-family: monospace; font-size: 8.5px;">${shiftText}</td>
+                        <td style="padding: 5px 3px; text-align: right; font-family: monospace; color: #00e5ff;">${day.avgRate.toFixed(2).replace('.', ',')}</td>
+                        <td style="padding: 5px 3px; text-align: right; font-family: monospace; font-weight: 700; color: #00ff88;">${day.totalEur.toFixed(2).replace('.', ',')} €</td>
+                        <td style="padding: 5px 2px; text-align: center; color: #888; font-size: 9px;">➔</td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Foot / Totals
+            if (tableFoot) {
+                const shiftTot = (monthData.totalDischarged > 0.05) ? `+${monthData.totalDischarged.toFixed(1)}` : '-';
+                tableFoot.innerHTML = `
+                    <tr style="background: rgba(255,255,255,0.07); font-weight: 700; border-top: 1px solid rgba(255,219,0,0.4);">
+                        <td style="padding: 6px 3px; text-align: left; color: #ffdb00;">Summe</td>
+                        <td style="padding: 6px 3px; text-align: right; font-family: monospace; color: #ffdb00;">${monthData.totalGen.toFixed(1)}</td>
+                        <td style="padding: 6px 3px; text-align: right; font-family: monospace; color: #b388ff;">${monthData.totalEffectiveFeed.toFixed(1)}</td>
+                        <td style="padding: 6px 3px; text-align: right; font-family: monospace; font-size: 8.5px; color: #00ff88;">${shiftTot}</td>
+                        <td style="padding: 6px 3px; text-align: right; font-family: monospace; color: #00e5ff;">${monthData.avgRate.toFixed(2).replace('.', ',')}</td>
+                        <td style="padding: 6px 3px; text-align: right; font-family: monospace; color: #00ff88;">${monthData.totalEur.toFixed(2).replace('.', ',')} €</td>
+                        <td style="padding: 6px 2px;"></td>
+                    </tr>
+                `;
+            }
+
+            // Klick auf Tabellenzeile öffnet 24h-Detail
+            tableBody.querySelectorAll('.pv-month-table-row').forEach(row => {
+                const dKey = row.getAttribute('data-day');
+                row.addEventListener('click', () => {
+                    showPvHistory(dKey);
+                });
+                row.addEventListener('mouseenter', () => {
+                    row.style.background = 'rgba(255,219,0,0.08)';
+                });
+                row.addEventListener('mouseleave', () => {
+                    row.style.background = 'transparent';
+                });
+            });
+        }
+
+        function refreshActivePvAnalysisContainers() {
+            renderEuroTable();
+            const histCont = document.getElementById('pv-history-container');
+            if (histCont && histCont.style.display !== 'none' && currentHistoryDateKey) {
+                renderPvHistoryContainer(currentHistoryDateKey);
+            }
+            const monthCont = document.getElementById('pv-monthly-container');
+            if (monthCont && monthCont.style.display !== 'none') {
+                renderPvMonthlyContainer(currentMonthlyActiveKey);
+            }
+        }
+
         function initPvEuroToggle() {
             loadRevenueConfig();
             loadScenarioConfig();
@@ -5107,6 +5706,10 @@
             const efficiencyInput = document.getElementById('pvEfficiencyInput');
             const openHistBtn = document.getElementById('pvOpenHistoryBtn');
             const closeHistBtn = document.getElementById('pvHistoryCloseBtn');
+            const openMonthBtn = document.getElementById('pvOpenMonthlyBtn');
+            const closeMonthBtn = document.getElementById('pvMonthlyCloseBtn');
+            const switchToMonthBtn = document.getElementById('pvHistSwitchToMonthBtn');
+            const switchToDayBtn = document.getElementById('pvMonthSwitchToDayBtn');
 
             updatePvRevenueControlsUI();
 
@@ -5115,8 +5718,7 @@
                     pvRevenueConfig.mode = 'eeg';
                     saveRevenueConfig();
                     updatePvRevenueControlsUI();
-                    renderEuroTable();
-                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                    refreshActivePvAnalysisContainers();
                 });
             }
             if (directBtn) {
@@ -5124,8 +5726,7 @@
                     pvRevenueConfig.mode = 'direct';
                     saveRevenueConfig();
                     updatePvRevenueControlsUI();
-                    renderEuroTable();
-                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                    refreshActivePvAnalysisContainers();
                 });
             }
             if (feedinBasisSelect) {
@@ -5133,8 +5734,7 @@
                     pvRevenueConfig.feedinBasis = e.target.value;
                     saveRevenueConfig();
                     updatePvRevenueControlsUI();
-                    renderEuroTable();
-                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                    refreshActivePvAnalysisContainers();
                 });
             }
             if (eegRateInput) {
@@ -5143,8 +5743,7 @@
                     if (!isNaN(val) && val >= 0) {
                         pvRevenueConfig.eegRateCt = val;
                         saveRevenueConfig();
-                        renderEuroTable();
-                        if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                        refreshActivePvAnalysisContainers();
                     }
                 });
             }
@@ -5152,8 +5751,7 @@
                 solarSpitzenToggle.addEventListener('change', (e) => {
                     pvRevenueConfig.applySolarSpitzen = e.target.checked;
                     saveRevenueConfig();
-                    renderEuroTable();
-                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                    refreshActivePvAnalysisContainers();
                 });
             }
             if (batteryShiftToggle) {
@@ -5164,16 +5762,14 @@
                     }
                     saveRevenueConfig();
                     updatePvRevenueControlsUI();
-                    renderEuroTable();
-                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                    refreshActivePvAnalysisContainers();
                 });
             }
             if (selfProtectToggle) {
                 selfProtectToggle.addEventListener('change', (e) => {
                     pvRevenueConfig.selfProtect = e.target.checked;
                     saveRevenueConfig();
-                    renderEuroTable();
-                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                    refreshActivePvAnalysisContainers();
                 });
             }
             if (shiftCapInput) {
@@ -5182,8 +5778,7 @@
                     if (!isNaN(val) && val >= 0) {
                         pvRevenueConfig.shiftCapKwh = val;
                         saveRevenueConfig();
-                        renderEuroTable();
-                        if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                        refreshActivePvAnalysisContainers();
                     }
                 });
             }
@@ -5193,8 +5788,7 @@
                     if (!isNaN(val) && val > 0) {
                         pvRevenueConfig.inverterAcKw = val;
                         saveRevenueConfig();
-                        renderEuroTable();
-                        if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                        refreshActivePvAnalysisContainers();
                     }
                 });
             }
@@ -5204,8 +5798,7 @@
                     if (!isNaN(val) && val > 0) {
                         pvRevenueConfig.efficiencyPct = val;
                         saveRevenueConfig();
-                        renderEuroTable();
-                        if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                        refreshActivePvAnalysisContainers();
                     }
                 });
             }
@@ -5222,8 +5815,7 @@
                     pvScenarioConfig.targetKwp = Math.round(val * 10) / 10;
                     saveScenarioConfig();
                     updatePvScenarioUI();
-                    renderEuroTable();
-                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                    refreshActivePvAnalysisContainers();
                 }
             }
 
@@ -5233,8 +5825,7 @@
                     pvScenarioConfig.baseKwp = Math.round(val * 10) / 10;
                     saveScenarioConfig();
                     updatePvScenarioUI();
-                    renderEuroTable();
-                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                    refreshActivePvAnalysisContainers();
                 }
             }
 
@@ -5252,8 +5843,7 @@
                     pvScenarioConfig.targetKwp = pvScenarioConfig.baseKwp;
                     saveScenarioConfig();
                     updatePvScenarioUI();
-                    renderEuroTable();
-                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                    refreshActivePvAnalysisContainers();
                 });
             }
 
@@ -5264,8 +5854,7 @@
                         pvScenarioConfig.targetKwp = kwp;
                         saveScenarioConfig();
                         updatePvScenarioUI();
-                        renderEuroTable();
-                        if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                        refreshActivePvAnalysisContainers();
                     }
                 });
             });
@@ -5280,6 +5869,26 @@
                     closePvHistory();
                 });
             }
+            if (openMonthBtn) {
+                openMonthBtn.addEventListener('click', () => {
+                    showPvMonthly();
+                });
+            }
+            if (closeMonthBtn) {
+                closeMonthBtn.addEventListener('click', () => {
+                    closePvMonthly();
+                });
+            }
+            if (switchToMonthBtn) {
+                switchToMonthBtn.addEventListener('click', () => {
+                    showPvMonthly();
+                });
+            }
+            if (switchToDayBtn) {
+                switchToDayBtn.addEventListener('click', () => {
+                    showPvHistory();
+                });
+            }
 
             // History-Container Schnellsteuerung (Modus, Batterie-Shift & Kapazität)
             const histEegBtn = document.getElementById('pvHistModeEegBtn');
@@ -5292,8 +5901,7 @@
                     pvRevenueConfig.mode = 'eeg';
                     saveRevenueConfig();
                     updatePvRevenueControlsUI();
-                    renderEuroTable();
-                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                    refreshActivePvAnalysisContainers();
                 });
             }
             if (histDirectBtn) {
@@ -5301,8 +5909,7 @@
                     pvRevenueConfig.mode = 'direct';
                     saveRevenueConfig();
                     updatePvRevenueControlsUI();
-                    renderEuroTable();
-                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                    refreshActivePvAnalysisContainers();
                 });
             }
             if (histShiftToggle) {
@@ -5313,8 +5920,7 @@
                     }
                     saveRevenueConfig();
                     updatePvRevenueControlsUI();
-                    renderEuroTable();
-                    if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                    refreshActivePvAnalysisContainers();
                 });
             }
             if (histShiftCapInput) {
@@ -5324,8 +5930,7 @@
                         pvRevenueConfig.shiftCapKwh = val;
                         saveRevenueConfig();
                         updatePvRevenueControlsUI();
-                        renderEuroTable();
-                        if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                        refreshActivePvAnalysisContainers();
                     }
                 });
             }
@@ -5337,8 +5942,7 @@
                         pvRevenueConfig.inverterAcKw = val;
                         saveRevenueConfig();
                         updatePvRevenueControlsUI();
-                        renderEuroTable();
-                        if (currentHistoryDateKey) renderPvHistoryContainer(currentHistoryDateKey);
+                        refreshActivePvAnalysisContainers();
                     }
                 });
             }
