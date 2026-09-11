@@ -1046,6 +1046,20 @@
                                     </label>
                                     <span id="pvSelfProtectHint" style="font-size: 8.5px; color: #ff9100;"></span>
                                 </div>
+                                <div id="pvMerchantArbitrageRow" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.06);">
+                                    <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; color: #00e5ff;" title="§ 118 Abs. 6 EnWG: 0 ct Netzentgelte/Stromsteuer bei reiner Wiedereinspeisung">
+                                        <input id="pvMerchantArbitrageToggle" type="checkbox" style="cursor: pointer; accent-color: #00e5ff;">
+                                        <span style="font-weight:600;">Netz-Arbitrage (§ 118 EnWG)</span>
+                                    </label>
+                                    <span style="font-size: 8px; color: #00ff88; background: rgba(0,255,136,0.1); border-radius: 3px; padding: 1px 4px; font-weight: 600;" title="Befreit von Netzentgelten, Stromsteuer und Umlagen">0 ct Umlagen</span>
+                                </div>
+                                <div id="pvMerchantSpreadRow" style="display: none; justify-content: space-between; align-items: center; margin-top: 4px; font-size: 9px;">
+                                    <span style="color: #aaa;" title="Mindest-Gewinnmarge pro kWh nach Wirkungsgradabzug (zur Deckung von Zyklenalterung)">Mindestmarge:</span>
+                                    <div style="display: flex; align-items: center; gap: 3px;">
+                                        <input id="pvArbitrageSpreadInput" type="number" step="0.5" min="0" max="20" value="2.5" style="width: 40px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.18); color: #fff; border-radius: 4px; padding: 1px 3px; font-size: 9.5px; text-align: right;">
+                                        <span style="color: #888;">ct/kWh</span>
+                                    </div>
+                                </div>
                                 <div style="font-size: 8px; color: #777; margin-top: 4px; line-height: 1.2;">
                                     Puffert Mittags-Tiefpreise (bis Kapazitäts- &amp; AC-Limit) und speist in Abend-Hochpreisstunden ein.
                                 </div>
@@ -3313,7 +3327,10 @@
             efficiencyPct: 90,         // Rundenwirkungsgrad in % (η)
             curtailNegativeFeedin: true, // Abregelung (Zero Export) bei negativen Börsenpreisen
             allowGridArbitrage: true,    // Netzbezug bei echtem Negativ-Endpreis (Börse + Abgaben < 0)
-            gridFeeCt: 19.0              // Steuern, Umlagen & Netzentgelte für Bezug in ct/kWh
+            gridFeeCt: 19.0,             // Steuern, Umlagen & Netzentgelte für Endkundenbezug in ct/kWh
+            enableMerchantArbitrage: false, // Handels- & Netz-Arbitrage (§ 118 EnWG / 0 ct Netzentgelte für reine Wiedereinspeisung)
+            arbitrageMinSpreadCt: 2.5,   // Mindestmarge nach Wirkungsgrad in ct/kWh
+            arbitrageGridFeeCt: 0.0      // 0.0 ct/kWh für § 118 EnWG Netzentgelt- & Steuerbefreiung
         };
 
         function loadRevenueConfig() {
@@ -3856,6 +3873,72 @@
                 }
             }
 
+            // D. Handels- & Netzarbitrage (§ 118 EnWG / 0 ct Netzentgelte für reine Wiedereinspeisung):
+            // Nutzt freie Speicherkapazitäten und ungenutzte Wechselrichter-Leistung, um in Tiefstpreisstunden
+            // aus dem Netz zu laden und in Hochpreisstunden (z.B. Morgenspitze oder Abendpeak) wieder einzuspeisen.
+            const merchantChargeKwh = new Array(M).fill(0);
+            const merchantChargeCostEur = new Array(M).fill(0);
+            const merchantDischargeKwh = new Array(M).fill(0);
+            const merchantDischargeRevEur = new Array(M).fill(0);
+
+            if (pvRevenueConfig && pvRevenueConfig.enableMerchantArbitrage) {
+                const arbGridFeeCt = (typeof pvRevenueConfig.arbitrageGridFeeCt === 'number') ? pvRevenueConfig.arbitrageGridFeeCt : 0.0;
+                const minSpreadCt = (typeof pvRevenueConfig.arbitrageMinSpreadCt === 'number') ? pvRevenueConfig.arbitrageMinSpreadCt : 2.5;
+
+                // Alle profitablen Paare (c = Ladeslot, d = Entladeslot mit d > c) ermitteln
+                const arbPairs = [];
+                for (let c = 0; c < N; c++) {
+                    const pC = allSlots[c].ctKwh || 0;
+                    const buyCost = pC + arbGridFeeCt;
+                    for (let d = c + 1; d < M; d++) {
+                        const pD = allSlots[d].ctKwh || 0;
+                        const netSpread = pD * eff - buyCost;
+                        if (netSpread >= minSpreadCt) {
+                            arbPairs.push({ c, d, pC, pD, buyCost, netSpread });
+                        }
+                    }
+                }
+
+                // Paare mit dem höchsten Netto-Spread zuerst bedienen
+                arbPairs.sort((a, b) => b.netSpread - a.netSpread);
+
+                for (const pair of arbPairs) {
+                    const { c, d, pC, pD, buyCost } = pair;
+                    const invChargeRoom = Math.max(0, invKw - charge[c]);
+                    if (invChargeRoom <= 0.001) continue;
+
+                    const currentExpD = (allSlots[d].kwh || 0) - charge[d] + discharge[d];
+                    const maxCanDischarge = Math.max(0, invKw - currentExpD);
+                    if (maxCanDischarge <= 0.001) continue;
+
+                    let maxCellHeadroom = fullCap;
+                    for (let t = c; t < d; t++) {
+                        maxCellHeadroom = Math.min(maxCellHeadroom, fullCap - soc[t]);
+                    }
+                    if (maxCellHeadroom <= 0.001) continue;
+
+                    const deltaSoc = Math.min(maxCellHeadroom, invChargeRoom * etaIn, maxCanDischarge / etaOut);
+                    if (deltaSoc <= 0.001) continue;
+
+                    const actualDraw = deltaSoc / etaIn;
+                    const actualDischarge = deltaSoc * etaOut;
+
+                    charge[c] += actualDraw;
+                    discharge[d] += actualDischarge;
+                    lossCharge[c] += (actualDraw - deltaSoc);
+                    lossDischarge[d] += (deltaSoc - actualDischarge);
+
+                    merchantChargeKwh[c] += actualDraw;
+                    merchantChargeCostEur[c] += actualDraw * (buyCost / 100);
+                    merchantDischargeKwh[d] += actualDischarge;
+                    merchantDischargeRevEur[d] += actualDischarge * (pD / 100);
+
+                    for (let t = c; t < d; t++) {
+                        soc[t] = Math.min(fullCap, soc[t] + deltaSoc);
+                    }
+                }
+            }
+
             const daySlots = slots.map((s, h) => {
                 const finalFeed = Math.max(0, (s.kwh || 0) - charge[h] + discharge[h]);
                 return {
@@ -3867,7 +3950,11 @@
                     lossCharge: lossCharge[h],
                     lossDischarge: lossDischarge[h],
                     gridArbitrageKwh: gridArbitrageKwh[h],
-                    gridArbitrageEur: gridArbitrageEur[h]
+                    gridArbitrageEur: gridArbitrageEur[h],
+                    merchantChargeKwh: merchantChargeKwh[h],
+                    merchantChargeCostEur: merchantChargeCostEur[h],
+                    merchantDischargeKwh: merchantDischargeKwh[h],
+                    merchantDischargeRevEur: merchantDischargeRevEur[h]
                 };
             });
 
@@ -3881,6 +3968,11 @@
             daySlots.lossDischargeNextDayKwh = sumArrPart(lossDischarge.slice(N));
             daySlots.gridArbitrageKwh = sumArrPart(gridArbitrageKwh.slice(0, N));
             daySlots.gridArbitrageEur = sumArrPart(gridArbitrageEur.slice(0, N));
+            daySlots.merchantChargeKwh = sumArrPart(merchantChargeKwh.slice(0, N));
+            daySlots.merchantChargeCostEur = sumArrPart(merchantChargeCostEur.slice(0, N));
+            daySlots.merchantDischargeKwh = sumArrPart(merchantDischargeKwh.slice(0, N));
+            daySlots.merchantDischargeRevEur = sumArrPart(merchantDischargeRevEur.slice(0, N));
+            daySlots.merchantProfitEur = daySlots.merchantDischargeRevEur - daySlots.merchantChargeCostEur;
             daySlots.etaIn = etaIn;
             daySlots.etaOut = etaOut;
 
@@ -4248,6 +4340,12 @@
                     hourRev += gArbEur;
                 }
 
+                // § 118 EnWG Handels-Arbitrage: Einkaufskosten für Ladebezug abziehen
+                const mChCost = (simSlots && simSlots[h] && simSlots[h].merchantChargeCostEur) ? simSlots[h].merchantChargeCostEur : 0;
+                if (mChCost > 0) {
+                    hourRev -= mChCost;
+                }
+
                 totalEur += hourRev;
             }
             const avgRate = (totalBasisKwh > 0.001) ? (totalEur / totalBasisKwh * 100) : (isEeg ? eegRate : 0);
@@ -4294,6 +4392,11 @@
                 totalSavedPenaltyEur,
                 totalGridArbitrageKwh,
                 totalGridArbitrageEur,
+                totalMerchantProfitEur: (simSlots && simSlots.merchantProfitEur) ? simSlots.merchantProfitEur : 0,
+                totalMerchantChargeKwh: (simSlots && simSlots.merchantChargeKwh) ? simSlots.merchantChargeKwh : 0,
+                totalMerchantDischargeKwh: (simSlots && simSlots.merchantDischargeKwh) ? simSlots.merchantDischargeKwh : 0,
+                totalMerchantChargeCostEur: (simSlots && simSlots.merchantChargeCostEur) ? simSlots.merchantChargeCostEur : 0,
+                totalMerchantDischargeRevEur: (simSlots && simSlots.merchantDischargeRevEur) ? simSlots.merchantDischargeRevEur : 0,
                 hourlyCurtailedKwh,
                 hourlySavedPenaltyEur,
                 effectiveHourlyFeed,
@@ -4500,6 +4603,20 @@
             if (shiftCapInput) shiftCapInput.value = pvRevenueConfig.shiftCapKwh;
             if (inverterKwInput) inverterKwInput.value = pvRevenueConfig.inverterAcKw;
             if (efficiencyInput) efficiencyInput.value = pvRevenueConfig.efficiencyPct;
+
+            const merchantArbToggle = document.getElementById('pvMerchantArbitrageToggle');
+            const merchantSpreadRow = document.getElementById('pvMerchantSpreadRow');
+            const arbitrageSpreadInput = document.getElementById('pvArbitrageSpreadInput');
+            if (merchantArbToggle) {
+                merchantArbToggle.checked = !!pvRevenueConfig.enableMerchantArbitrage;
+            }
+            if (merchantSpreadRow) {
+                merchantSpreadRow.style.display = pvRevenueConfig.enableMerchantArbitrage ? 'flex' : 'none';
+            }
+            if (arbitrageSpreadInput) {
+                arbitrageSpreadInput.value = (typeof pvRevenueConfig.arbitrageMinSpreadCt === 'number') ? pvRevenueConfig.arbitrageMinSpreadCt : 2.5;
+            }
+
             updatePvScenarioUI();
             updatePvHistControlBarUI();
         }
@@ -4734,9 +4851,12 @@
                 const gridArbBadge = (dayData.totalGridArbitrageKwh > 0.05)
                     ? ` · <span style="color:#00ff88; font-weight:600; font-size:9px; background:rgba(0,255,136,0.12); border:1px solid rgba(0,255,136,0.3); padding:1px 4px; border-radius:3px;" title="${dayData.totalGridArbitrageKwh.toFixed(1)} kWh aus dem Netz geladen">⚡ +${dayData.totalGridArbitrageEur.toFixed(2).replace('.', ',')} € Netzladen</span>`
                     : '';
+                const merchantBadge = (dayData.totalMerchantProfitEur > 0.005)
+                    ? ` · <span style="color:#00e5ff; font-weight:600; font-size:9px; background:rgba(0,229,255,0.12); border:1px solid rgba(0,229,255,0.3); padding:1px 4px; border-radius:3px;" title="§ 118 EnWG Arbitrage: ${dayData.totalMerchantChargeKwh.toFixed(1)} kWh geladen (-${dayData.totalMerchantChargeCostEur.toFixed(2)} €) / ${dayData.totalMerchantDischargeKwh.toFixed(1)} kWh verkauft (+${dayData.totalMerchantDischargeRevEur.toFixed(2)} €)">📈 +${dayData.totalMerchantProfitEur.toFixed(2).replace('.', ',')} € Arbitrage</span>`
+                    : '';
                 subEl.innerHTML = (isScenarioActive
                     ? `${fullDateStr} · <span style="color:#00e5ff; font-weight:700;">🧪 ${pvScenarioConfig.targetKwp.toFixed(1)} kWp (${factor.toFixed(2)}x)</span>`
-                    : fullDateStr) + hybridBadge + realBadge + curtailBadge + gridArbBadge;
+                    : fullDateStr) + hybridBadge + realBadge + curtailBadge + gridArbBadge + merchantBadge;
             }
 
             if (kpiYieldEl) kpiYieldEl.innerText = genKwh.toFixed(1) + ' kWh';
@@ -5247,6 +5367,14 @@
                     if (gridArbEur > 0) {
                         eur += gridArbEur;
                     }
+
+                    // § 118 EnWG Handels-Arbitrage Einkaufskosten abziehen
+                    const mChKwh = (simSlots && simSlots[h] && simSlots[h].merchantChargeKwh) ? simSlots[h].merchantChargeKwh : 0;
+                    const mChCost = (simSlots && simSlots[h] && simSlots[h].merchantChargeCostEur) ? simSlots[h].merchantChargeCostEur : 0;
+                    if (mChCost > 0) {
+                        eur -= mChCost;
+                    }
+
                     totalBasisKwh += basisKwh;
                     totalEur += eur;
 
@@ -5284,6 +5412,9 @@
 
                     if (gridArbKwh > 0.01) {
                         batHtml = `<span style="color:#00ff88; font-weight:700;" title="Netzladen bei negativem Endpreis: +${gridArbKwh.toFixed(2)} kWh (+${gridArbEur.toFixed(2)} € Gutschrift)">+${gridArbKwh.toFixed(1)} <span style="font-size:7.5px; color:#00e5ff;">(Netz)</span></span>`;
+                    } else if (mChKwh > 0.01) {
+                        const soc = (simSlots && simSlots[h]) ? (simSlots[h].socEnd || 0) : 0;
+                        batHtml = `<span style="color:#00e5ff; font-weight:700;" title="§ 118 EnWG Arbitrage: +${mChKwh.toFixed(1)} kWh aus Netz geladen (-${mChCost.toFixed(2)} € Einkauf, SOC: ${soc.toFixed(1)} kWh)">+${mChKwh.toFixed(1)} <span style="font-size:7.5px; color:#b388ff;">(Netz)</span></span>`;
                     }
 
                     let slotBadge = '';
@@ -5374,6 +5505,14 @@
                                 </div>
                             `);
                         }
+                        if (dayData && dayData.totalMerchantProfitEur > 0.005) {
+                            notes.push(`
+                                <div style="background: rgba(0,229,255,0.06); border: 1px solid rgba(0,229,255,0.25); border-radius: 4px; padding: 4px 7px; font-size: 8.5px; color: #00e5ff; display: flex; align-items: center; gap: 5px;">
+                                    <span>📈</span>
+                                    <div><b>§ 118 EnWG Netzarbitrage:</b> <b>+${dayData.totalMerchantProfitEur.toFixed(2).replace('.', ',')} € Reingewinn</b> (${dayData.totalMerchantChargeKwh.toFixed(1)} kWh aus Netz geladen für ${dayData.totalMerchantChargeCostEur.toFixed(2).replace('.', ',')} € / ${dayData.totalMerchantDischargeKwh.toFixed(1)} kWh rückgespeist für ${dayData.totalMerchantDischargeRevEur.toFixed(2).replace('.', ',')} €).</div>
+                                </div>
+                            `);
+                        }
                         if (notes.length > 0) {
                             footNotesEl.style.display = 'flex';
                             footNotesEl.innerHTML = notes.join('');
@@ -5449,6 +5588,9 @@
             let totalCharged = 0;
             let totalDischarged = 0;
             let totalLoss = 0;
+            let totalMerchantProfit = 0;
+            let totalMerchantCharged = 0;
+            let totalMerchantDischarged = 0;
 
             const daysData = [];
             const monthGroups = {};
@@ -5468,6 +5610,9 @@
                 totalCharged += dayData.chargedKwh;
                 totalDischarged += dayData.dischargedKwh;
                 totalLoss += dayData.conversionLossKwh;
+                totalMerchantProfit += (dayData.totalMerchantProfitEur || 0);
+                totalMerchantCharged += (dayData.totalMerchantChargeKwh || 0);
+                totalMerchantDischarged += (dayData.totalMerchantDischargeKwh || 0);
 
                 daysData.push({
                     dateKey: dKey,
@@ -5481,6 +5626,9 @@
                     chargedKwh: dayData.chargedKwh,
                     dischargedKwh: dayData.dischargedKwh,
                     conversionLossKwh: dayData.conversionLossKwh,
+                    merchantProfitEur: dayData.totalMerchantProfitEur || 0,
+                    merchantChargeKwh: dayData.totalMerchantChargeKwh || 0,
+                    merchantDischargeKwh: dayData.totalMerchantDischargeKwh || 0,
                     isTodayHybrid: dayData.isTodayHybrid,
                     isRealHourly: !!dayData.isRealHourly
                 });
@@ -5515,6 +5663,9 @@
                     mg.chargedKwh += dayData.chargedKwh;
                     mg.dischargedKwh += dayData.dischargedKwh;
                     mg.conversionLossKwh += dayData.conversionLossKwh;
+                    mg.merchantProfitEur = (mg.merchantProfitEur || 0) + (dayData.totalMerchantProfitEur || 0);
+                    mg.merchantChargeKwh = (mg.merchantChargeKwh || 0) + (dayData.totalMerchantChargeKwh || 0);
+                    mg.merchantDischargeKwh = (mg.merchantDischargeKwh || 0) + (dayData.totalMerchantDischargeKwh || 0);
                 }
             }
 
@@ -5577,6 +5728,9 @@
                 totalCharged,
                 totalDischarged,
                 totalLoss,
+                totalMerchantProfit,
+                totalMerchantCharged,
+                totalMerchantDischarged,
                 isScenario,
                 factor,
                 realRefGen,
@@ -5749,6 +5903,10 @@
                                 ? `<span style="color:#ffaa00; font-size:7.5px; background:rgba(255,170,0,0.12); border:1px solid rgba(255,170,0,0.3); padding:1px 4px; border-radius:3px; margin-left:4px;">⏳ ${m.realDaysCount}/${m.daysCount}</span>`
                                 : '<span style="color:#888; font-size:7.5px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); padding:1px 4px; border-radius:3px; margin-left:4px;">⏳ Warteschlange</span>');
 
+                        const arbBadge = (m.merchantProfitEur > 0.05)
+                            ? `<span style="color:#00e5ff; font-size:7.5px; background:rgba(0,229,255,0.12); border:1px solid rgba(0,229,255,0.3); padding:1px 3px; border-radius:3px; margin-left:3px;" title="§ 118 EnWG Arbitrage: +${m.merchantProfitEur.toFixed(2)} € Netto-Gewinn">+${m.merchantProfitEur.toFixed(1)} € Arb.</span>`
+                            : '';
+
                         return `
                             <div class="pv-month-card" data-month="${m.monthKey}" style="background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.08); border-radius: 9px; padding: 7px 9px; cursor: pointer; transition: all 0.15s ease;">
                                 <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px;">
@@ -5756,6 +5914,7 @@
                                         <span style="color: #ffdb00; font-weight: 700; font-size: 11px;">${m.fullLabel}</span>
                                         <span style="color: #777; font-size: 8.5px; margin-left: 5px;">${m.daysCount} Tage</span>
                                         ${statusBadge}
+                                        ${arbBadge}
                                     </div>
                                     <div style="font-family: monospace; font-size: 9.5px;">
                                         <span style="color: #ffdb00; font-weight: 700;">${Math.round(m.genKwh)} kWh</span>
@@ -5936,9 +6095,13 @@
                     ? '<span title="Echte stündliche FoxESS Inverter-Messung" style="color:#00ff88; font-size:8.5px; font-weight:700; margin-left:3px;">✓</span>'
                     : '<span title="FoxESS Stundendaten werden per GitHub Actions nachgeladen" style="color:#ffaa00; font-size:8px; font-weight:600; margin-left:3px;">⏳</span>';
 
+                const arbBadge = (day.merchantProfitEur > 0.01)
+                    ? `<span title="§ 118 EnWG Arbitrage: +${day.merchantProfitEur.toFixed(2).replace('.', ',')} € Netto" style="color:#00e5ff; font-size:7.5px; font-weight:700; margin-left:2px;">📈</span>`
+                    : '';
+
                 return `
                     <tr class="pv-month-table-row" data-day="${day.dateKey}" style="cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.15s ease;">
-                        <td style="padding: 4px 3px; font-family: monospace; font-size: 8.5px; color: #ccc;">${dateStr}${tagBadge}${realBadge}</td>
+                        <td style="padding: 4px 3px; font-family: monospace; font-size: 8.5px; color: #ccc;">${dateStr}${tagBadge}${realBadge}${arbBadge}</td>
                         <td style="padding: 4px 3px; text-align: right; font-family: monospace; font-weight: 700; color: #ffdb00;">${day.genKwh.toFixed(1)}</td>
                         <td style="padding: 4px 3px; text-align: right; font-family: monospace; font-weight: 600; color: #b388ff;">${day.feedKwh.toFixed(1)}</td>
                         <td style="padding: 4px 3px; text-align: right; font-family: monospace; color: #00e5ff;">${day.avgRate.toFixed(2).replace('.', ',')}</td>
@@ -5950,13 +6113,16 @@
 
             // Foot / Totals
             if (tableFoot) {
+                const footArbNote = (monthData.totalMerchantProfit > 0.01)
+                    ? ` <span style="font-size:7.5px; color:#00e5ff; font-weight:normal;" title="Reiner Netto-Arbitragegewinn aus Netzhandel">(inkl. +${monthData.totalMerchantProfit.toFixed(2).replace('.', ',')} € Arb.)</span>`
+                    : '';
                 tableFoot.innerHTML = `
                     <tr style="background: rgba(255,255,255,0.07); font-weight: 700; border-top: 1px solid rgba(255,219,0,0.4);">
                         <td style="padding: 5px 3px; text-align: left; color: #ffdb00;">Summe</td>
                         <td style="padding: 5px 3px; text-align: right; font-family: monospace; color: #ffdb00;">${monthData.totalGen.toFixed(1)}</td>
                         <td style="padding: 5px 3px; text-align: right; font-family: monospace; color: #b388ff;">${monthData.totalEffectiveFeed.toFixed(1)}</td>
                         <td style="padding: 5px 3px; text-align: right; font-family: monospace; color: #00e5ff;">${monthData.avgRate.toFixed(2).replace('.', ',')}</td>
-                        <td style="padding: 5px 3px; text-align: right; font-family: monospace; color: #00ff88;">${monthData.totalEur.toFixed(2).replace('.', ',')} €</td>
+                        <td style="padding: 5px 3px; text-align: right; font-family: monospace; color: #00ff88;">${monthData.totalEur.toFixed(2).replace('.', ',')} €${footArbNote}</td>
                         <td style="padding: 5px 2px;"></td>
                     </tr>
                 `;
@@ -6099,6 +6265,26 @@
                     const val = parseFloat(e.target.value);
                     if (!isNaN(val) && val > 0) {
                         pvRevenueConfig.efficiencyPct = val;
+                        saveRevenueConfig();
+                        refreshActivePvAnalysisContainers();
+                    }
+                });
+            }
+            const merchantArbToggle = document.getElementById('pvMerchantArbitrageToggle');
+            if (merchantArbToggle) {
+                merchantArbToggle.addEventListener('change', (e) => {
+                    pvRevenueConfig.enableMerchantArbitrage = e.target.checked;
+                    saveRevenueConfig();
+                    updatePvRevenueControlsUI();
+                    refreshActivePvAnalysisContainers();
+                });
+            }
+            const arbitrageSpreadInput = document.getElementById('pvArbitrageSpreadInput');
+            if (arbitrageSpreadInput) {
+                arbitrageSpreadInput.addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val) && val >= 0) {
+                        pvRevenueConfig.arbitrageMinSpreadCt = val;
                         saveRevenueConfig();
                         refreshActivePvAnalysisContainers();
                     }
