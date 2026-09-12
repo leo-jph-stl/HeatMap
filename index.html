@@ -30,7 +30,7 @@
         }
     </script>
     <script id="pvDataScript" src="pv_data.js?_v=20260911_v25"></script>
-    <script id="zunPvDataScript" src="zun_pv_data.js?_v=20260912_v3"></script>
+    <script id="zunPvDataScript" src="zun_pv_data.js?_v=20260912_v4"></script>
     
     <style>
         body { margin: 0; padding: 0; background-color: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; overflow: hidden; }
@@ -1208,7 +1208,7 @@
     <div id="pv-history-container" style="display: none;">
         <div class="forecast-header">
             <div class="forecast-title-box">
-                <div class="forecast-place" style="color: #00e5ff; display: flex; align-items: center; gap: 6px;">
+                <div id="pvHistoryPlaceTitle" class="forecast-place" style="color: #00e5ff; display: flex; align-items: center; gap: 6px;">
                     📊 FoxESS Historie &amp; Bilanz
                 </div>
                 <div id="pvHistorySubtitle" class="forecast-sub">Tagesauswertung &amp; stündliche Energieflüsse</div>
@@ -1356,7 +1356,7 @@
     <div id="pv-monthly-container" style="display: none;">
         <div class="forecast-header">
             <div class="forecast-title-box">
-                <div class="forecast-place" style="color: #ffdb00; display: flex; align-items: center; gap: 6px;">
+                <div id="pvMonthlyPlaceTitle" class="forecast-place" style="color: #ffdb00; display: flex; align-items: center; gap: 6px;">
                     📅 FoxESS Monats- &amp; Ertragsübersicht
                 </div>
                 <div id="pvMonthlySubtitle" class="forecast-sub">17 Monate seit Mai 2025 • Tageserträge &amp; Erlöse</div>
@@ -5055,6 +5055,13 @@
             }
             currentHistoryDateKey = activeDateKey;
 
+            const histTitleEl = document.getElementById('pvHistoryPlaceTitle');
+            if (histTitleEl) {
+                const isZun = (currentActivePvPlant === 'zun');
+                histTitleEl.innerHTML = isZun ? '📊 zun Historie &amp; Bilanz' : '📊 FoxESS Historie &amp; Bilanz';
+                histTitleEl.style.color = isZun ? '#00e5ff' : '#ffdb00';
+            }
+
             const dayPillsEl = document.getElementById('pvHistoryDayPills');
             const subEl = document.getElementById('pvHistorySubtitle');
             const kpiYieldEl = document.getElementById('pvHistKpiYield');
@@ -6016,6 +6023,13 @@
         function renderPvMonthlyContainer(activePeriodKey, targetYear) {
             const container = document.getElementById('pv-monthly-container');
             if (!container) return;
+
+            const placeTitleEl = document.getElementById('pvMonthlyPlaceTitle');
+            if (placeTitleEl) {
+                const isZun = (currentActivePvPlant === 'zun');
+                placeTitleEl.innerHTML = isZun ? '📅 zun Monats- &amp; Ertragsübersicht' : '📅 FoxESS Monats- &amp; Ertragsübersicht';
+                placeTitleEl.style.color = isZun ? '#00e5ff' : '#ffdb00';
+            }
 
             const allKeys = getAvailableHistoryDateKeys();
             if (!allKeys.length) return;
