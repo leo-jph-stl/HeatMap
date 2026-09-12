@@ -63,6 +63,17 @@ def parse_kw(val):
     except Exception:
         return 0.0
 
+def parse_kwh(val):
+    if val is None:
+        return 0.0
+    try:
+        f = float(val)
+        if f > 1000.0:
+            return round(f / 1000.0, 2)
+        return round(f, 2)
+    except Exception:
+        return 0.0
+
 def main():
     if hasattr(sys.stdout, 'reconfigure'):
         try:
@@ -85,6 +96,15 @@ def main():
     battery_soc = None
     day_sum = {}
     all_raw_records = []
+
+    # Bestehende Historie laden für intelligentes Caching
+    daily_reports = {}
+    if os.path.exists("zun_daily_history.json"):
+        try:
+            with open("zun_daily_history.json", "r", encoding="utf-8") as f:
+                daily_reports = json.load(f)
+        except Exception:
+            pass
 
     if token:
         print("ZUN_API_TOKEN gefunden. Frage Wechselrichter bei myzun ab...")
@@ -153,21 +173,113 @@ def main():
             except Exception as e_solo:
                 print(f"Hinweis tRPC standalone inverter.network.sum: {e_solo}")
 
-        # 4. Verlaufshistorie der letzten 3 Tage abfragen (Vorgestern, Gestern, Heute)
+        # 4. Hochauflösende Verlaufshistorie der letzten 3 Tage abfragen (1-Minuten-Auflösung für Chart)
         days_to_query = [(now_utc - timedelta(days=d)).strftime("%Y-%m-%d") for d in (2, 1, 0)]
         for d_query in days_to_query:
             try:
-                print(f"Lade Verlauf für {d_query}...")
+                print(f"Lade 1-Minuten-Verlauf für {d_query}...")
                 hist_res = api_get("/inverter/network/history", token, {
                     "inverterId": inv_id_val,
                     "date": d_query,
                     "resolution": "1 minute"
                 })
                 if isinstance(hist_res, list) and len(hist_res) > 0:
-                    print(f"-> {len(hist_res)} Rohdatenpunkte für {d_query} geladen.")
+                    print(f"-> {len(hist_res)} hochauflösende Punkte für {d_query} geladen.")
                     all_raw_records.extend(hist_res)
             except Exception as e:
                 print(f"Hinweis /inverter/network/history für {d_query}: {e}")
+
+        # 5. Historische Monatsabfragen ab 2024 bis heute
+        # Gibt mit 1 API-Call pro Monat alle Tage dieses Monats in kWh zurück
+        cur_ym = now_utc.strftime("%Y-%m")
+        months_to_query = []
+        for y in [2024, 2025, 2026]:
+            end_m = 12 if y < now_utc.year else now_utc.month
+            for m in range(1, end_m + 1):
+                ym = f"{y}-{m:02d}"
+                if ym > cur_ym:
+                    continue
+                # Caching: Wenn der Monat vergangen ist und bereits mindestens 27 Tage hat, überspringen
+                days_in_m = 31 if m in [1, 3, 5, 7, 8, 10, 12] else (28 if m == 2 else 30)
+                cached_days = sum(1 for d in range(1, days_in_m + 1) if f"{ym}-{d:02d}" in daily_reports and daily_reports[f"{ym}-{d:02d}"].get("totals", {}).get("generation", 0) > 0)
+                if ym == cur_ym or cached_days < days_in_m - 3:
+                    months_to_query.append(ym)
+
+        print(f"Monate zur Abfrage geplant: {len(months_to_query)} ({months_to_query})")
+        for ym in months_to_query:
+            try:
+                time.sleep(0.3)
+                m_res = api_get("/inverter/network/history", token, {
+                    "inverterId": inv_id_val,
+                    "date": ym
+                })
+                if isinstance(m_res, list) and len(m_res) > 0:
+                    has_data = any(parse_kwh(x.get("p_creation")) > 0 or parse_kwh(x.get("p_usage")) > 0 for x in m_res)
+                    if has_data:
+                        print(f"-> Monat {ym}: {len(m_res)} Tage mit Daten geladen.")
+                        for day_obj in m_res:
+                            t_val = day_obj.get("time") or day_obj.get("timestamp") or day_obj.get("date")
+                            if not t_val:
+                                continue
+                            d_key = str(t_val)[:10]
+                            # Falls dieser Tag bereits hochauflösend mit 1-Minuten-Punkten vorliegt, nicht überschreiben
+                            if d_key in daily_reports and daily_reports[d_key].get("is_real_hourly"):
+                                continue
+
+                            d_gen = parse_kwh(day_obj.get("p_creation") or day_obj.get("generation"))
+                            d_load = parse_kwh(day_obj.get("p_usage") or day_obj.get("usage"))
+                            d_feed = parse_kwh(day_obj.get("p_grid_in") or day_obj.get("feed_in"))
+                            d_import = parse_kwh(day_obj.get("p_grid_out") or day_obj.get("grid_import"))
+
+                            m_num = int(d_key[5:7])
+                            sun_h = {
+                                1: (8, 17), 2: (7, 18), 3: (6, 19), 4: (6, 20),
+                                5: (5, 21), 6: (4, 22), 7: (5, 22), 8: (5, 21),
+                                9: (6, 20), 10: (7, 19), 11: (7, 17), 12: (8, 17)
+                            }.get(m_num, (6, 20))
+                            dawn, dusk = sun_h
+                            sun_hours = max(1, dusk - dawn)
+
+                            # Synthetische stündliche Erzeugung (Glockenkurve nach Sonnenstand)
+                            gen_hours = [0.0] * 24
+                            if d_gen > 0:
+                                mid = (dawn + dusk) / 2.0
+                                weights = [max(0.0, 1.0 - abs(h - mid) / (sun_hours / 2.0)) for h in range(24)]
+                                w_sum = sum(weights) or 1.0
+                                gen_hours = [round(d_gen * (w / w_sum), 2) for w in weights]
+
+                            # Typisches Lastprofil für den Hausverbrauch
+                            typ_profile = [
+                                0.20, 0.18, 0.18, 0.18, 0.19, 0.22, 0.35, 0.45,
+                                0.38, 0.32, 0.30, 0.32, 0.35, 0.30, 0.28, 0.28,
+                                0.32, 0.42, 0.55, 0.65, 0.60, 0.48, 0.35, 0.25
+                            ]
+                            p_sum = sum(typ_profile)
+                            load_hours = [round(d_load * (p / p_sum), 2) for p in typ_profile] if d_load > 0 else [0.0] * 24
+                            feed_hours = [round(max(0.0, gen_hours[h] - load_hours[h]), 2) for h in range(24)]
+                            import_hours = [round(max(0.0, load_hours[h] - gen_hours[h]), 2) for h in range(24)]
+
+                            daily_reports[d_key] = {
+                                "hours": list(range(24)),
+                                "generation": gen_hours,
+                                "loads": load_hours,
+                                "feedin": feed_hours,
+                                "gridConsumption": import_hours,
+                                "chargeEnergyToTal": [0.0] * 24,
+                                "dischargeEnergyToTal": [0.0] * 24,
+                                "totals": {
+                                    "generation": round(d_gen, 1),
+                                    "feedin": round(d_feed, 1),
+                                    "loads": round(d_load, 1),
+                                    "gridConsumption": round(d_import, 1),
+                                    "chargeEnergyToTal": 0.0,
+                                    "dischargeEnergyToTal": 0.0
+                                },
+                                "is_real_hourly": False
+                            }
+            except Exception as e_m:
+                print(f"Hinweis Abfrage Monat {ym}: {e_m}")
+
     else:
         print("[OFFLINE-MODUS] Verarbeite bestehende lokale Daten neu...")
         if os.path.exists("zun_pv_data.json"):
@@ -188,7 +300,7 @@ def main():
             except Exception as e:
                 print(f"Fehler beim Laden lokaler Daten: {e}")
 
-    # Bisherige Historie laden
+    # Bisherige 3-Tage-Historie laden
     prev_history = []
     if os.path.exists("zun_pv_data.json"):
         try:
@@ -210,7 +322,7 @@ def main():
                 "soc_battery_avg": p.get("soc")
             })
 
-    # Punkte bereinigen, validieren und nach Zeit deduplizieren
+    # 1-Minuten-Punkte bereinigen, validieren und deduplizieren
     seen_map = {}
     for pt in all_raw_records:
         t_str = pt.get("time") or pt.get("timestamp")
@@ -253,7 +365,6 @@ def main():
         p = clean_points[last_active_idx]
         if p["pv"] > 0 or p["load"] > 0 or p["feed"] > 0 or (p["soc"] and p["soc"] > 0):
             break
-        # Wenn der Punkt innerhalb der letzten 2 Stunden liegt und alle Werte 0 sind, ist es ein unbeschriebener Zukunftsslot
         if (now_utc - p["dt"]).total_seconds() < 7200:
             last_active_idx -= 1
         else:
@@ -262,7 +373,7 @@ def main():
     if last_active_idx >= 0 and last_active_idx < len(clean_points) - 1:
         clean_points = clean_points[:last_active_idx + 1]
 
-    print(f"Bereinigte historische Messpunkte: {len(clean_points)}")
+    print(f"Bereinigte historische Messpunkte (3 Tage): {len(clean_points)}")
     last_pt = clean_points[-1] if clean_points else None
     if last_pt:
         print(f"Letzter Messpunkt: {last_pt['t']} (PV: {last_pt['pv']} kW, Haus: {last_pt['load']} kW, Feed: {last_pt['feed']} kW, SOC: {last_pt['soc']}%)")
@@ -296,15 +407,7 @@ def main():
     loc_lng = float(os.environ.get("ZUN_LNG") or DEFAULT_PV_LNG)
     loc_name = os.environ.get("ZUN_LOCATION_NAME") or DEFAULT_LOCATION_NAME
 
-    # Tagesberichte für alle erfassten Tage nach deutscher Zeit aufbauen
-    daily_reports = {}
-    if os.path.exists("zun_daily_history.json"):
-        try:
-            with open("zun_daily_history.json", "r", encoding="utf-8") as f:
-                daily_reports = json.load(f)
-        except Exception:
-            pass
-
+    # 1-Minuten-Punkte der letzten 3 Tage in daily_reports als 'is_real_hourly' integrieren
     points_by_date = {}
     for p in clean_points:
         dt_de = to_berlin_dt(p["dt"])
@@ -375,6 +478,22 @@ def main():
     today_feedin = float(day_sum.get("p_grid_in") or status_data.get("today_feedin") or today_totals.get("feedin") or 0.0)
     today_grid_import = float(day_sum.get("p_grid_out") or status_data.get("today_grid_import") or today_totals.get("gridConsumption") or 0.0)
 
+    # 6. Aggregierte Erträge berechnen (Woche, Monat, Jahr, Gesamt)
+    today_dt = to_berlin_dt(now_utc)
+    cur_month_str = today_dt.strftime("%Y-%m")
+    cur_year_str = today_dt.strftime("%Y")
+
+    last_7_keys = set((today_dt - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7))
+    week_gen = sum(r.get("totals", {}).get("generation", 0.0) for k, r in daily_reports.items() if k in last_7_keys)
+    month_gen = sum(r.get("totals", {}).get("generation", 0.0) for k, r in daily_reports.items() if k.startswith(cur_month_str))
+    year_gen = sum(r.get("totals", {}).get("generation", 0.0) for k, r in daily_reports.items() if k.startswith(cur_year_str))
+    cum_gen = sum(r.get("totals", {}).get("generation", 0.0) for k, r in daily_reports.items())
+
+    week_yield = round(week_gen, 1)
+    month_yield = round(month_gen, 1)
+    year_yield = round(year_gen, 1)
+    cumulative_yield = round(cum_gen, 1)
+
     # 3-Tage-Verlauf für Web UI
     export_history = []
     for p in clean_points[-4320:]:
@@ -403,6 +522,10 @@ def main():
         "today_yield": round(today_yield, 1),
         "today_feedin": round(today_feedin, 1),
         "today_grid_import": round(today_grid_import, 1),
+        "week_yield": week_yield,
+        "month_yield": month_yield,
+        "year_yield": year_yield,
+        "cumulative_yield": cumulative_yield,
         "device_status": "online",
         "daily_reports": daily_reports,
         "history_3d": export_history,
@@ -416,7 +539,9 @@ def main():
         f.write(f"window.zunPvData = {json.dumps(zun_data, indent=2, ensure_ascii=False)};\n")
 
     print(f"\n✅ ERFOLG: Live-PV-Daten für {loc_name} erfolgreich gespeichert!")
-    print(f"Erzeugung: {zun_data['solar_power']} kW | Hausverbrauch: {zun_data['house_load']} kW | Batterie: {zun_data['battery_soc']}% | Einspeisung: {zun_data['grid_feed_in']} kW | Ertrag heute: {zun_data['today_yield']} kWh")
+    print(f"Erzeugung: {zun_data['solar_power']} kW | Hausverbrauch: {zun_data['house_load']} kW | Batterie: {zun_data['battery_soc']}% | Einspeisung: {zun_data['grid_feed_in']} kW")
+    print(f"Erträge: Heute {zun_data['today_yield']} kWh | Woche {zun_data['week_yield']} kWh | Monat {zun_data['month_yield']} kWh | Jahr {zun_data['year_yield']} kWh | Gesamt {zun_data['cumulative_yield']} kWh")
+    print(f"Archivierte Tage in zun_daily_history.json: {len(daily_reports)}")
 
 if __name__ == "__main__":
     main()

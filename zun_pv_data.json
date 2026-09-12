@@ -12,6 +12,10 @@
   "today_yield": 7.8,
   "today_feedin": 2.3,
   "today_grid_import": 0.0,
+  "week_yield": 133.6,
+  "month_yield": 133.6,
+  "year_yield": 133.6,
+  "cumulative_yield": 133.6,
   "device_status": "online",
   "daily_reports": {
     "2026-09-12": {
@@ -584,7 +588,7 @@
         0.0
       ],
       "totals": {
-        "generation": 66.3,
+        "generation": 66.4,
         "feedin": 35.4,
         "loads": 34.0,
         "gridConsumption": 3.1,
@@ -35266,5 +35270,5 @@
       "soc": 32
     }
   ],
-  "last_updated": "2026-09-12T07:46:39.248015+00:00"
+  "last_updated": "2026-09-12T07:52:49.866921+00:00"
 }
