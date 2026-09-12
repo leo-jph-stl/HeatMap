@@ -26,3 +26,4 @@ Thumbs.db
 # Transient output of pv_calibration_review.js (only pv_calibration_history.json is persisted)
 pv_calibration_report.md
 __pycache__/
+.wrangler/
