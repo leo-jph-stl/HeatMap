@@ -52,6 +52,12 @@ def parse_kw(val):
         return 0.0
 
 def main():
+    if hasattr(sys.stdout, 'reconfigure'):
+        try:
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        except Exception:
+            pass
+
     print(f"=== zun PV Abruf gestartet am {datetime.now(timezone.utc).isoformat()} ===")
     token = get_env_token()
     if not token:
@@ -61,11 +67,11 @@ def main():
     
     print("ZUN_API_TOKEN gefunden. Frage Wechselrichter bei myzun ab...")
 
-    inverter_id = os.environ.get("ZUN_INVERTER_ID", "").strip()
+    inverter_id = (os.environ.get("ZUN_INVERTER_ID") or "").strip()
     inverter_meta = {}
     try:
         inv_data = api_get("/inverter", token)
-        print("Antwort /inverter erhalten.")
+        print("Antwort /inverter:", inv_data)
         if isinstance(inv_data, dict):
             if "inverter" in inv_data and isinstance(inv_data["inverter"], dict):
                 inverter_id = inv_data["inverter"].get("id") or inverter_id
@@ -84,18 +90,23 @@ def main():
         sys.exit(1)
 
     print(f"Wechselrichter-ID: {inverter_id}")
+    inv_id_val = int(inverter_id) if str(inverter_id).isdigit() else inverter_id
 
-    # Live-Status abfragen
+    # 1. Live-Status abfragen
     status_data = {}
     try:
-        status_data = api_get("/inverter/status", token, {"inverterId": inverter_id})
+        status_res = api_get("/inverter/status", token, {"inverterId": inv_id_val})
+        if isinstance(status_res, dict):
+            status_data = status_res
+            print("Antwort /inverter/status:", status_data)
     except Exception as e:
         print(f"Hinweis /inverter/status: {e}")
 
-    # Batterie-SoC abfragen
+    # 2. Batterie-SoC abfragen
     battery_soc = None
     try:
-        bat_res = api_get("/inverter/network/battery", token, {"inverterId": inverter_id})
+        bat_res = api_get("/inverter/network/battery", token, {"inverterId": inv_id_val})
+        print("Antwort /inverter/network/battery:", bat_res)
         if isinstance(bat_res, dict):
             raw_bat = bat_res.get("battery", 0)
             battery_soc = raw_bat if raw_bat <= 100 else round(raw_bat)
@@ -104,36 +115,54 @@ def main():
     except Exception as e:
         print(f"Hinweis /inverter/network/battery: {e}")
 
-    # Tages-Summen abfragen (tRPC)
+    # 3. Tages-Summen abfragen (tRPC)
     today_iso = date.today().isoformat()
     day_sum = {}
-    try:
-        trpc_input = json.dumps({"inverterId": inverter_id, "date": today_iso})
-        trpc_res = api_get("/trpc/inverter.network.sum", token, {"input": trpc_input})
-        if isinstance(trpc_res, dict) and "result" in trpc_res and "data" in trpc_res["result"]:
-            day_sum = trpc_res["result"]["data"].get("json", trpc_res["result"]["data"])
-    except Exception as e:
-        print(f"Hinweis tRPC inverter.network.sum: {e}")
+    trpc_payload = {"inverterId": inv_id_val, "date": today_iso}
 
-    # Tages-Verlaufshistorie abfragen
+    # Versuch A: tRPC Batch-Modus (exakt wie im myzun Web-Dashboard Client)
+    try:
+        batch_input = json.dumps({"0": trpc_payload})
+        trpc_res = api_get("/trpc/inverter.network.sum", token, {"batch": "1", "input": batch_input})
+        if isinstance(trpc_res, list) and len(trpc_res) > 0:
+            res_obj = trpc_res[0]
+            if "result" in res_obj and "data" in res_obj["result"]:
+                day_sum = res_obj["result"]["data"].get("json", res_obj["result"]["data"])
+        elif isinstance(trpc_res, dict) and "result" in trpc_res:
+            day_sum = trpc_res["result"].get("data", {}).get("json", trpc_res["result"].get("data", {}))
+        print("Antwort inverter.network.sum (batch):", day_sum)
+    except Exception as e_batch:
+        print(f"Hinweis tRPC batch inverter.network.sum: {e_batch}")
+        # Versuch B: Standalone Modus
+        try:
+            solo_input = json.dumps(trpc_payload)
+            trpc_res = api_get("/trpc/inverter.network.sum", token, {"input": solo_input})
+            if isinstance(trpc_res, dict) and "result" in trpc_res:
+                day_sum = trpc_res["result"].get("data", {}).get("json", trpc_res["result"].get("data", {}))
+            print("Antwort inverter.network.sum (standalone):", day_sum)
+        except Exception as e_solo:
+            print(f"Hinweis tRPC standalone inverter.network.sum: {e_solo}")
+
+    # 4. Tages-Verlaufshistorie abfragen
     history_records = []
     try:
         hist_res = api_get("/inverter/network/history", token, {
-            "inverterId": inverter_id,
+            "inverterId": inv_id_val,
             "date": today_iso,
             "resolution": "1 minute"
         })
         if isinstance(hist_res, list):
             history_records = hist_res
+            print(f"Verlaufspunkte geladen: {len(history_records)}")
     except Exception as e:
         print(f"Hinweis /inverter/network/history: {e}")
 
-    # Metriken berechnen
-    solar_power = parse_kw(status_data.get("p_creation") or day_sum.get("p_creation_now") or status_data.get("solar_power"))
-    house_load = parse_kw(status_data.get("p_usage") or day_sum.get("p_usage_now") or status_data.get("house_load"))
-    grid_feed_in = parse_kw(status_data.get("p_grid_in") or day_sum.get("p_grid_in_now") or status_data.get("grid_feed_in"))
-    grid_import = parse_kw(status_data.get("p_grid_out") or day_sum.get("p_grid_out_now") or status_data.get("grid_import"))
-    battery_power = parse_kw(status_data.get("p_battery") or day_sum.get("p_battery_now"))
+    # 5. Metriken berechnen
+    solar_power = parse_kw(status_data.get("p_creation") or day_sum.get("p_creation") or day_sum.get("p_creation_now") or status_data.get("solar_power"))
+    house_load = parse_kw(status_data.get("p_usage") or day_sum.get("p_usage") or day_sum.get("p_usage_now") or status_data.get("house_load"))
+    grid_feed_in = parse_kw(status_data.get("p_grid_in") or day_sum.get("p_grid_in") or day_sum.get("p_grid_in_now") or status_data.get("grid_feed_in"))
+    grid_import = parse_kw(status_data.get("p_grid_out") or day_sum.get("p_grid_out") or day_sum.get("p_grid_out_now") or status_data.get("grid_import"))
+    battery_power = parse_kw(status_data.get("p_battery") or day_sum.get("p_battery") or day_sum.get("p_battery_now"))
 
     net_grid = -grid_import if (grid_import > 0 and grid_feed_in == 0) else grid_feed_in
 
@@ -141,10 +170,10 @@ def main():
     today_feedin = float(day_sum.get("p_grid_in") or status_data.get("today_feedin") or 0.0)
     today_grid_import = float(day_sum.get("p_grid_out") or status_data.get("today_grid_import") or 0.0)
 
-    # Standort
-    loc_lat = float(os.environ.get("ZUN_LAT", DEFAULT_PV_LAT))
-    loc_lng = float(os.environ.get("ZUN_LNG", DEFAULT_PV_LNG))
-    loc_name = os.environ.get("ZUN_LOCATION_NAME", DEFAULT_LOCATION_NAME)
+    # Sicheres Parsen der Standortdaten (fällt auf Standardwerte zurück, wenn Umgebungsvariable leer ist)
+    loc_lat = float(os.environ.get("ZUN_LAT") or DEFAULT_PV_LAT)
+    loc_lng = float(os.environ.get("ZUN_LNG") or DEFAULT_PV_LNG)
+    loc_name = os.environ.get("ZUN_LOCATION_NAME") or DEFAULT_LOCATION_NAME
 
     # Historische Tagesberichte
     daily_reports = {}
