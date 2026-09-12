@@ -961,7 +961,7 @@
         <!-- Dual-Anlagen Umschalter (Hochheim vs zun) -->
         <div class="pv-plant-switcher" style="display: flex; gap: 6px; padding: 4px 14px 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 8px;">
             <button id="btnSelectPlantFox" class="pv-switch-btn active" onclick="switchPvPlant('foxess')">☀️ Hochheim (FoxESS)</button>
-            <button id="btnSelectPlantZun" class="pv-switch-btn" onclick="switchPvPlant('zun')">☀️ zun PV-Anlage</button>
+            <button id="btnSelectPlantZun" class="pv-switch-btn" onclick="switchPvPlant('zun')">☀️ Weilbach (zun)</button>
         </div>
         
         <div id="pvBody">
@@ -1443,7 +1443,7 @@
             <div id="timeDisplayTitle">Live (Jetzt)</div>
             <div style="display: flex; gap: 4px; align-items: center;">
                 <button id="pvQuickBtn" class="pv-badge-btn" title="Zur PV-Anlage Hochheim am Main springen">☀️ Hochheim</button>
-                <button id="pvZunQuickBtn" class="pv-badge-btn" title="Zur 2. PV-Anlage (zun) springen" style="border-color: rgba(0, 229, 255, 0.4); background: rgba(0, 229, 255, 0.12); color: #00e5ff;">☀️ zun</button>
+                <button id="pvZunQuickBtn" class="pv-badge-btn" title="Zur 2. PV-Anlage (Weilbach / zun) springen" style="border-color: rgba(0, 229, 255, 0.4); background: rgba(0, 229, 255, 0.12); color: #00e5ff;">☀️ Weilbach</button>
             </div>
         </div>
         <input type="range" id="timeSlider" min="-24" max="72" step="1" value="0">
@@ -2829,13 +2829,13 @@
         const pvLocalV = latLngToSphereVertex(PV_SYSTEM_LOCATION.lat, PV_SYSTEM_LOCATION.lng, earthRadius + 0.75);
         PV_SYSTEM_LOCATION.worldPos = new THREE.Vector3(-pvLocalV.z, pvLocalV.y, pvLocalV.x);
 
-        // 2. ZUN PV-ANLAGE (DASHBOARD.MYZUN.DE)
+        // 2. ZUN PV-ANLAGE (WEILBACH BEI FLÖRSHEIM AM MAIN)
         const ZUN_PV_SYSTEM_LOCATION = {
-            name: "zun PV-Anlage",
-            fullName: "☀️ zun PV-Anlage",
-            cityName: "zun PV-Anlage",
-            lat: 50.1109,
-            lng: 8.6821,
+            name: "zun PV Weilbach",
+            fullName: "☀️ zun PV-Anlage (Weilbach)",
+            cityName: "Weilbach (Flörsheim am Main)",
+            lat: 50.045,
+            lng: 8.436,
             worldPos: null
         };
         const zunLocalV = latLngToSphereVertex(ZUN_PV_SYSTEM_LOCATION.lat, ZUN_PV_SYSTEM_LOCATION.lng, earthRadius + 0.75);
@@ -7543,6 +7543,7 @@
             }
 
             if (query.includes('pv') || query.includes('solar') || query.includes('zun') || 
+                query.includes('weilbach') || query.includes('flörsheim') || query.includes('floersheim') ||
                 query.includes('anlage') || query.includes('ecohub') || query.includes('photo')) {
                 matches.push({
                     city: {
