@@ -30,6 +30,7 @@
         }
     </script>
     <script id="pvDataScript" src="pv_data.js?_v=20260911_v25"></script>
+    <script id="zunPvDataScript" src="zun_pv_data.js?_v=20260912_v1"></script>
     
     <style>
         body { margin: 0; padding: 0; background-color: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; overflow: hidden; }
@@ -758,6 +759,34 @@
             transform: scale(1.04);
         }
 
+        .pv-switch-btn {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            padding: 6px 8px;
+            color: #bbb;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        .pv-switch-btn:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+        }
+        .pv-switch-btn.active {
+            background: rgba(255, 219, 0, 0.18);
+            border-color: rgba(255, 219, 0, 0.5);
+            color: #ffdb00;
+        }
+        .pv-switch-btn.active.zun-active {
+            background: rgba(0, 229, 255, 0.18);
+            border-color: rgba(0, 229, 255, 0.5);
+            color: #00e5ff;
+        }
+
         /* RESPONSIVE MOBILE OPTIMIERUNG (< 768px) */
         @media (max-width: 768px) {
             #search-container {
@@ -913,12 +942,12 @@
         </div>
     </div>
 
-    <!-- FoxESS PV-Anlagen Dashboard Karte -->
+    <!-- PV-Anlagen Dashboard Karte (Dual-Anlagen: FoxESS & zun) -->
     <div id="pv-container">
         <div class="forecast-header">
             <div class="forecast-title-box">
                 <div class="forecast-place" style="color: #ffdb00; display: flex; align-items: center; gap: 6px;">
-                    ☀️ FoxESS PV-Anlage
+                    <span id="pvPlantTitle">☀️ FoxESS PV-Anlage</span>
                     <span id="pvStatusDot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#888;"></span>
                     <span id="pvStatusLabel" style="font-size: 10px; font-weight: 600; color: #888; text-transform: uppercase;"></span>
                 </div>
@@ -927,6 +956,12 @@
             <div class="forecast-btn-group">
                 <button id="pvCloseBtn" class="forecast-action-btn" title="Schließen">✕</button>
             </div>
+        </div>
+        
+        <!-- Dual-Anlagen Umschalter (Hochheim vs zun) -->
+        <div class="pv-plant-switcher" style="display: flex; gap: 6px; padding: 4px 14px 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 8px;">
+            <button id="btnSelectPlantFox" class="pv-switch-btn active" onclick="switchPvPlant('foxess')">☀️ Hochheim (FoxESS)</button>
+            <button id="btnSelectPlantZun" class="pv-switch-btn" onclick="switchPvPlant('zun')">☀️ zun PV-Anlage</button>
         </div>
         
         <div id="pvBody">
@@ -1406,7 +1441,10 @@
             <button id="playBtn">▶ Play</button>
             <button id="playSpeedBtn" title="Wiedergabegeschwindigkeit">1x</button>
             <div id="timeDisplayTitle">Live (Jetzt)</div>
-            <button id="pvQuickBtn" class="pv-badge-btn" title="Zur PV-Anlage Hochheim am Main springen">☀️ PV Hochheim</button>
+            <div style="display: flex; gap: 4px; align-items: center;">
+                <button id="pvQuickBtn" class="pv-badge-btn" title="Zur PV-Anlage Hochheim am Main springen">☀️ Hochheim</button>
+                <button id="pvZunQuickBtn" class="pv-badge-btn" title="Zur 2. PV-Anlage (zun) springen" style="border-color: rgba(0, 229, 255, 0.4); background: rgba(0, 229, 255, 0.12); color: #00e5ff;">☀️ zun</button>
+            </div>
         </div>
         <input type="range" id="timeSlider" min="-24" max="72" step="1" value="0">
         <div class="time-labels">
@@ -2779,7 +2817,7 @@
                 .catch(() => {});
         }
 
-        // FOXESS PV-ANLAGE (HOCHHEIM AM MAIN - SÜDSTADT)
+        // 1. FOXESS PV-ANLAGE (HOCHHEIM AM MAIN - SÜDSTADT)
         const PV_SYSTEM_LOCATION = {
             name: "FoxESS PV-Anlage",
             fullName: "☀️ FoxESS PV-Anlage (Hochheim)",
@@ -2791,7 +2829,41 @@
         const pvLocalV = latLngToSphereVertex(PV_SYSTEM_LOCATION.lat, PV_SYSTEM_LOCATION.lng, earthRadius + 0.75);
         PV_SYSTEM_LOCATION.worldPos = new THREE.Vector3(-pvLocalV.z, pvLocalV.y, pvLocalV.x);
 
-        let livePvData = (typeof window !== 'undefined' && window.foxessPvData) ? window.foxessPvData : null;
+        // 2. ZUN PV-ANLAGE (DASHBOARD.MYZUN.DE)
+        const ZUN_PV_SYSTEM_LOCATION = {
+            name: "zun PV-Anlage",
+            fullName: "☀️ zun PV-Anlage",
+            cityName: "zun PV-Anlage",
+            lat: 50.1109,
+            lng: 8.6821,
+            worldPos: null
+        };
+        const zunLocalV = latLngToSphereVertex(ZUN_PV_SYSTEM_LOCATION.lat, ZUN_PV_SYSTEM_LOCATION.lng, earthRadius + 0.75);
+        ZUN_PV_SYSTEM_LOCATION.worldPos = new THREE.Vector3(-zunLocalV.z, zunLocalV.y, zunLocalV.x);
+
+        let currentActivePvPlant = 'foxess'; // 'foxess' | 'zun'
+        let livePvDataFoxess = (typeof window !== 'undefined' && window.foxessPvData) ? window.foxessPvData : null;
+        let livePvDataZun = (typeof window !== 'undefined' && window.zunPvData) ? window.zunPvData : null;
+        let livePvData = livePvDataFoxess;
+
+        function getActivePvLocation() {
+            return currentActivePvPlant === 'zun' ? ZUN_PV_SYSTEM_LOCATION : PV_SYSTEM_LOCATION;
+        }
+
+        function syncZunLocationFromData() {
+            if (livePvDataZun && livePvDataZun.location) {
+                if (livePvDataZun.location.lat) ZUN_PV_SYSTEM_LOCATION.lat = livePvDataZun.location.lat;
+                if (livePvDataZun.location.lng) ZUN_PV_SYSTEM_LOCATION.lng = livePvDataZun.location.lng;
+                if (livePvDataZun.location.name) {
+                    ZUN_PV_SYSTEM_LOCATION.name = livePvDataZun.location.name;
+                    ZUN_PV_SYSTEM_LOCATION.fullName = "☀️ " + livePvDataZun.location.name;
+                    ZUN_PV_SYSTEM_LOCATION.cityName = livePvDataZun.location.name;
+                }
+                const v = latLngToSphereVertex(ZUN_PV_SYSTEM_LOCATION.lat, ZUN_PV_SYSTEM_LOCATION.lng, earthRadius + 0.75);
+                ZUN_PV_SYSTEM_LOCATION.worldPos = new THREE.Vector3(-v.z, v.y, v.x);
+            }
+        }
+        syncZunLocationFromData();
 
         // Wachsendes Log aus (Ist-Leistung, Einstrahlungsprognose)-Paaren, von log_pv_forecast.js bei
         // jedem PV-Fetch fortgeschrieben (siehe dort). Ersetzt mit der Zeit die reine 24h-Kalibrierung
@@ -3036,6 +3108,41 @@
             }
         }
 
+        function switchPvPlant(plantKey, fly = true) {
+            currentActivePvPlant = plantKey || 'foxess';
+            livePvData = (currentActivePvPlant === 'zun') ? livePvDataZun : livePvDataFoxess;
+            
+            const btnFox = document.getElementById('btnSelectPlantFox');
+            const btnZun = document.getElementById('btnSelectPlantZun');
+            if (btnFox && btnZun) {
+                btnFox.classList.toggle('active', currentActivePvPlant === 'foxess');
+                btnZun.classList.toggle('active', currentActivePvPlant === 'zun');
+                btnZun.classList.toggle('zun-active', currentActivePvPlant === 'zun');
+            }
+            
+            const loc = getActivePvLocation();
+            const titleEl = document.getElementById('pvPlantTitle');
+            const subEl = document.getElementById('pvLocationSub');
+            if (titleEl) {
+                titleEl.textContent = currentActivePvPlant === 'zun' ? (loc.fullName || "☀️ zun PV-Anlage") : "☀️ FoxESS PV-Anlage";
+                titleEl.style.color = currentActivePvPlant === 'zun' ? "#00e5ff" : "#ffdb00";
+            }
+            if (subEl) subEl.textContent = loc.cityName || loc.name;
+
+            updatePvDashboardUI();
+            pvChartState.data = [];
+            pvChartState.forecast = null;
+            initPvChartState();
+            drawPvHistoryChart();
+            drawPriceChart();
+            if (typeof refreshActivePvAnalysisContainers === 'function') {
+                refreshActivePvAnalysisContainers();
+            }
+            if (fly && typeof flyToLocation === 'function') {
+                flyToLocation(loc.lat, loc.lng, loc.fullName);
+            }
+        }
+
         async function loadPvData() {
             function refreshHistoryIfOpen() {
                 if (typeof renderPvHistoryContainer === 'function' && typeof currentHistoryDateKey !== 'undefined' && currentHistoryDateKey) {
@@ -3053,20 +3160,31 @@
             }
 
             if (typeof window !== 'undefined' && window.foxessPvData) {
-                livePvData = window.foxessPvData;
-                updatePvDashboardUI();
-                refreshHistoryIfOpen();
+                livePvDataFoxess = window.foxessPvData;
             }
+            if (typeof window !== 'undefined' && window.zunPvData) {
+                livePvDataZun = window.zunPvData;
+                syncZunLocationFromData();
+            }
+
             try {
                 const res = await fetch('pv_data.json?_t=' + Date.now());
                 if (res.ok) {
-                    const data = await res.json();
-                    livePvData = data;
-                    updatePvDashboardUI();
-                    refreshHistoryIfOpen();
-                    return;
+                    livePvDataFoxess = await res.json();
                 }
             } catch(e) {}
+
+            try {
+                const resZun = await fetch('zun_pv_data.json?_t=' + Date.now());
+                if (resZun.ok) {
+                    livePvDataZun = await resZun.json();
+                    syncZunLocationFromData();
+                }
+            } catch(e) {}
+
+            livePvData = (currentActivePvPlant === 'zun') ? livePvDataZun : livePvDataFoxess;
+            updatePvDashboardUI();
+            refreshHistoryIfOpen();
 
             const oldScript = document.getElementById('pvDataScript');
             const s = document.createElement('script');
@@ -3074,13 +3192,35 @@
             s.src = 'pv_data.js?_v=' + Date.now();
             s.onload = () => {
                 if (typeof window !== 'undefined' && window.foxessPvData) {
-                    livePvData = window.foxessPvData;
-                    updatePvDashboardUI();
-                    refreshHistoryIfOpen();
+                    livePvDataFoxess = window.foxessPvData;
+                    if (currentActivePvPlant === 'foxess') {
+                        livePvData = livePvDataFoxess;
+                        updatePvDashboardUI();
+                        refreshHistoryIfOpen();
+                    }
                 }
             };
             if (oldScript && oldScript.parentNode) {
                 oldScript.parentNode.replaceChild(s, oldScript);
+            }
+
+            const oldZunScript = document.getElementById('zunPvDataScript');
+            const sz = document.createElement('script');
+            sz.id = 'zunPvDataScript';
+            sz.src = 'zun_pv_data.js?_v=' + Date.now();
+            sz.onload = () => {
+                if (typeof window !== 'undefined' && window.zunPvData) {
+                    livePvDataZun = window.zunPvData;
+                    syncZunLocationFromData();
+                    if (currentActivePvPlant === 'zun') {
+                        livePvData = livePvDataZun;
+                        updatePvDashboardUI();
+                        refreshHistoryIfOpen();
+                    }
+                }
+            };
+            if (oldZunScript && oldZunScript.parentNode) {
+                oldZunScript.parentNode.replaceChild(sz, oldZunScript);
             }
         }
 
@@ -3196,7 +3336,8 @@
         // Zeitpunkt (lineare Interpolation zwischen den umgebenden 3h-Schritten von solarData).
         function interpSolarAtTime(tMs) {
             if (typeof solarData === 'undefined' || !solarData.length) return null;
-            const lat = PV_SYSTEM_LOCATION.lat, lng = PV_SYSTEM_LOCATION.lng;
+            const loc = (typeof getActivePvLocation === 'function') ? getActivePvLocation() : PV_SYSTEM_LOCATION;
+            const lat = loc.lat, lng = loc.lng;
             if (tMs <= solarData[0].timeMs) return Math.max(0, getTempAtStep(solarData[0], lat, lng));
             for (let i = 0; i < solarData.length - 1; i++) {
                 const a = solarData[i], b = solarData[i + 1];
@@ -3280,13 +3421,14 @@
             // Anlagenleistung hinausschießt.
             const capKw = Math.max(1, ...actual.map(p => p.pv), livePvData && typeof livePvData.solar_power === 'number' ? livePvData.solar_power : 0) * 1.05;
 
+            const loc = (typeof getActivePvLocation === 'function') ? getActivePvLocation() : PV_SYSTEM_LOCATION;
             const lastAvailable = solarData[solarData.length - 1].timeMs;
             const nowGhi = interpSolarAtTime(now);
             const nowPv = (livePvData && typeof livePvData.solar_power === 'number') ? livePvData.solar_power : Math.min(capKw, (nowGhi || 0) * medianRatio);
             const points = [{ t: now, pv: Math.max(0, nowPv) }];
             for (const step of solarData) {
                 if (step.timeMs <= now || step.timeMs > lastAvailable) continue;
-                const ghi = Math.max(0, getTempAtStep(step, PV_SYSTEM_LOCATION.lat, PV_SYSTEM_LOCATION.lng));
+                const ghi = Math.max(0, getTempAtStep(step, loc.lat, loc.lng));
                 points.push({ t: step.timeMs, pv: Math.min(capKw, ghi * medianRatio) });
             }
             if (points.length < 2) return null;
@@ -7016,13 +7158,13 @@
             }
         }
 
-        function showPvDashboard() {
+        function showPvDashboard(plantKey = 'foxess') {
             if (forecastContainer) forecastContainer.style.display = 'none';
             const pvContainer = document.getElementById('pv-container');
             if (pvContainer) {
                 pvContainer.style.display = 'block';
             }
-            flyToLocation(PV_SYSTEM_LOCATION.lat, PV_SYSTEM_LOCATION.lng, PV_SYSTEM_LOCATION.fullName);
+            switchPvPlant(plantKey, true);
         }
 
         function closePvDashboard() {
@@ -7073,12 +7215,6 @@
             const fadeAlpha = Math.min((165 - dist) / 25, 0.85);
 
             // Dynamische Staffelung nach Zoom-Tiefe:
-            // dist > 150: Nur Megacitys (Rank 0-1)
-            // dist 135-150: Hauptstädte & Großstädte (Rank 0-2)
-            // dist 122-135: Bedeutende Städte (Rank 0-4)
-            // dist 114-122: Mittelstädte & Ballungsräume (Rank 0-6)
-            // dist 107-114: Kleinere Städte & Bezirkshauptorte (Rank 0-8)
-            // dist < 107: Hohe Detailstufe: Gemeinden, Orte & Alpentäler (Rank 0-10)
             let maxRank = 0;
             let minSpacingX = 66;
             let minSpacingY = 25;
@@ -7120,7 +7256,7 @@
 
             const placed = [];
 
-            // PV-ANLAGE HOCHHEIM (Leuchtender Solar-Marker)
+            // 1. PV-ANLAGE HOCHHEIM (Leuchtender Solar-Marker)
             if (dist < 210 && PV_SYSTEM_LOCATION.worldPos) {
                 const cosAnglePv = (PV_SYSTEM_LOCATION.worldPos.x * cx + PV_SYSTEM_LOCATION.worldPos.y * cy + PV_SYSTEM_LOCATION.worldPos.z * cz) / (100.7 * dist);
                 if (cosAnglePv >= horizonThreshold) {
@@ -7150,7 +7286,7 @@
                             cityCtx.stroke();
 
                             // PV Badge
-                            const pvKwStr = (livePvData && livePvData.solar_power !== undefined) ? `${livePvData.solar_power.toFixed(1)} kW` : 'PV';
+                            const pvKwStr = (livePvDataFoxess && livePvDataFoxess.solar_power !== undefined) ? `${livePvDataFoxess.solar_power.toFixed(1)} kW` : 'PV';
                             const badgeText = `☀️ PV Hochheim (${pvKwStr})`;
 
                             cityCtx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
@@ -7179,6 +7315,67 @@
 
                             cityCtx.restore();
                             placed.push({ x: pvSx, y: pvSy });
+                        }
+                    }
+                }
+            }
+
+            // 2. PV-ANLAGE ZUN (Türkis/Goldener Leucht-Marker)
+            if (dist < 210 && ZUN_PV_SYSTEM_LOCATION && ZUN_PV_SYSTEM_LOCATION.worldPos) {
+                const cosAngleZun = (ZUN_PV_SYSTEM_LOCATION.worldPos.x * cx + ZUN_PV_SYSTEM_LOCATION.worldPos.y * cy + ZUN_PV_SYSTEM_LOCATION.worldPos.z * cz) / (100.7 * dist);
+                if (cosAngleZun >= horizonThreshold) {
+                    tempCityVec.copy(ZUN_PV_SYSTEM_LOCATION.worldPos).project(camera);
+                    if (tempCityVec.z <= 1.0) {
+                        const zunSx = (tempCityVec.x * 0.5 + 0.5) * screenW;
+                        const zunSy = (-tempCityVec.y * 0.5 + 0.5) * screenH;
+
+                        if (zunSx >= 20 && zunSx <= screenW - 20 && zunSy >= 20 && zunSy <= screenH - 20) {
+                            const pulse = (Math.sin(Date.now() * 0.005 + 1.5) + 1) * 0.5;
+                            const ringRadius = 5.0 + pulse * 4.0;
+
+                            cityCtx.save();
+                            cityCtx.beginPath();
+                            cityCtx.arc(zunSx, zunSy, ringRadius + 4, 0, Math.PI * 2);
+                            cityCtx.fillStyle = `rgba(0, 229, 255, ${0.15 + pulse * 0.22})`;
+                            cityCtx.fill();
+
+                            cityCtx.beginPath();
+                            cityCtx.arc(zunSx, zunSy, 4.0, 0, Math.PI * 2);
+                            cityCtx.fillStyle = '#00e5ff';
+                            cityCtx.fill();
+                            cityCtx.strokeStyle = '#ffffff';
+                            cityCtx.lineWidth = 1.5;
+                            cityCtx.stroke();
+
+                            const zunKwStr = (livePvDataZun && livePvDataZun.solar_power !== undefined) ? `${livePvDataZun.solar_power.toFixed(1)} kW` : 'PV';
+                            const badgeText = `☀️ ${ZUN_PV_SYSTEM_LOCATION.name} (${zunKwStr})`;
+
+                            cityCtx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+                            const textWidth = cityCtx.measureText(badgeText).width;
+                            const badgeW = textWidth + 14;
+                            const badgeH = 20;
+                            const badgeX = zunSx - badgeW / 2;
+                            const badgeY = zunSy - 28;
+
+                            cityCtx.fillStyle = 'rgba(18, 18, 24, 0.90)';
+                            cityCtx.strokeStyle = 'rgba(0, 229, 255, 0.85)';
+                            cityCtx.lineWidth = 1.2;
+                            cityCtx.beginPath();
+                            if (typeof cityCtx.roundRect === 'function') {
+                                cityCtx.roundRect(badgeX, badgeY, badgeW, badgeH, 10);
+                            } else {
+                                cityCtx.rect(badgeX, badgeY, badgeW, badgeH);
+                            }
+                            cityCtx.fill();
+                            cityCtx.stroke();
+
+                            cityCtx.fillStyle = '#00e5ff';
+                            cityCtx.textAlign = 'center';
+                            cityCtx.textBaseline = 'middle';
+                            cityCtx.fillText(badgeText, zunSx, badgeY + badgeH / 2);
+
+                            cityCtx.restore();
+                            placed.push({ x: zunSx, y: zunSy });
                         }
                     }
                 }
@@ -7327,20 +7524,38 @@
 
             const matches = [];
 
-            // PV-Anlage Treffer bei Suchbegriffen: pv, solar, hochheim, anlage, fox, foxess
+            // PV-Anlage Treffer bei Suchbegriffen: pv, solar, hochheim, zun, anlage, fox, foxess
             if (query.includes('pv') || query.includes('solar') || query.includes('hochheim') || 
                 query.includes('anlage') || query.includes('fox') || query.includes('photo')) {
                 matches.push({
                     city: {
-                        name: "☀️ FoxESS PV-Anlage",
+                        name: "☀️ FoxESS PV-Anlage (Hochheim)",
                         rawName: "PV Hochheim",
                         lat: PV_SYSTEM_LOCATION.lat,
                         lng: PV_SYSTEM_LOCATION.lng,
                         scalerank: -1,
                         country: "Hochheim am Main (Südstadt)",
-                        isPv: true
+                        isPv: true,
+                        pvPlant: 'foxess'
                     },
                     priority: 10
+                });
+            }
+
+            if (query.includes('pv') || query.includes('solar') || query.includes('zun') || 
+                query.includes('anlage') || query.includes('ecohub') || query.includes('photo')) {
+                matches.push({
+                    city: {
+                        name: ZUN_PV_SYSTEM_LOCATION.fullName,
+                        rawName: ZUN_PV_SYSTEM_LOCATION.name,
+                        lat: ZUN_PV_SYSTEM_LOCATION.lat,
+                        lng: ZUN_PV_SYSTEM_LOCATION.lng,
+                        scalerank: -1,
+                        country: ZUN_PV_SYSTEM_LOCATION.cityName,
+                        isPv: true,
+                        pvPlant: 'zun'
+                    },
+                    priority: 9
                 });
             }
 
@@ -7372,18 +7587,21 @@
                 currentSuggestions.forEach((city, idx) => {
                     let tempStr = '';
                     if (city.isPv) {
-                        tempStr = (livePvData && livePvData.solar_power !== undefined) ? 
-                            `<span style="color:#ffdb00; font-weight:700;">☀️ ${livePvData.solar_power.toFixed(2)} kW</span>` : 
-                            '<span style="color:#ffdb00; font-weight:700;">☀️ PV</span>';
+                        const pData = city.pvPlant === 'zun' ? livePvDataZun : livePvDataFoxess;
+                        const pColor = city.pvPlant === 'zun' ? '#00e5ff' : '#ffdb00';
+                        tempStr = (pData && pData.solar_power !== undefined) ? 
+                            `<span style="color:${pColor}; font-weight:700;">☀️ ${pData.solar_power.toFixed(2)} kW</span>` : 
+                            `<span style="color:${pColor}; font-weight:700;">☀️ PV</span>`;
                     } else {
                         const real = getInterpolatedData(city.lat, city.lng);
                         tempStr = Math.round(real.t) + '°C';
                     }
                     const countryStr = city.country || '';
+                    const nameStyle = city.isPv ? `style="color:${city.pvPlant === 'zun' ? '#00e5ff' : '#ffdb00'}; font-weight:700;"` : '';
                     html += `
                         <div class="suggestion-item" data-idx="${idx}">
                             <div class="suggestion-main">
-                                <div class="suggestion-name" ${city.isPv ? 'style="color:#ffdb00; font-weight:700;"' : ''}>${escapeHtml(city.name)}</div>
+                                <div class="suggestion-name" ${nameStyle}>${escapeHtml(city.name)}</div>
                                 <div class="suggestion-sub">${escapeHtml(countryStr)}</div>
                             </div>
                             <div class="suggestion-temp">${tempStr}</div>
@@ -7424,7 +7642,7 @@
             searchClearBtn.style.display = 'flex';
             flyToLocation(city.lat, city.lng, city.name);
             if (city.isPv) {
-                showPvDashboard();
+                showPvDashboard(city.pvPlant || 'foxess');
             } else {
                 showLocationForecast(city.lat, city.lng, city.name, city.country);
             }
@@ -8061,7 +8279,17 @@
                 const dLngPv = (clickedPopupPoint.lng - PV_SYSTEM_LOCATION.lng) * Math.cos(clickedPopupPoint.lat * Math.PI / 180);
                 const dSqPv = dLatPv * dLatPv + dLngPv * dLngPv;
                 if (dSqPv < 0.08) {
-                    showPvDashboard();
+                    showPvDashboard('foxess');
+                }
+
+                // 2. PV-Anlage zun Klick-Erkennung
+                if (ZUN_PV_SYSTEM_LOCATION) {
+                    const dLatZun = clickedPopupPoint.lat - ZUN_PV_SYSTEM_LOCATION.lat;
+                    const dLngZun = (clickedPopupPoint.lng - ZUN_PV_SYSTEM_LOCATION.lng) * Math.cos(clickedPopupPoint.lat * Math.PI / 180);
+                    const dSqZun = dLatZun * dLatZun + dLngZun * dLngZun;
+                    if (dSqZun < 0.08) {
+                        showPvDashboard('zun');
+                    }
                 }
 
                 // Nächste bekannte Stadt ermitteln oder Koordinaten anzeigen
@@ -8507,7 +8735,14 @@
         if (pvQuickBtn) {
             pvQuickBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                showPvDashboard();
+                showPvDashboard('foxess');
+            });
+        }
+        const pvZunQuickBtn = document.getElementById('pvZunQuickBtn');
+        if (pvZunQuickBtn) {
+            pvZunQuickBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showPvDashboard('zun');
             });
         }
         const pvCloseBtn = document.getElementById('pvCloseBtn');
