@@ -280,6 +280,82 @@ def main():
             except Exception as e_m:
                 print(f"Hinweis Abfrage Monat {ym}: {e_m}")
 
+        # 5b. Stündliche 24h-Vektoren für ältere Tage schrittweise nachladen
+        is_full_backfill = os.environ.get("FULL_BACKFILL", "").lower() in ["true", "1", "yes"]
+        try:
+            batch_size = int(os.environ.get("BATCH_SIZE", "35"))
+        except Exception:
+            batch_size = 35
+
+        missing_hourly_days = []
+        check_date = now_utc - timedelta(days=3)
+        earliest_date = datetime(2023, 12, 1, tzinfo=timezone.utc)
+        while check_date >= earliest_date:
+            d_str = check_date.strftime("%Y-%m-%d")
+            entry = daily_reports.get(d_str)
+            if entry and not entry.get("is_real_hourly"):
+                missing_hourly_days.append(d_str)
+            check_date -= timedelta(days=1)
+
+        batch_to_fetch = missing_hourly_days if is_full_backfill else missing_hourly_days[:batch_size]
+        if batch_to_fetch:
+            print(f"Stundendaten fehlen für {len(missing_hourly_days)} Tage. Lade Batch von {len(batch_to_fetch)} Tagen nach (FULL_BACKFILL={is_full_backfill})...")
+            for d_target in batch_to_fetch:
+                try:
+                    time.sleep(0.25)
+                    day_hist = api_get("/inverter/network/history", token, {
+                        "inverterId": inv_id_val,
+                        "date": d_target,
+                        "resolution": "1 minute"
+                    })
+                    if isinstance(day_hist, list) and len(day_hist) > 0:
+                        hourly_m = {h: {"gen": 0.0, "load": 0.0, "feed": 0.0, "import": 0.0, "cnt": 0} for h in range(24)}
+                        for pt in day_hist:
+                            t_str = pt.get("time") or pt.get("timestamp")
+                            if not t_str:
+                                continue
+                            try:
+                                pt_dt = datetime.fromisoformat(t_str.replace("Z", "+00:00"))
+                                pt_de = to_berlin_dt(pt_dt)
+                                h = pt_de.hour
+                                hourly_m[h]["gen"] += parse_kw(pt.get("p_creation") or pt.get("generation"))
+                                hourly_m[h]["load"] += parse_kw(pt.get("p_usage") or pt.get("usage"))
+                                hourly_m[h]["feed"] += parse_kw(pt.get("p_grid_in") or pt.get("feed_in"))
+                                hourly_m[h]["import"] += parse_kw(pt.get("p_grid_out") or pt.get("grid_import"))
+                                hourly_m[h]["cnt"] += 1
+                            except Exception:
+                                pass
+
+                        gen_arr = []
+                        load_arr = []
+                        feed_arr = []
+                        import_arr = []
+                        for h in range(24):
+                            cnt = hourly_m[h]["cnt"]
+                            gen_arr.append(round(hourly_m[h]["gen"] / cnt if cnt > 0 else 0.0, 2))
+                            load_arr.append(round(hourly_m[h]["load"] / cnt if cnt > 0 else 0.0, 2))
+                            feed_arr.append(round(hourly_m[h]["feed"] / cnt if cnt > 0 else 0.0, 2))
+                            import_arr.append(round(hourly_m[h]["import"] / cnt if cnt > 0 else 0.0, 2))
+
+                        d_entry = daily_reports.get(d_target, {"hours": list(range(24))})
+                        d_entry["hours"] = list(range(24))
+                        d_entry["generation"] = gen_arr
+                        d_entry["loads"] = load_arr
+                        d_entry["feedin"] = feed_arr
+                        d_entry["gridConsumption"] = import_arr
+                        d_entry["totals"] = {
+                            "generation": round(sum(gen_arr), 1),
+                            "feedin": round(sum(feed_arr), 1),
+                            "loads": round(sum(load_arr), 1),
+                            "gridConsumption": round(sum(import_arr), 1),
+                            "chargeEnergyToTal": 0.0,
+                            "dischargeEnergyToTal": 0.0
+                        }
+                        d_entry["is_real_hourly"] = True
+                        daily_reports[d_target] = d_entry
+                except Exception as e_d:
+                    print(f"Hinweis Stundendaten für {d_target}: {e_d}")
+
     else:
         print("[OFFLINE-MODUS] Verarbeite bestehende lokale Daten neu...")
         if os.path.exists("zun_pv_data.json"):

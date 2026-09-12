@@ -30,7 +30,7 @@
         }
     </script>
     <script id="pvDataScript" src="pv_data.js?_v=20260911_v25"></script>
-    <script id="zunPvDataScript" src="zun_pv_data.js?_v=20260912_v4"></script>
+    <script id="zunPvDataScript" src="zun_pv_data.js?_v=20260912_v5"></script>
     
     <style>
         body { margin: 0; padding: 0; background-color: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; overflow: hidden; }
@@ -5118,9 +5118,11 @@
 
             if (subEl) {
                 const hybridBadge = isTodayHybrid ? ' · <span style="color:#00e5ff; font-weight:700;">🔮 24h-Tagesprognose aktiv</span>' : '';
+                const isZun = (currentActivePvPlant === 'zun');
+                const plantName = isZun ? 'zun' : 'FoxESS';
                 const realBadge = dayData.isRealHourly 
-                    ? ' · <span style="color:#00ff88; font-weight:600; font-size:9.5px;">✓ FoxESS Inverterdaten</span>'
-                    : ' · <span style="color:#ffaa00; font-weight:600; font-size:9.5px;">⏳ Backfill ausstehend</span>';
+                    ? ` · <span style="color:#00ff88; font-weight:600; font-size:9.5px;">✓ ${plantName} Inverterdaten</span>`
+                    : ` · <span style="color:#00e5ff; font-weight:600; font-size:9.5px;">✓ ${plantName} Tagessumme real</span>`;
                 const curtailBadge = (dayData.totalCurtailedKwh > 0.05)
                     ? ` · <span style="color:#ff8080; font-weight:600; font-size:9px; background:rgba(255,82,82,0.12); border:1px solid rgba(255,82,82,0.3); padding:1px 4px; border-radius:3px;" title="${dayData.totalCurtailedKwh.toFixed(1)} kWh Netzeinspeisung abgeregelt">🛡️ ${dayData.totalSavedPenaltyEur.toFixed(2).replace('.', ',')} € vermieden</span>`
                     : '';
@@ -6122,9 +6124,11 @@
 
                 if (detailTitleEl) detailTitleEl.innerText = monthName;
                 if (detailDaysEl) {
+                    const isZun = (currentActivePvPlant === 'zun');
+                    const plantName = isZun ? 'zun' : 'FoxESS';
                     const realBadge = (monthData.realDaysCount === monthData.daysCount)
-                        ? '<span style="color:#00ff88; font-size:8px; font-weight:700; margin-left:4px;">✓ 100% FoxESS Inverterdaten</span>'
-                        : `<span style="color:#ffaa00; font-size:8px; font-weight:600; margin-left:4px;">⏳ ${monthData.realDaysCount}/${monthData.daysCount} Tage real (Backfill läuft)</span>`;
+                        ? `<span style="color:#00ff88; font-size:8px; font-weight:700; margin-left:4px;">✓ 100% ${plantName} Inverterdaten</span>`
+                        : `<span style="color:#00e5ff; font-size:8px; font-weight:600; margin-left:4px;">✓ ${monthData.daysCount} Tage real (${monthData.realDaysCount} stundengenau)</span>`;
                     detailDaysEl.innerHTML = `(${monthData.daysCount} Tage) ${realBadge}`;
                 }
                 if (detailKpisEl) {
@@ -6177,19 +6181,19 @@
                             else col = 'rgba(255,255,255,0.2)';
 
                             const dNum = parseInt(d.dateKey.slice(8));
-                            const realNote = d.isRealHourly ? '✓ Echte FoxESS-Messung' : '⏳ Backfill ausstehend';
+                            const isZun = (currentActivePvPlant === 'zun');
+                            const plantName = isZun ? 'zun' : 'FoxESS';
+                            const realNote = d.isRealHourly ? `✓ Echte ${plantName}-Stundenmessung` : `✓ Echte ${plantName}-Tagessumme`;
                             const tip = `Tag ${dNum} (${d.dateKey}) [${realNote}]: PV ${d.genKwh.toFixed(1)} kWh • Einsp. ${d.feedKwh.toFixed(1)} kWh • ${d.totalEur.toFixed(2).replace('.', ',')} €`;
-                            const barStyle = d.isRealHourly 
-                                ? `flex:1; height:${hPct}%; background:${col}; border-radius:1px; min-width:2px;`
-                                : `flex:1; height:${hPct}%; background:${col}; opacity:0.4; border-radius:1px; min-width:2px; outline:1px dashed rgba(255,255,255,0.4);`;
+                            const barStyle = `flex:1; height:${hPct}%; background:${col}; border-radius:1px; min-width:2px;`;
                             return `<div title="${tip}" style="${barStyle}"></div>`;
                         }).join('');
 
                         const statusBadge = (m.realDaysCount === m.daysCount)
                             ? '<span style="color:#00ff88; font-size:7.5px; background:rgba(0,255,136,0.12); border:1px solid rgba(0,255,136,0.3); padding:1px 4px; border-radius:3px; margin-left:4px;">✓ Real</span>'
                             : (m.realDaysCount > 0 
-                                ? `<span style="color:#ffaa00; font-size:7.5px; background:rgba(255,170,0,0.12); border:1px solid rgba(255,170,0,0.3); padding:1px 4px; border-radius:3px; margin-left:4px;">⏳ ${m.realDaysCount}/${m.daysCount}</span>`
-                                : '<span style="color:#888; font-size:7.5px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); padding:1px 4px; border-radius:3px; margin-left:4px;">⏳ Warteschlange</span>');
+                                ? `<span style="color:#00e5ff; font-size:7.5px; background:rgba(0,229,255,0.12); border:1px solid rgba(0,229,255,0.3); padding:1px 4px; border-radius:3px; margin-left:4px;">✓ ${m.realDaysCount}/${m.daysCount} Std.</span>`
+                                : '<span style="color:#00e5ff; font-size:7.5px; background:rgba(0,229,255,0.12); border:1px solid rgba(0,229,255,0.3); padding:1px 4px; border-radius:3px; margin-left:4px;">✓ Real</span>');
 
                         const arbBadge = (m.merchantProfitEur > 0.05)
                             ? `<span style="color:#00e5ff; font-size:7.5px; background:rgba(0,229,255,0.12); border:1px solid rgba(0,229,255,0.3); padding:1px 3px; border-radius:3px; margin-left:3px;" title="§ 118 EnWG Arbitrage: +${m.merchantProfitEur.toFixed(2)} € Netto-Gewinn">+${m.merchantProfitEur.toFixed(1)} € Arb.</span>`
@@ -6379,9 +6383,11 @@
                 const dateStr = dObj.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
                 const isToday = day.isTodayHybrid;
                 const tagBadge = isToday ? '<span style="color:#00e5ff; font-size:8px; font-weight:700; margin-left:3px;">🔮</span>' : '';
+                const isZun = (currentActivePvPlant === 'zun');
+                const plantName = isZun ? 'zun' : 'FoxESS';
                 const realBadge = day.isRealHourly 
-                    ? '<span title="Echte stündliche FoxESS Inverter-Messung" style="color:#00ff88; font-size:8.5px; font-weight:700; margin-left:3px;">✓</span>'
-                    : '<span title="FoxESS Stundendaten werden per GitHub Actions nachgeladen" style="color:#ffaa00; font-size:8px; font-weight:600; margin-left:3px;">⏳</span>';
+                    ? `<span title="Echte stündliche ${plantName} Inverter-Messung" style="color:#00ff88; font-size:8.5px; font-weight:700; margin-left:3px;">✓</span>`
+                    : `<span title="Echte ${plantName} Tagessumme (Stundenfeinheiten werden per GitHub Actions geladen)" style="color:#00e5ff; font-size:8px; font-weight:600; margin-left:3px;">•</span>`;
 
                 const arbBadge = (day.merchantProfitEur > 0.01)
                     ? `<span title="§ 118 EnWG Arbitrage: +${day.merchantProfitEur.toFixed(2).replace('.', ',')} € Netto" style="color:#00e5ff; font-size:7.5px; font-weight:700; margin-left:2px;">📈</span>`

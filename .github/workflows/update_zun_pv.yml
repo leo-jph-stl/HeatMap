@@ -9,6 +9,16 @@ on:
       - 'fetch_zun_pv.py'
       - '.github/workflows/update_zun_pv.yml'
   workflow_dispatch:
+    inputs:
+      full_backfill:
+        description: 'Vollständiger Backfill aller Tage mit Stundendaten'
+        required: false
+        type: boolean
+        default: false
+      batch_size:
+        description: 'Anzahl Tage pro Durchlauf (Standard: 35)'
+        required: false
+        default: '35'
 
 permissions:
   contents: write
@@ -41,6 +51,8 @@ jobs:
           ZUN_LAT: ${{ vars.ZUN_LAT || '50.045' }}
           ZUN_LNG: ${{ vars.ZUN_LNG || '8.436' }}
           ZUN_LOCATION_NAME: ${{ vars.ZUN_LOCATION_NAME || 'Weilbach (Flörsheim am Main)' }}
+          FULL_BACKFILL: ${{ github.event.inputs.full_backfill || 'false' }}
+          BATCH_SIZE: ${{ github.event.inputs.batch_size || '35' }}
         run: python fetch_zun_pv.py
 
       - name: Commit and push if changed
