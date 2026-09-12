@@ -30,7 +30,7 @@
         }
     </script>
     <script id="pvDataScript" src="pv_data.js?_v=20260911_v25"></script>
-    <script id="zunPvDataScript" src="zun_pv_data.js?_v=20260912_v2"></script>
+    <script id="zunPvDataScript" src="zun_pv_data.js?_v=20260912_v3"></script>
     
     <style>
         body { margin: 0; padding: 0; background-color: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; overflow: hidden; }
@@ -3129,6 +3129,12 @@
             }
             if (subEl) subEl.textContent = loc.cityName || loc.name;
 
+            if (typeof pvChartState !== 'undefined') {
+                pvChartState.viewStart = null;
+                pvChartState.viewEnd = null;
+                pvChartState.selected = null;
+            }
+
             updatePvDashboardUI();
             drawPriceChart();
             if (typeof refreshActivePvAnalysisContainers === 'function') {
@@ -3383,17 +3389,11 @@
                 return filtered;
             };
 
-            const logWindowStart = now - PV_FORECAST_LOG_MAX_AGE_MS;
-            const logPairs = pvForecastLog
-                .filter(r => r.t >= logWindowStart && r.t <= now && typeof r.pv === 'number' && typeof r.ghi === 'number')
-                .map(r => ({ pv: r.pv, ghi: r.ghi }));
+            let calibPairs = [];
+            let calibSource = '24h', calibDays = 1;
 
-            let calibPairs = pickCalibPairs(logPairs);
-            let calibSource = 'log', calibDays = Math.round(PV_FORECAST_LOG_MAX_AGE_MS / 86400000);
-
-            if (calibPairs.length < 5) {
-                // Log noch zu jung/dünn: letzte 24h direkt aus der Live-Historie kalibrieren
-                const calibWindowStart = now - 24 * 3600 * 1000;
+            if (currentActivePvPlant === 'zun') {
+                const calibWindowStart = now - 72 * 3600 * 1000;
                 const livePairs = [];
                 for (const p of actual) {
                     if (p.t < calibWindowStart || p.t > now) continue;
@@ -3402,8 +3402,30 @@
                     livePairs.push({ pv: p.pv, ghi });
                 }
                 calibPairs = pickCalibPairs(livePairs);
-                calibSource = '24h';
-                calibDays = 1;
+            } else {
+                const logWindowStart = now - PV_FORECAST_LOG_MAX_AGE_MS;
+                const logPairs = pvForecastLog
+                    .filter(r => r.t >= logWindowStart && r.t <= now && typeof r.pv === 'number' && typeof r.ghi === 'number')
+                    .map(r => ({ pv: r.pv, ghi: r.ghi }));
+
+                calibPairs = pickCalibPairs(logPairs);
+                calibSource = 'log';
+                calibDays = Math.round(PV_FORECAST_LOG_MAX_AGE_MS / 86400000);
+
+                if (calibPairs.length < 5) {
+                    // Log noch zu jung/dünn: letzte 24h direkt aus der Live-Historie kalibrieren
+                    const calibWindowStart = now - 24 * 3600 * 1000;
+                    const livePairs = [];
+                    for (const p of actual) {
+                        if (p.t < calibWindowStart || p.t > now) continue;
+                        const ghi = interpSolarAtTime(p.t);
+                        if (ghi === null) continue;
+                        livePairs.push({ pv: p.pv, ghi });
+                    }
+                    calibPairs = pickCalibPairs(livePairs);
+                    calibSource = '24h';
+                    calibDays = 1;
+                }
             }
             if (calibPairs.length < 5) return null; // zu wenig verwertbare Datenpunkte für eine seriöse Schätzung
 
