@@ -237,8 +237,40 @@ def main():
         "today_grid_import": round(today_grid_import, 1),
         "device_status": "online",
         "daily_reports": daily_reports,
+        "history_3d": [],
         "last_updated": datetime.now(timezone.utc).isoformat()
     }
+
+    # 3-Tage-Verlaufshistorie aufbauen
+    prev_history = []
+    if os.path.exists("zun_pv_data.json"):
+        try:
+            with open("zun_pv_data.json", "r", encoding="utf-8") as f:
+                prev_d = json.load(f)
+                prev_history = prev_d.get("history_3d", [])
+        except Exception:
+            pass
+
+    history_3d = list(prev_history)
+    for pt in history_records:
+        t_str = pt.get("time") or pt.get("timestamp")
+        if t_str:
+            history_3d.append({
+                "t": t_str,
+                "pv": parse_kw(pt.get("p_creation") or pt.get("generation")),
+                "load": parse_kw(pt.get("p_usage") or pt.get("usage")),
+                "feed": parse_kw(pt.get("p_grid_in") or pt.get("feed_in")),
+                "soc": pt.get("soc_battery_avg") or pt.get("battery") or 0
+            })
+
+    seen_t = set()
+    dedup_history = []
+    for item in reversed(history_3d):
+        if item["t"] not in seen_t:
+            seen_t.add(item["t"])
+            dedup_history.append(item)
+    dedup_history.reverse()
+    zun_data["history_3d"] = dedup_history[-4320:]
 
     with open("zun_pv_data.json", "w", encoding="utf-8") as f:
         json.dump(zun_data, f, indent=2, ensure_ascii=False)
