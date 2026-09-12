@@ -470,7 +470,7 @@ def main():
         }
 
     with open("zun_daily_history.json", "w", encoding="utf-8") as f:
-        json.dump(daily_reports, f, indent=2, ensure_ascii=False)
+        json.dump(daily_reports, f, separators=(',', ':'), ensure_ascii=False)
 
     today_rep = daily_reports.get(today_de_str, {})
     today_totals = today_rep.get("totals", {})
@@ -533,10 +533,10 @@ def main():
     }
 
     with open("zun_pv_data.json", "w", encoding="utf-8") as f:
-        json.dump(zun_data, f, indent=2, ensure_ascii=False)
+        json.dump(zun_data, f, separators=(',', ':'), ensure_ascii=False)
 
     with open("zun_pv_data.js", "w", encoding="utf-8") as f:
-        f.write(f"window.zunPvData = {json.dumps(zun_data, indent=2, ensure_ascii=False)};\n")
+        f.write(f"window.zunPvData = {json.dumps(zun_data, separators=(',', ':'), ensure_ascii=False)};\n")
 
     print(f"\n✅ ERFOLG: Live-PV-Daten für {loc_name} erfolgreich gespeichert!")
     print(f"Erzeugung: {zun_data['solar_power']} kW | Hausverbrauch: {zun_data['house_load']} kW | Batterie: {zun_data['battery_soc']}% | Einspeisung: {zun_data['grid_feed_in']} kW")
