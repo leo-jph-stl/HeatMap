@@ -29,9 +29,6 @@
             });
         }
     </script>
-    <script id="pvDataScript" src="pv_data.js?_v=20260911_v25"></script>
-    <script id="zunPvDataScript" src="zun_pv_data.js?_v=20260912_v5"></script>
-    
     <style>
         body { margin: 0; padding: 0; background-color: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; overflow: hidden; }
         #canvas-container { position: absolute; top: 0; bottom: 0; width: 100%; }
@@ -942,6 +939,36 @@
         </div>
     </div>
 
+    <!-- Login-Overlay: echte, backend-durchgesetzte Zugriffskontrolle (siehe PV_API_BASE weiter unten) -
+         alles PV-Bezogene außer dem öffentlichen Mini-Graphen bleibt hierüber verborgen. -->
+    <div id="pv-login-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:200; align-items:center; justify-content:center;">
+        <div style="background:#151821; border:1px solid rgba(255,219,0,0.35); border-radius:14px; padding:22px 24px; width:260px; box-shadow:0 10px 40px rgba(0,0,0,0.5);">
+            <div style="font-weight:700; font-size:14px; color:#ffdb00; margin-bottom:4px;">🔒 Admin-Login</div>
+            <div style="font-size:11px; color:#999; margin-bottom:14px;">Erforderlich für Details zu den PV-Anlagen.</div>
+            <input id="pvLoginPasswordInput" type="password" placeholder="Passwort" style="width:100%; box-sizing:border-box; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.2); color:#fff; border-radius:8px; padding:8px 10px; font-size:13px; margin-bottom:8px;">
+            <div id="pvLoginError" style="display:none; color:#ff6666; font-size:11px; margin-bottom:8px;">Falsches Passwort.</div>
+            <div style="display:flex; gap:8px;">
+                <button id="pvLoginCancelBtn" type="button" style="flex:1; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); color:#ccc; border-radius:8px; padding:7px; font-size:12px; cursor:pointer;">Abbrechen</button>
+                <button id="pvLoginSubmitBtn" type="button" style="flex:1; background:#ffdb00; border:none; color:#111; border-radius:8px; padding:7px; font-size:12px; font-weight:700; cursor:pointer;">Login</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Immer öffentlich sichtbar (kein Login nötig): anonymisierte PV-Produktion + Strompreis.
+         Alles andere PV-Bezogene ist hinter dem Login-Overlay oben verborgen. -->
+    <div id="pv-public-container" style="position:absolute; bottom:190px; right:16px; width:230px; z-index:45; background:rgba(18,18,24,0.92); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,0.15); border-radius:12px; overflow:hidden; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+        <button id="pvPublicToggleBtn" type="button" style="width:100%; display:flex; justify-content:space-between; align-items:center; background:none; border:none; padding:8px 10px; cursor:pointer; color:#fff; font-size:11px; font-weight:600;">
+            <span>☀️ PV &amp; Strompreis</span>
+            <span id="pvPublicChevron" style="color:#888; font-size:10px;">▸</span>
+        </button>
+        <div id="pvPublicBody" style="display:none; padding: 0 10px 10px 10px;">
+            <div style="font-size:9px; color:#888; margin-bottom:3px;">PV-Produktion (anonymisiert)</div>
+            <svg id="pvPublicChart" viewBox="0 0 230 55" preserveAspectRatio="none" style="width:100%; height:55px; display:block;"></svg>
+            <div style="font-size:9px; color:#888; margin:6px 0 3px;">Strompreis (Day-Ahead, ct/kWh)</div>
+            <svg id="pvPublicPriceChart" viewBox="0 0 230 55" preserveAspectRatio="none" style="width:100%; height:55px; display:block;"></svg>
+        </div>
+    </div>
+
     <!-- PV-Anlagen Dashboard Karte (Dual-Anlagen: FoxESS & zun) -->
     <div id="pv-container">
         <div class="forecast-header">
@@ -951,17 +978,18 @@
                     <span id="pvStatusDot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#888;"></span>
                     <span id="pvStatusLabel" style="font-size: 10px; font-weight: 600; color: #888; text-transform: uppercase;"></span>
                 </div>
-                <div id="pvLocationSub" class="forecast-sub">Hochheim am Main (Südstadt)</div>
+                <div id="pvLocationSub" class="forecast-sub"></div>
             </div>
             <div class="forecast-btn-group">
+                <button id="pvLogoutBtn" class="forecast-action-btn" title="Logout">🔓</button>
                 <button id="pvCloseBtn" class="forecast-action-btn" title="Schließen">✕</button>
             </div>
         </div>
         
-        <!-- Dual-Anlagen Umschalter (Hochheim vs zun) -->
+        <!-- Dual-Anlagen Umschalter -->
         <div class="pv-plant-switcher" style="display: flex; gap: 6px; padding: 4px 14px 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 8px;">
-            <button id="btnSelectPlantFox" class="pv-switch-btn active" onclick="switchPvPlant('foxess')">☀️ Hochheim (FoxESS)</button>
-            <button id="btnSelectPlantZun" class="pv-switch-btn" onclick="switchPvPlant('zun')">☀️ Weilbach (zun)</button>
+            <button id="btnSelectPlantFox" class="pv-switch-btn active" onclick="switchPvPlant('foxess')">☀️ System 1</button>
+            <button id="btnSelectPlantZun" class="pv-switch-btn" onclick="switchPvPlant('zun')">☀️ System 2</button>
         </div>
         
         <div id="pvBody">
@@ -1039,9 +1067,9 @@
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.06);">
                             <span style="color: #bbb;" title="Reale Referenzgröße vs. hypothetische Anlagengröße">Anlagengröße (kWp):</span>
                             <div style="display: flex; align-items: center; gap: 4px;">
-                                <input id="pvBaseKwpInput" type="number" step="0.1" min="0.5" max="100" value="9.6" title="Reale Basisgröße der Anlage (9.6 kWp)" style="width: 44px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.18); color: #aaa; border-radius: 4px; padding: 1px 3px; font-size: 10px; text-align: right;">
+                                <input id="pvBaseKwpInput" type="number" step="0.1" min="0.5" max="100" value="" placeholder="--" title="Reale Basisgröße der Anlage (nach Login geladen)" style="width: 44px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.18); color: #aaa; border-radius: 4px; padding: 1px 3px; font-size: 10px; text-align: right;">
                                 <span style="color: #666;">→</span>
-                                <input id="pvTargetKwpInput" type="number" step="0.1" min="0.5" max="100" value="9.6" title="Hypothetische Zielgröße zur Extrapolation" style="width: 46px; background: rgba(0,0,0,0.6); border: 1px solid rgba(0,229,255,0.35); color: #00e5ff; border-radius: 4px; padding: 1px 3px; font-size: 10px; text-align: right; font-weight: 700;">
+                                <input id="pvTargetKwpInput" type="number" step="0.1" min="0.5" max="100" value="" placeholder="--" title="Hypothetische Zielgröße zur Extrapolation" style="width: 46px; background: rgba(0,0,0,0.6); border: 1px solid rgba(0,229,255,0.35); color: #00e5ff; border-radius: 4px; padding: 1px 3px; font-size: 10px; text-align: right; font-weight: 700;">
                                 <span style="color: #888; font-size: 9px;">kWp</span>
                             </div>
                         </div>
@@ -1051,7 +1079,7 @@
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                                 <span style="color: #bbb;">Individueller Vergütungssatz:</span>
                                 <div style="display: flex; align-items: center; gap: 4px;">
-                                    <input id="pvEegRateInput" type="number" step="0.05" min="0" max="99" value="8.20" style="width: 50px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.18); color: #fff; border-radius: 4px; padding: 2px 4px; font-size: 10.5px; text-align: right;">
+                                    <input id="pvEegRateInput" type="number" step="0.05" min="0" max="99" value="" placeholder="--" style="width: 50px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.18); color: #fff; border-radius: 4px; padding: 2px 4px; font-size: 10.5px; text-align: right;">
                                     <span style="color: #888;">ct/kWh</span>
                                 </div>
                             </div>
@@ -1231,14 +1259,14 @@
                         <span id="pvScenarioFactorBadge" style="background: rgba(0,229,255,0.12); color: #00e5ff; border: 1px solid rgba(0,229,255,0.3); border-radius: 4px; padding: 1px 5px; font-size: 8.5px; font-weight: 700;">1.00x (Real)</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 4px;">
-                        <input id="pvScenarioKwpInput" type="number" step="0.1" min="0.5" max="100" value="9.6" title="Hypothetische Anlagengröße in kWp" style="width: 48px; background: rgba(0,0,0,0.6); border: 1px solid rgba(0,229,255,0.35); color: #00e5ff; border-radius: 4px; padding: 1.5px 3px; font-size: 10px; text-align: right; font-weight: 700; font-family: monospace;">
+                        <input id="pvScenarioKwpInput" type="number" step="0.1" min="0.5" max="100" value="" placeholder="--" title="Hypothetische Anlagengröße in kWp" style="width: 48px; background: rgba(0,0,0,0.6); border: 1px solid rgba(0,229,255,0.35); color: #00e5ff; border-radius: 4px; padding: 1.5px 3px; font-size: 10px; text-align: right; font-weight: 700; font-family: monospace;">
                         <span style="color: #888; font-size: 9px;">kWp</span>
-                        <button id="pvScenarioResetBtn" type="button" title="Auf reale Referenzanlage (9.6 kWp) zurücksetzen" style="display: none; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #ffdb00; border-radius: 4px; font-size: 8.5px; padding: 1.5px 5px; cursor: pointer;">↺ Real</button>
+                        <button id="pvScenarioResetBtn" type="button" title="Auf reale Referenzanlage zurücksetzen" style="display: none; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #ffdb00; border-radius: 4px; font-size: 8.5px; padding: 1.5px 5px; cursor: pointer;">↺ Real</button>
                     </div>
                 </div>
                 <div style="display: flex; gap: 4px; align-items: center;">
                     <span style="font-size: 8px; color: #666; white-space: nowrap;">Szenario:</span>
-                    <button type="button" class="pv-quick-kwp-btn" data-kwp="9.6" style="flex: 1; background: rgba(0,229,255,0.15); border: 1px solid rgba(0,229,255,0.4); color: #00e5ff; border-radius: 4px; font-size: 8.5px; padding: 2px 0; cursor: pointer; font-weight: 600;">9.6 kWp (Real)</button>
+                    <button id="pvQuickKwpRealBtn" type="button" class="pv-quick-kwp-btn" data-kwp="" style="flex: 1; background: rgba(0,229,255,0.15); border: 1px solid rgba(0,229,255,0.4); color: #00e5ff; border-radius: 4px; font-size: 8.5px; padding: 2px 0; cursor: pointer; font-weight: 600;">-- kWp (Real)</button>
                     <button type="button" class="pv-quick-kwp-btn" data-kwp="12.0" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8.5px; padding: 2px 0; cursor: pointer;">12 kWp</button>
                     <button type="button" class="pv-quick-kwp-btn" data-kwp="15.0" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8.5px; padding: 2px 0; cursor: pointer;">15 kWp</button>
                     <button type="button" class="pv-quick-kwp-btn" data-kwp="20.0" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8.5px; padding: 2px 0; cursor: pointer;">20 kWp</button>
@@ -1442,8 +1470,8 @@
             <button id="playSpeedBtn" title="Wiedergabegeschwindigkeit">1x</button>
             <div id="timeDisplayTitle">Live (Jetzt)</div>
             <div style="display: flex; gap: 4px; align-items: center;">
-                <button id="pvQuickBtn" class="pv-badge-btn" title="Zur PV-Anlage Hochheim am Main springen">☀️ Hochheim</button>
-                <button id="pvZunQuickBtn" class="pv-badge-btn" title="Zur 2. PV-Anlage (Weilbach / zun) springen" style="border-color: rgba(0, 229, 255, 0.4); background: rgba(0, 229, 255, 0.12); color: #00e5ff;">☀️ Weilbach</button>
+                <button id="pvQuickBtn" class="pv-badge-btn" title="Login für PV-Anlagendetails">🔒 PV-Login</button>
+                <button id="pvZunQuickBtn" class="pv-badge-btn" style="display:none; border-color: rgba(0, 229, 255, 0.4); background: rgba(0, 229, 255, 0.12); color: #00e5ff;">☀️</button>
             </div>
         </div>
         <input type="range" id="timeSlider" min="-24" max="72" step="1" value="0">
@@ -2818,62 +2846,130 @@
         }
 
         // 1. FOXESS PV-ANLAGE (HOCHHEIM AM MAIN - SÜDSTADT)
+        // WICHTIG: lat/lng/Namen sind absichtlich NICHT hardcodiert - beide Anlagen sind reale
+        // Privatadressen. Diese Felder bleiben null, bis nach einem echten Login die Daten vom
+        // Cloudflare Worker (siehe unten, PV_API_BASE) authentifiziert geladen wurden. Vor Login
+        // bleibt worldPos ebenfalls null, wodurch renderCityLabels() und die Klick-Erkennung diese
+        // Anlagen gar nicht erst berücksichtigen (siehe dort).
         const PV_SYSTEM_LOCATION = {
-            name: "FoxESS PV-Anlage",
-            fullName: "☀️ FoxESS PV-Anlage (Hochheim)",
-            cityName: "Hochheim am Main (Südstadt)",
-            lat: 50.008,
-            lng: 8.350,
-            worldPos: null
+            name: null, fullName: null, cityName: null, lat: null, lng: null, worldPos: null
         };
-        const pvLocalV = latLngToSphereVertex(PV_SYSTEM_LOCATION.lat, PV_SYSTEM_LOCATION.lng, earthRadius + 0.75);
-        PV_SYSTEM_LOCATION.worldPos = new THREE.Vector3(-pvLocalV.z, pvLocalV.y, pvLocalV.x);
-
-        // 2. ZUN PV-ANLAGE (WEILBACH BEI FLÖRSHEIM AM MAIN)
         const ZUN_PV_SYSTEM_LOCATION = {
-            name: "zun PV Weilbach",
-            fullName: "☀️ zun PV-Anlage (Weilbach)",
-            cityName: "Weilbach (Flörsheim am Main)",
-            lat: 50.045,
-            lng: 8.436,
-            worldPos: null
+            name: null, fullName: null, cityName: null, lat: null, lng: null, worldPos: null
         };
-        const zunLocalV = latLngToSphereVertex(ZUN_PV_SYSTEM_LOCATION.lat, ZUN_PV_SYSTEM_LOCATION.lng, earthRadius + 0.75);
-        ZUN_PV_SYSTEM_LOCATION.worldPos = new THREE.Vector3(-zunLocalV.z, zunLocalV.y, zunLocalV.x);
 
         let currentActivePvPlant = 'foxess'; // 'foxess' | 'zun'
-        let livePvDataFoxess = (typeof window !== 'undefined' && window.foxessPvData) ? window.foxessPvData : null;
-        let livePvDataZun = (typeof window !== 'undefined' && window.zunPvData) ? window.zunPvData : null;
+        let livePvDataFoxess = null;
+        let livePvDataZun = null;
         let livePvData = livePvDataFoxess;
 
         function getActivePvLocation() {
             return currentActivePvPlant === 'zun' ? ZUN_PV_SYSTEM_LOCATION : PV_SYSTEM_LOCATION;
         }
 
+        function syncLocationFromData(target, sourceData, defaultFullName) {
+            if (!sourceData || !sourceData.location || sourceData.location.lat == null || sourceData.location.lng == null) return;
+            target.lat = sourceData.location.lat;
+            target.lng = sourceData.location.lng;
+            target.name = sourceData.location.name || target.name;
+            target.fullName = sourceData.location.name ? ("☀️ " + sourceData.location.name) : defaultFullName;
+            target.cityName = sourceData.location.name || target.cityName;
+            const v = latLngToSphereVertex(target.lat, target.lng, earthRadius + 0.75);
+            target.worldPos = new THREE.Vector3(-v.z, v.y, v.x);
+        }
+        function syncFoxessLocationFromData() {
+            syncLocationFromData(PV_SYSTEM_LOCATION, livePvDataFoxess, "☀️ FoxESS PV-Anlage");
+        }
         function syncZunLocationFromData() {
-            if (livePvDataZun && livePvDataZun.location) {
-                if (livePvDataZun.location.lat) ZUN_PV_SYSTEM_LOCATION.lat = livePvDataZun.location.lat;
-                if (livePvDataZun.location.lng) ZUN_PV_SYSTEM_LOCATION.lng = livePvDataZun.location.lng;
-                if (livePvDataZun.location.name) {
-                    ZUN_PV_SYSTEM_LOCATION.name = livePvDataZun.location.name;
-                    ZUN_PV_SYSTEM_LOCATION.fullName = "☀️ " + livePvDataZun.location.name;
-                    ZUN_PV_SYSTEM_LOCATION.cityName = livePvDataZun.location.name;
+            syncLocationFromData(ZUN_PV_SYSTEM_LOCATION, livePvDataZun, "☀️ zun PV-Anlage");
+        }
+
+        // --- Echter, backend-durchgesetzter Login (Cloudflare Worker + KV) ---
+        // Alles außer dem öffentlichen Mini-Graph (siehe #pv-public-container) und dem
+        // Strompreis-Graph bleibt hinter diesem Login verborgen. Die Prüfung passiert serverseitig
+        // im Worker (jeder /api/private/*-Aufruf verifiziert das Token neu) - das Token hier ist
+        // nur der Schlüssel dazu, keine eigene Zugriffskontrolle.
+        const PV_API_BASE = 'https://heatmap-pv-auth.leo-jph-stl.workers.dev';
+        let pvAuthToken = null;
+        try { pvAuthToken = localStorage.getItem('pv_admin_token'); } catch (e) {}
+        let isPvAuthenticated = false;
+
+        async function pvAuthedFetch(path) {
+            if (!pvAuthToken) return null;
+            try {
+                const res = await fetch(PV_API_BASE + path, {
+                    headers: { Authorization: 'Bearer ' + pvAuthToken }
+                });
+                if (res.status === 401) {
+                    pvAuthToken = null;
+                    isPvAuthenticated = false;
+                    try { localStorage.removeItem('pv_admin_token'); } catch (e) {}
+                    updatePvLoginUI();
+                    return null;
                 }
-                const v = latLngToSphereVertex(ZUN_PV_SYSTEM_LOCATION.lat, ZUN_PV_SYSTEM_LOCATION.lng, earthRadius + 0.75);
-                ZUN_PV_SYSTEM_LOCATION.worldPos = new THREE.Vector3(-v.z, v.y, v.x);
+                if (!res.ok) return null;
+                return await res.json();
+            } catch (e) {
+                return null;
             }
         }
-        syncZunLocationFromData();
+
+        async function checkPvSession() {
+            if (!pvAuthToken) { isPvAuthenticated = false; return; }
+            try {
+                const res = await fetch(PV_API_BASE + '/api/session', {
+                    headers: { Authorization: 'Bearer ' + pvAuthToken }
+                });
+                const data = res.ok ? await res.json() : { authenticated: false };
+                isPvAuthenticated = !!data.authenticated;
+            } catch (e) {
+                isPvAuthenticated = false;
+            }
+        }
+
+        async function pvLogin(password) {
+            try {
+                const res = await fetch(PV_API_BASE + '/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                if (!res.ok) return false;
+                const data = await res.json();
+                if (!data.token) return false;
+                pvAuthToken = data.token;
+                isPvAuthenticated = true;
+                try { localStorage.setItem('pv_admin_token', pvAuthToken); } catch (e) {}
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function pvLogout() {
+            pvAuthToken = null;
+            isPvAuthenticated = false;
+            livePvDataFoxess = null;
+            livePvDataZun = null;
+            livePvData = null;
+            pvForecastLog = [];
+            PV_SYSTEM_LOCATION.lat = null; PV_SYSTEM_LOCATION.lng = null; PV_SYSTEM_LOCATION.worldPos = null;
+            PV_SYSTEM_LOCATION.name = null; PV_SYSTEM_LOCATION.fullName = null; PV_SYSTEM_LOCATION.cityName = null;
+            ZUN_PV_SYSTEM_LOCATION.lat = null; ZUN_PV_SYSTEM_LOCATION.lng = null; ZUN_PV_SYSTEM_LOCATION.worldPos = null;
+            ZUN_PV_SYSTEM_LOCATION.name = null; ZUN_PV_SYSTEM_LOCATION.fullName = null; ZUN_PV_SYSTEM_LOCATION.cityName = null;
+            try { localStorage.removeItem('pv_admin_token'); } catch (e) {}
+            closePvDashboard();
+            updatePvLoginUI();
+        }
 
         // Wachsendes Log aus (Ist-Leistung, Einstrahlungsprognose)-Paaren, von log_pv_forecast.js bei
         // jedem PV-Fetch fortgeschrieben (siehe dort). Ersetzt mit der Zeit die reine 24h-Kalibrierung
         // in computePvForecast() durch eine über Wochen gemittelte, robustere Basis.
         let pvForecastLog = [];
         async function loadPvForecastLog() {
-            try {
-                const res = await fetch('pv_forecast_log.json?_t=' + Date.now());
-                if (res.ok) pvForecastLog = await res.json();
-            } catch (e) {}
+            if (!isPvAuthenticated) return;
+            const data = await pvAuthedFetch('/api/private/pv_forecast_log');
+            if (data) pvForecastLog = data;
         }
 
         // Zoom/Pan-Zustand für PV- und Strompreis-Charts (synchronisiert).
@@ -2900,11 +2996,75 @@
                 if (res.ok) priceData = await res.json();
             } catch (e) {}
             drawPriceChart();
+            drawPublicPriceChart();
             const euroBody = document.getElementById('pvEuroBody');
             if (euroBody && euroBody.style.display !== 'none') renderEuroTable();
             if (typeof refreshActivePvAnalysisContainers === 'function') {
                 refreshActivePvAnalysisContainers();
             }
+        }
+
+        // --- Immer öffentlicher Mini-Graph (kein Login nötig) ---
+        // Bewusst unabhängig von drawPvChart()/pvChartState/computePvForecast(), die eng mit dem
+        // Login-gesperrten Dashboard verzahnt sind - hier nur einfache, anonymisierte Zeitreihen ohne
+        // Namen/Adresse/Finanzdaten (siehe build_pv_public_series.js / build_zun_public_series.js).
+        let publicPvSeriesFox = [];
+        let publicPvSeriesZun = [];
+        async function loadPublicPvSeries() {
+            try {
+                const res = await fetch('pv_public_series.json?_t=' + Date.now());
+                if (res.ok) publicPvSeriesFox = await res.json();
+            } catch (e) {}
+            try {
+                const resZun = await fetch('zun_public_series.json?_t=' + Date.now());
+                if (resZun.ok) publicPvSeriesZun = await resZun.json();
+            } catch (e) {}
+            drawPublicPvChart();
+        }
+
+        function drawPublicPvChart() {
+            const svg = document.getElementById('pvPublicChart');
+            if (!svg) return;
+            const series = [
+                { data: publicPvSeriesFox, color: '#ffdb00' },
+                { data: publicPvSeriesZun, color: '#00e5ff' }
+            ].filter(s => s.data && s.data.length > 1);
+            if (!series.length) { svg.innerHTML = ''; return; }
+
+            const W = 230, H = 55, PAD = 4;
+            const allT = series.flatMap(s => s.data.map(p => new Date(p.t).getTime()));
+            const allPv = series.flatMap(s => s.data.map(p => p.pv));
+            const tMin = Math.min(...allT), tMax = Math.max(...allT);
+            const pvMax = Math.max(1, ...allPv);
+            const x = (t) => PAD + (tMax > tMin ? (t - tMin) / (tMax - tMin) : 0) * (W - 2 * PAD);
+            const y = (v) => (H - PAD) - Math.max(0, v / pvMax) * (H - 2 * PAD);
+
+            let svgContent = '';
+            series.forEach(s => {
+                const pts = s.data.map(p => `${x(new Date(p.t).getTime()).toFixed(1)},${y(p.pv).toFixed(1)}`).join(' ');
+                svgContent += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="1.5"/>`;
+            });
+            svg.innerHTML = svgContent;
+        }
+
+        function drawPublicPriceChart() {
+            const svg = document.getElementById('pvPublicPriceChart');
+            if (!svg || !priceData.length) { if (svg) svg.innerHTML = ''; return; }
+            const W = 230, H = 55, PAD_L = 4, PAD_R = 4, PAD_T = 4, PAD_B = 4;
+            const recent = priceData.slice(-48); // letzte ~48h reichen für einen groben öffentlichen Überblick
+            const tMin = recent[0].t, tMax = recent[recent.length - 1].endT;
+            const vals = recent.map(r => r.ctKwh);
+            const vMin = Math.min(0, ...vals), vMax = Math.max(10, ...vals);
+            const range = (vMax - vMin) || 1;
+            const x = (t) => PAD_L + (tMax > tMin ? (t - tMin) / (tMax - tMin) : 0) * (W - PAD_L - PAD_R);
+            const y = (v) => (H - PAD_B) - ((v - vMin) / range) * (H - PAD_T - PAD_B);
+
+            const stepPts = [];
+            recent.forEach(r => {
+                stepPts.push(`${x(r.t).toFixed(1)},${y(r.ctKwh).toFixed(1)}`);
+                stepPts.push(`${x(r.endT).toFixed(1)},${y(r.ctKwh).toFixed(1)}`);
+            });
+            svg.innerHTML = `<polyline points="${stepPts.join(' ')}" fill="none" stroke="#00ff88" stroke-width="1.5"/>`;
         }
 
         // Ermittelt den Day-Ahead-Strompreis für einen konkreten Zeitpunkt (Stundenintervall) via schnellem O(log N) Binärsuch-Algorithmus
@@ -3118,6 +3278,8 @@
                 btnFox.classList.toggle('active', currentActivePvPlant === 'foxess');
                 btnZun.classList.toggle('active', currentActivePvPlant === 'zun');
                 btnZun.classList.toggle('zun-active', currentActivePvPlant === 'zun');
+                if (PV_SYSTEM_LOCATION.name) btnFox.textContent = "☀️ " + PV_SYSTEM_LOCATION.name;
+                if (ZUN_PV_SYSTEM_LOCATION.name) btnZun.textContent = "☀️ " + ZUN_PV_SYSTEM_LOCATION.name;
             }
             
             const loc = getActivePvLocation();
@@ -3161,69 +3323,33 @@
                 }
             }
 
-            if (typeof window !== 'undefined' && window.foxessPvData) {
-                livePvDataFoxess = window.foxessPvData;
+            if (!isPvAuthenticated) return;
+
+            const foxData = await pvAuthedFetch('/api/private/pv_data');
+            if (foxData) {
+                livePvDataFoxess = foxData;
+                syncFoxessLocationFromData();
+                if (foxData.config) {
+                    if (typeof foxData.config.baseKwp === 'number') {
+                        pvScenarioConfig.baseKwp = foxData.config.baseKwp;
+                        pvScenarioConfig.targetKwp = foxData.config.baseKwp;
+                    }
+                    if (typeof foxData.config.eegRateCt === 'number') {
+                        pvRevenueConfig.eegRateCt = foxData.config.eegRateCt;
+                    }
+                    updatePvConfigInputs();
+                }
             }
-            if (typeof window !== 'undefined' && window.zunPvData) {
-                livePvDataZun = window.zunPvData;
+
+            const zunData = await pvAuthedFetch('/api/private/zun_pv_data');
+            if (zunData) {
+                livePvDataZun = zunData;
                 syncZunLocationFromData();
             }
-
-            try {
-                const res = await fetch('pv_data.json?_t=' + Date.now());
-                if (res.ok) {
-                    livePvDataFoxess = await res.json();
-                }
-            } catch(e) {}
-
-            try {
-                const resZun = await fetch('zun_pv_data.json?_t=' + Date.now());
-                if (resZun.ok) {
-                    livePvDataZun = await resZun.json();
-                    syncZunLocationFromData();
-                }
-            } catch(e) {}
 
             livePvData = (currentActivePvPlant === 'zun') ? livePvDataZun : livePvDataFoxess;
             updatePvDashboardUI();
             refreshHistoryIfOpen();
-
-            const oldScript = document.getElementById('pvDataScript');
-            const s = document.createElement('script');
-            s.id = 'pvDataScript';
-            s.src = 'pv_data.js?_v=' + Date.now();
-            s.onload = () => {
-                if (typeof window !== 'undefined' && window.foxessPvData) {
-                    livePvDataFoxess = window.foxessPvData;
-                    if (currentActivePvPlant === 'foxess') {
-                        livePvData = livePvDataFoxess;
-                        updatePvDashboardUI();
-                        refreshHistoryIfOpen();
-                    }
-                }
-            };
-            if (oldScript && oldScript.parentNode) {
-                oldScript.parentNode.replaceChild(s, oldScript);
-            }
-
-            const oldZunScript = document.getElementById('zunPvDataScript');
-            const sz = document.createElement('script');
-            sz.id = 'zunPvDataScript';
-            sz.src = 'zun_pv_data.js?_v=' + Date.now();
-            sz.onload = () => {
-                if (typeof window !== 'undefined' && window.zunPvData) {
-                    livePvDataZun = window.zunPvData;
-                    syncZunLocationFromData();
-                    if (currentActivePvPlant === 'zun') {
-                        livePvData = livePvDataZun;
-                        updatePvDashboardUI();
-                        refreshHistoryIfOpen();
-                    }
-                }
-            };
-            if (oldZunScript && oldZunScript.parentNode) {
-                oldZunScript.parentNode.replaceChild(sz, oldZunScript);
-            }
         }
 
         function updatePvDashboardUI() {
@@ -3527,7 +3653,7 @@
         let pvRevenueConfig = {
             mode: 'eeg',               // 'eeg' | 'direct'
             feedinBasis: 'feedin',     // 'feedin' | 'gross'
-            eegRateCt: 8.20,           // Individueller EEG-Vergütungssatz in ct/kWh
+            eegRateCt: 0,              // Individueller EEG-Vergütungssatz in ct/kWh - erst nach Login aus den privaten Anlagendaten befüllt (siehe loadPvData/updatePvConfigInputs)
             applySolarSpitzen: true,   // § 51 EEG: 0 ct/kWh bei negativem EPEX-Börsenpreis
             batteryShift: false,       // Batterie-Lastverschiebung aktivieren
             selfProtect: true,         // Eigenverbrauchs-Schutz (Nacht-Puffer)
@@ -3561,7 +3687,7 @@
             pvRevenueConfig.shiftCapKwh = Math.max(0, parseFloat(pvRevenueConfig.shiftCapKwh) || 0);
             pvRevenueConfig.inverterAcKw = Math.max(0.1, parseFloat(pvRevenueConfig.inverterAcKw) || 5.0);
             pvRevenueConfig.efficiencyPct = Math.min(100, Math.max(10, parseFloat(pvRevenueConfig.efficiencyPct) || 90));
-            pvRevenueConfig.eegRateCt = Math.max(0, parseFloat(pvRevenueConfig.eegRateCt) || 8.2);
+            pvRevenueConfig.eegRateCt = Math.max(0, parseFloat(pvRevenueConfig.eegRateCt) || 0);
             pvRevenueConfig.arbitrageMinSpreadCt = Math.max(0, parseFloat(pvRevenueConfig.arbitrageMinSpreadCt) || 0);
             pvRevenueConfig.arbitrageGridFeeCt = Math.max(0, parseFloat(pvRevenueConfig.arbitrageGridFeeCt) || 0);
         }
@@ -3586,8 +3712,8 @@
 
         // --- PV-Extrapolations- & Szenario-Konfiguration (Anlagengröße X) ---
         let pvScenarioConfig = {
-            baseKwp: 9.6,              // Reale Basis-Anlagengröße (exakt 9.6 kWp in Hochheim)
-            targetKwp: 9.6,            // Vom Nutzer gewählte hypothetische Anlagengröße
+            baseKwp: 0,                // Reale Basis-Anlagengröße - erst nach Login befüllt (siehe loadPvData)
+            targetKwp: 0,              // Vom Nutzer gewählte hypothetische Anlagengröße
             profile: 'linear_real',    // Bereit für künftige Profile: 'linear_real', 'south_35', 'east_west', etc.
             inverterScaleMode: 'clipping' // 'clipping': Wechselrichter AC-Limit wirkt als Obergrenze
         };
@@ -3602,7 +3728,7 @@
             } catch (e) {
                 console.warn('Fehler beim Laden von pvScenarioConfig:', e);
             }
-            pvScenarioConfig.baseKwp = Math.max(0.1, parseFloat(pvScenarioConfig.baseKwp) || 9.6);
+            pvScenarioConfig.baseKwp = Math.max(0.1, parseFloat(pvScenarioConfig.baseKwp) || 0);
             pvScenarioConfig.targetKwp = Math.max(0.1, parseFloat(pvScenarioConfig.targetKwp) || pvScenarioConfig.baseKwp);
         }
 
@@ -3615,8 +3741,8 @@
         }
 
         function getPvScenarioFactor() {
-            const base = Math.max(0.1, pvScenarioConfig.baseKwp || 9.6);
-            const target = Math.max(0.1, pvScenarioConfig.targetKwp || 9.6);
+            const base = Math.max(0.1, pvScenarioConfig.baseKwp || 0);
+            const target = Math.max(0.1, pvScenarioConfig.targetKwp || 0);
             return target / base;
         }
 
@@ -4222,7 +4348,7 @@
 
             // --- EEG-Vergütungsmodell ---
             if (pvRevenueConfig.mode === 'eeg') {
-                const baseRateCt = Math.max(0, pvRevenueConfig.eegRateCt || 8.20);
+                const baseRateCt = Math.max(0, pvRevenueConfig.eegRateCt || 0);
                 if (!pvRevenueConfig.applySolarSpitzen) {
                     const kwh = integrateKwh(points, fromT, toT) * basisFactor;
                     return kwh * (baseRateCt / 100);
@@ -4458,7 +4584,7 @@
             const isEeg = (pvRevenueConfig.mode === 'eeg');
             const isGrossOptionB = (pvRevenueConfig.feedinBasis === 'gross');
             const hasSolarSpitzen = !!pvRevenueConfig.applySolarSpitzen;
-            const eegRate = Math.max(0, pvRevenueConfig.eegRateCt || 8.20);
+            const eegRate = Math.max(0, pvRevenueConfig.eegRateCt || 0);
 
             // 4. Kausale Batterie-Lastverschiebung mit 2-stufigem Wirkungsgrad & Day-Ahead Horizont
             let shiftedFeed = [...feedArr];
@@ -7197,6 +7323,10 @@
         }
 
         function showPvDashboard(plantKey = 'foxess') {
+            if (!isPvAuthenticated) {
+                showPvLoginModal(plantKey);
+                return;
+            }
             if (forecastContainer) forecastContainer.style.display = 'none';
             const pvContainer = document.getElementById('pv-container');
             if (pvContainer) {
@@ -7213,6 +7343,69 @@
             if (typeof closePvHistory === 'function') {
                 closePvHistory();
             }
+        }
+
+        let pvLoginPendingPlant = 'foxess';
+        function showPvLoginModal(plantKey) {
+            pvLoginPendingPlant = plantKey || 'foxess';
+            const overlay = document.getElementById('pv-login-overlay');
+            const err = document.getElementById('pvLoginError');
+            const input = document.getElementById('pvLoginPasswordInput');
+            if (err) err.style.display = 'none';
+            if (input) input.value = '';
+            if (overlay) overlay.style.display = 'flex';
+            if (input) input.focus();
+        }
+        function hidePvLoginModal() {
+            const overlay = document.getElementById('pv-login-overlay');
+            if (overlay) overlay.style.display = 'none';
+        }
+        async function submitPvLogin() {
+            const input = document.getElementById('pvLoginPasswordInput');
+            const err = document.getElementById('pvLoginError');
+            const btn = document.getElementById('pvLoginSubmitBtn');
+            const password = input ? input.value : '';
+            if (!password) return;
+            if (btn) { btn.disabled = true; btn.textContent = '...'; }
+            const ok = await pvLogin(password);
+            if (btn) { btn.disabled = false; btn.textContent = 'Login'; }
+            if (!ok) {
+                if (err) err.style.display = 'block';
+                return;
+            }
+            hidePvLoginModal();
+            updatePvLoginUI();
+            await loadPvData();
+            await loadPvForecastLog();
+            showPvDashboard(pvLoginPendingPlant);
+        }
+
+        function updatePvConfigInputs() {
+            const baseEl = document.getElementById('pvBaseKwpInput');
+            const targetEl = document.getElementById('pvTargetKwpInput');
+            const eegEl = document.getElementById('pvEegRateInput');
+            const scenarioEl = document.getElementById('pvScenarioKwpInput');
+            if (baseEl && pvScenarioConfig.baseKwp) baseEl.value = pvScenarioConfig.baseKwp;
+            if (targetEl && pvScenarioConfig.targetKwp) targetEl.value = pvScenarioConfig.targetKwp;
+            if (eegEl && pvRevenueConfig.eegRateCt) eegEl.value = pvRevenueConfig.eegRateCt;
+            if (scenarioEl && pvScenarioConfig.baseKwp) scenarioEl.value = pvScenarioConfig.baseKwp;
+            const realBtn = document.getElementById('pvQuickKwpRealBtn');
+            if (realBtn && pvScenarioConfig.baseKwp) {
+                realBtn.dataset.kwp = pvScenarioConfig.baseKwp;
+                realBtn.textContent = pvScenarioConfig.baseKwp + ' kWp (Real)';
+            }
+        }
+
+        // Spiegelt den Login-Status in die UI: Schnellzugriff-Buttons zeigen erst nach Login die
+        // echten Anlagennamen, der Logout-Button erscheint nur, wenn tatsächlich eingeloggt.
+        function updatePvLoginUI() {
+            const quickFox = document.getElementById('pvQuickBtn');
+            const quickZun = document.getElementById('pvZunQuickBtn');
+            const logoutBtn = document.getElementById('pvLogoutBtn');
+            if (quickFox) quickFox.textContent = (isPvAuthenticated && PV_SYSTEM_LOCATION.name) ? ("☀️ " + PV_SYSTEM_LOCATION.name) : '🔒 PV-Login';
+            if (quickZun) quickZun.style.display = (isPvAuthenticated && ZUN_PV_SYSTEM_LOCATION.name) ? 'inline-flex' : 'none';
+            if (quickZun && ZUN_PV_SYSTEM_LOCATION.name) quickZun.textContent = "☀️ " + ZUN_PV_SYSTEM_LOCATION.name;
+            if (logoutBtn) logoutBtn.style.display = isPvAuthenticated ? '' : 'none';
         }
 
         const tempCityVec = new THREE.Vector3();
@@ -7325,7 +7518,7 @@
 
                             // PV Badge
                             const pvKwStr = (livePvDataFoxess && livePvDataFoxess.solar_power !== undefined) ? `${livePvDataFoxess.solar_power.toFixed(1)} kW` : 'PV';
-                            const badgeText = `☀️ PV Hochheim (${pvKwStr})`;
+                            const badgeText = `☀️ ${PV_SYSTEM_LOCATION.name || 'PV'} (${pvKwStr})`;
 
                             cityCtx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
                             const textWidth = cityCtx.measureText(badgeText).width;
@@ -7562,17 +7755,20 @@
 
             const matches = [];
 
-            // PV-Anlage Treffer bei Suchbegriffen: pv, solar, hochheim, zun, anlage, fox, foxess
-            if (query.includes('pv') || query.includes('solar') || query.includes('hochheim') || 
-                query.includes('anlage') || query.includes('fox') || query.includes('photo')) {
+            // PV-Anlagen-Treffer: nur wenn eingeloggt UND die echten Standortdaten bereits geladen sind
+            // (vor Login/ohne Daten bleiben lat/lng/Namen null - siehe PV_SYSTEM_LOCATION weiter oben).
+            // Absichtlich KEINE hardcodierten Adress-Strings mehr hier, nur die dynamischen Felder.
+            if (isPvAuthenticated && PV_SYSTEM_LOCATION.lat !== null &&
+                (query.includes('pv') || query.includes('solar') || query.includes('hochheim') ||
+                 query.includes('anlage') || query.includes('fox') || query.includes('photo'))) {
                 matches.push({
                     city: {
-                        name: "☀️ FoxESS PV-Anlage (Hochheim)",
-                        rawName: "PV Hochheim",
+                        name: PV_SYSTEM_LOCATION.fullName,
+                        rawName: PV_SYSTEM_LOCATION.name,
                         lat: PV_SYSTEM_LOCATION.lat,
                         lng: PV_SYSTEM_LOCATION.lng,
                         scalerank: -1,
-                        country: "Hochheim am Main (Südstadt)",
+                        country: PV_SYSTEM_LOCATION.cityName,
                         isPv: true,
                         pvPlant: 'foxess'
                     },
@@ -7580,9 +7776,10 @@
                 });
             }
 
-            if (query.includes('pv') || query.includes('solar') || query.includes('zun') || 
-                query.includes('weilbach') || query.includes('flörsheim') || query.includes('floersheim') ||
-                query.includes('anlage') || query.includes('ecohub') || query.includes('photo')) {
+            if (isPvAuthenticated && ZUN_PV_SYSTEM_LOCATION.lat !== null &&
+                (query.includes('pv') || query.includes('solar') || query.includes('zun') ||
+                 query.includes('weilbach') || query.includes('flörsheim') || query.includes('floersheim') ||
+                 query.includes('anlage') || query.includes('ecohub') || query.includes('photo'))) {
                 matches.push({
                     city: {
                         name: ZUN_PV_SYSTEM_LOCATION.fullName,
@@ -8313,16 +8510,21 @@
                 popupEl.style.top = event.clientY + 'px';
                 updatePopupContent();
 
-                // PV-Anlage Hochheim Klick-Erkennung (bei Klick im Umkreis der Anlage)
-                const dLatPv = clickedPopupPoint.lat - PV_SYSTEM_LOCATION.lat;
-                const dLngPv = (clickedPopupPoint.lng - PV_SYSTEM_LOCATION.lng) * Math.cos(clickedPopupPoint.lat * Math.PI / 180);
-                const dSqPv = dLatPv * dLatPv + dLngPv * dLngPv;
-                if (dSqPv < 0.08) {
-                    showPvDashboard('foxess');
+                // PV-Anlage 1 Klick-Erkennung (bei Klick im Umkreis der Anlage) - vor Login
+                // sind lat/lng null (siehe PV_SYSTEM_LOCATION weiter oben), daher explizit ausschließen
+                // statt die Distanzformel mit dem null->0-Koerzierungs-Nebeneffekt laufen zu lassen.
+                let dSqPv = Infinity;
+                if (PV_SYSTEM_LOCATION.lat !== null) {
+                    const dLatPv = clickedPopupPoint.lat - PV_SYSTEM_LOCATION.lat;
+                    const dLngPv = (clickedPopupPoint.lng - PV_SYSTEM_LOCATION.lng) * Math.cos(clickedPopupPoint.lat * Math.PI / 180);
+                    dSqPv = dLatPv * dLatPv + dLngPv * dLngPv;
+                    if (dSqPv < 0.08) {
+                        showPvDashboard('foxess');
+                    }
                 }
 
                 // 2. PV-Anlage zun Klick-Erkennung
-                if (ZUN_PV_SYSTEM_LOCATION) {
+                if (ZUN_PV_SYSTEM_LOCATION && ZUN_PV_SYSTEM_LOCATION.lat !== null) {
                     const dLatZun = clickedPopupPoint.lat - ZUN_PV_SYSTEM_LOCATION.lat;
                     const dLngZun = (clickedPopupPoint.lng - ZUN_PV_SYSTEM_LOCATION.lng) * Math.cos(clickedPopupPoint.lat * Math.PI / 180);
                     const dSqZun = dLatZun * dLatZun + dLngZun * dLngZun;
@@ -8791,6 +8993,33 @@
                 closePvDashboard();
             });
         }
+        const pvLogoutBtn = document.getElementById('pvLogoutBtn');
+        if (pvLogoutBtn) {
+            pvLogoutBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                pvLogout();
+            });
+        }
+        const pvLoginCancelBtn = document.getElementById('pvLoginCancelBtn');
+        if (pvLoginCancelBtn) pvLoginCancelBtn.addEventListener('click', hidePvLoginModal);
+        const pvLoginSubmitBtn = document.getElementById('pvLoginSubmitBtn');
+        if (pvLoginSubmitBtn) pvLoginSubmitBtn.addEventListener('click', submitPvLogin);
+        const pvLoginPasswordInput = document.getElementById('pvLoginPasswordInput');
+        if (pvLoginPasswordInput) {
+            pvLoginPasswordInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') submitPvLogin();
+            });
+        }
+        const pvPublicToggleBtn = document.getElementById('pvPublicToggleBtn');
+        if (pvPublicToggleBtn) {
+            pvPublicToggleBtn.addEventListener('click', () => {
+                const body = document.getElementById('pvPublicBody');
+                const chevron = document.getElementById('pvPublicChevron');
+                const open = body.style.display !== 'none';
+                body.style.display = open ? 'none' : 'block';
+                if (chevron) chevron.textContent = open ? '▸' : '▾';
+            });
+        }
         initPvHistoryChartInteraction();
         initPvEuroToggle();
 
@@ -8802,16 +9031,23 @@
         updateSliderBounds();
         updateActiveData();
         switchLayer('temp');
-        loadPvData();
-        loadPvForecastLog().then(() => { if (livePvData) updatePvDashboardUI(); });
+        loadPublicPvSeries();
+        checkPvSession().then(() => {
+            updatePvLoginUI();
+            if (isPvAuthenticated) {
+                loadPvData();
+                loadPvForecastLog().then(() => { if (livePvData) updatePvDashboardUI(); });
+            }
+        });
         loadPriceData();
         animate();
         detectUserLocationAndFly();
         checkWeatherUpdate();
         setInterval(checkWeatherUpdate, 15 * 60 * 1000);
-        setInterval(loadPvData, 60 * 1000); // FoxESS Daten alle 60 Sek. aktualisieren
+        setInterval(loadPvData, 60 * 1000); // FoxESS Daten alle 60 Sek. aktualisieren (No-Op ohne Login)
         setInterval(loadPvForecastLog, 30 * 60 * 1000); // Log wächst nur stündlich, seltener nachladen reicht
         setInterval(loadPriceData, 30 * 60 * 1000); // Preise ändern sich ebenfalls nur stündlich/täglich
+        setInterval(loadPublicPvSeries, 15 * 60 * 1000); // Öffentliche PV-Serie, unabhängig vom Login
 
     </script>
 </body>

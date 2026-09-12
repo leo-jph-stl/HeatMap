@@ -13,6 +13,8 @@ from datetime import datetime
 PV_LAT = 50.008
 PV_LNG = 8.350
 LOCATION_NAME = "Hochheim am Main (Südstadt)"
+PV_BASE_KWP = float(os.environ.get("PV_BASE_KWP", "9.6"))
+PV_EEG_RATE_CT = float(os.environ.get("PV_EEG_RATE_CT", "8.20"))
 
 # Alle möglichen Key-Varianten absuchen
 env_keys = list(os.environ.keys())
@@ -628,6 +630,10 @@ pv_data = {
         "name": LOCATION_NAME,
         "lat": PV_LAT,
         "lng": PV_LNG
+    },
+    "config": {
+        "baseKwp": PV_BASE_KWP,
+        "eegRateCt": PV_EEG_RATE_CT
     },
     **metrics,
     **extra_data,

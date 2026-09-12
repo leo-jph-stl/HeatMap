@@ -1,0 +1,14 @@
+name = "heatmap-pv-auth"
+main = "index.js"
+compatibility_date = "2025-01-01"
+
+# Nach `wrangler kv namespace create PV_KV` die zurückgegebene id hier eintragen.
+kv_namespaces = [
+  { binding = "PV_KV", id = "REPLACE_WITH_KV_NAMESPACE_ID" }
+]
+
+# ADMIN_PASSWORD und SESSION_SECRET NICHT hier eintragen - die werden als
+# verschlüsselte Secrets gesetzt (wrangler secret put ADMIN_PASSWORD / SESSION_SECRET),
+# damit sie nie im Klartext in dieser Datei bzw. im Git-Repo landen.
+[vars]
+ALLOWED_ORIGIN = "https://leo-jph-stl.github.io"
