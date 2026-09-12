@@ -3130,10 +3130,6 @@
             if (subEl) subEl.textContent = loc.cityName || loc.name;
 
             updatePvDashboardUI();
-            pvChartState.data = [];
-            pvChartState.forecast = null;
-            initPvChartState();
-            drawPvHistoryChart();
             drawPriceChart();
             if (typeof refreshActivePvAnalysisContainers === 'function') {
                 refreshActivePvAnalysisContainers();
