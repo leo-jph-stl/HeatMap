@@ -6,7 +6,7 @@ window.zunPvData = {
   },
   "solar_power": 0.0,
   "house_load": 0.0,
-  "battery_soc": 26,
+  "battery_soc": 27,
   "battery_power": 0.0,
   "grid_feed_in": 0.0,
   "today_yield": 0.0,
@@ -49,7 +49,7 @@ window.zunPvData = {
         0.0,
         0.28,
         2.59,
-        2.96,
+        3.47,
         0.0,
         0.0,
         0.0,
@@ -75,7 +75,7 @@ window.zunPvData = {
         0.65,
         0.71,
         1.36,
-        0.87,
+        0.99,
         0.0,
         0.0,
         0.0,
@@ -101,7 +101,7 @@ window.zunPvData = {
         0.0,
         0.01,
         0.41,
-        1.03,
+        1.23,
         0.0,
         0.0,
         0.0,
@@ -122,5 +122,5 @@ window.zunPvData = {
       "total_yield": 0.0
     }
   },
-  "last_updated": "2026-09-12T07:31:43.834956+00:00"
+  "last_updated": "2026-09-12T07:35:35.560707+00:00"
 };
