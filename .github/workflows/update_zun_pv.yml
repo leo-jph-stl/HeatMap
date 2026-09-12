@@ -1,0 +1,73 @@
+name: Update zun PV Data
+
+on:
+  schedule:
+    # Runs every 15 minutes
+    - cron: '*/15 * * * *'
+  push:
+    paths:
+      - 'fetch_zun_pv.py'
+      - '.github/workflows/update_zun_pv.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "zun-pv-fetch"
+  cancel-in-progress: false
+
+jobs:
+  update-zun-pv:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Fetch Live zun PV Data
+        env:
+          ZUN_API_TOKEN: ${{ secrets.ZUN_API_TOKEN }}
+          ZUN_TOKEN: ${{ secrets.ZUN_TOKEN }}
+          SEC_ZUN_API_TOKEN: ${{ secrets.SEC_ZUN_API_TOKEN }}
+          ZUN_INVERTER_ID: ${{ secrets.ZUN_INVERTER_ID || vars.ZUN_INVERTER_ID }}
+          ZUN_LAT: ${{ vars.ZUN_LAT }}
+          ZUN_LNG: ${{ vars.ZUN_LNG }}
+          ZUN_LOCATION_NAME: ${{ vars.ZUN_LOCATION_NAME }}
+        run: python fetch_zun_pv.py
+
+      - name: Commit and push if changed
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add zun_pv_data.json zun_pv_data.js zun_daily_history.json
+          if git diff --staged --quiet; then
+            echo 'No changes in zun PV data.'
+          else
+            git commit -m 'chore(zun): auto-update zun solar data [skip ci]'
+            git pull --rebase origin main
+            git push
+          fi
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy:
+    needs: update-zun-pv
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

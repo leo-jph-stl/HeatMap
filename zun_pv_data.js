@@ -1,0 +1,23 @@
+window.zunPvData = {
+  "location": {
+    "name": "zun PV-Anlage",
+    "lat": 50.1109,
+    "lng": 8.6821
+  },
+  "solar_power": 0.0,
+  "house_load": 0.0,
+  "battery_soc": 0,
+  "battery_power": 0.0,
+  "grid_feed_in": 0.0,
+  "today_yield": 0.0,
+  "month_yield": 0.0,
+  "year_yield": 0.0,
+  "cumulative_yield": 0.0,
+  "today_feedin": 0.0,
+  "today_grid_import": 0.0,
+  "today_battery_charge": 0.0,
+  "today_battery_discharge": 0.0,
+  "device_status": "offline",
+  "daily_reports": {},
+  "last_updated": null
+};
