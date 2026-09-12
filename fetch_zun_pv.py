@@ -7,10 +7,10 @@ import urllib.parse
 import traceback
 from datetime import datetime, timezone, date
 
-# Standard-Fallback-Standort für zun PV (kann via ZUN_LAT, ZUN_LNG, ZUN_LOCATION_NAME konfiguriert werden)
-DEFAULT_PV_LAT = 50.1109
-DEFAULT_PV_LNG = 8.6821
-DEFAULT_LOCATION_NAME = "zun PV-Anlage"
+# Standard-Standort für zun PV (Weilbach bei Flörsheim am Main)
+DEFAULT_PV_LAT = 50.045
+DEFAULT_PV_LNG = 8.436
+DEFAULT_LOCATION_NAME = "Weilbach (Flörsheim am Main)"
 
 API_BASE = "https://dashboard-service.myzun.de"
 
