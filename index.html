@@ -3131,7 +3131,7 @@
         // Strompreis-Graph bleibt hinter diesem Login verborgen. Die Prüfung passiert serverseitig
         // im Worker (jeder /api/private/*-Aufruf verifiziert das Token neu) - das Token hier ist
         // nur der Schlüssel dazu, keine eigene Zugriffskontrolle.
-        const PV_API_BASE = 'https://heatmap-pv-auth.leo-jph-stl.workers.dev';
+        const PV_API_BASE = 'https://heatmap-pv-auth.leosteil.workers.dev';
         let pvAuthToken = null;
         try { pvAuthToken = localStorage.getItem('pv_admin_token'); } catch (e) {}
         let isPvAuthenticated = false;
