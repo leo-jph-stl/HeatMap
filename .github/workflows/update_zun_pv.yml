@@ -37,10 +37,10 @@ jobs:
           ZUN_API_TOKEN: ${{ secrets.ZUN_API_TOKEN }}
           ZUN_TOKEN: ${{ secrets.ZUN_TOKEN }}
           SEC_ZUN_API_TOKEN: ${{ secrets.SEC_ZUN_API_TOKEN }}
-          ZUN_INVERTER_ID: ${{ secrets.ZUN_INVERTER_ID || vars.ZUN_INVERTER_ID }}
-          ZUN_LAT: ${{ vars.ZUN_LAT }}
-          ZUN_LNG: ${{ vars.ZUN_LNG }}
-          ZUN_LOCATION_NAME: ${{ vars.ZUN_LOCATION_NAME }}
+          ZUN_INVERTER_ID: ${{ secrets.ZUN_INVERTER_ID || vars.ZUN_INVERTER_ID || '' }}
+          ZUN_LAT: ${{ vars.ZUN_LAT || '50.045' }}
+          ZUN_LNG: ${{ vars.ZUN_LNG || '8.436' }}
+          ZUN_LOCATION_NAME: ${{ vars.ZUN_LOCATION_NAME || 'Weilbach (Flörsheim am Main)' }}
         run: python fetch_zun_pv.py
 
       - name: Commit and push if changed
