@@ -47,8 +47,30 @@ jobs:
         run: |
           pip install foxesscloud urllib3 requests
 
+      - name: Restore private state from Cloudflare KV
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_KV_NAMESPACE_ID: ${{ secrets.CF_KV_NAMESPACE_ID }}
+        run: |
+          kv_get() {
+            local key="$1" outfile="$2" fallback="$3"
+            code=$(curl -s -o "$outfile" -w "%{http_code}" \
+              -H "Authorization: Bearer $CF_API_TOKEN" \
+              "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/storage/kv/namespaces/$CF_KV_NAMESPACE_ID/values/$key")
+            if [ "$code" != "200" ]; then
+              echo "$fallback" > "$outfile"
+              echo "KV-Key '$key' noch nicht vorhanden (HTTP $code) - starte mit Fallback."
+            fi
+          }
+          kv_get pv_data pv_data.json '{}'
+          kv_get pv_forecast_log pv_forecast_log.json '[]'
+          kv_get pv_daily_history pv_daily_history.json '{}'
+
       - name: Fetch Live FoxESS PV Data
         env:
+          PV_BASE_KWP: ${{ vars.PV_BASE_KWP || '9.6' }}
+          PV_EEG_RATE_CT: ${{ vars.PV_EEG_RATE_CT || '8.20' }}
           FOX_USERNAME: ${{ secrets.FOX_USERNAME }}
           FOX_PASSWORD: ${{ secrets.FOX_PASSWORD }}
           FOXESS_USERNAME: ${{ secrets.FOXESS_USERNAME }}
@@ -94,15 +116,40 @@ jobs:
       - name: Log Ist-Leistung vs. Einstrahlungsprognose (für anlagenspezifische Kalibrierung)
         run: node log_pv_forecast.js
 
+      - name: Save private state to Cloudflare KV
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_KV_NAMESPACE_ID: ${{ secrets.CF_KV_NAMESPACE_ID }}
+        run: |
+          kv_put() {
+            local key="$1" infile="$2"
+            if [ -f "$infile" ]; then
+              curl -s -o /dev/null -w "KV-Put '$key': HTTP %{http_code}\n" \
+                -X PUT \
+                -H "Authorization: Bearer $CF_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                --data-binary @"$infile" \
+                "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/storage/kv/namespaces/$CF_KV_NAMESPACE_ID/values/$key"
+            fi
+          }
+          kv_put pv_data pv_data.json
+          kv_put pv_forecast_log pv_forecast_log.json
+          kv_put pv_daily_history pv_daily_history.json
+
+      - name: Build public (anonymized) PV production series
+        run: node build_pv_public_series.js
+
       - name: Commit and push if changed
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add pv_data.json pv_data.js pv_forecast_log.json pv_daily_history.json
+          git add pv_public_series.json
+          git rm --ignore-unmatch pv_data.json pv_data.js pv_forecast_log.json pv_daily_history.json
           if git diff --staged --quiet; then
             echo 'No changes in PV data.'
           else
-            git commit -m 'chore(pv): auto-update FoxESS solar data [skip ci]'
+            git commit -m 'chore(pv): auto-update public PV series [skip ci]'
             git pull --rebase origin main
             git push
           fi
