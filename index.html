@@ -1758,7 +1758,8 @@
             </div>
             <div id="topoSubSelectWrap" style="display:none;">
                 <select id="topoSubSelect" onchange="setTopoSubSelection(this.value)" title="Kartenstil wählen">
-                    <option value="opentopo">OpenTopoMap (Höhenlinien)</option>
+                    <option value="hypsometric" selected>Farbrelief (Höhenschichten)</option>
+                    <option value="opentopo">OpenTopoMap (Wanderkarte)</option>
                     <option value="arcgis">ArcGIS World Topo</option>
                 </select>
             </div>
@@ -1769,13 +1770,14 @@
                 <div id="legend-bar" class="color-bar" style="background: linear-gradient(to right, #8c52ff 0.0%, #a473b6 12.5%, #b388ff 18.8%, #88ccee 25.0%, #3399cc 31.3%, #1d5cae 37.5%, #1b7a42 41.3%, #32962a 46.3%, #55ad26 51.2%, #84c424 56.3%, #b2d820 58.8%, #d8e61e 61.3%, #f7e318 62.5%, #ffdb00 67.5%, #ffa600 71.3%, #ff6200 75.0%, #ee3a14 78.1%, #dc2222 81.3%, #a80e14 84.4%, #700408 87.5%, #521a10 91.3%, #38140c 95.0%, #1e0c08 97.5%, #000000 100.0%);"></div>
                 <span id="legend-max">+50°C</span>
             </div>
-            <div id="topo-legend-ticks" style="display: none; justify-content: space-between; font-size: 8.5px; color: #888; margin-top: 3px; padding: 0 42px;">
+            <div id="topo-legend-ticks" style="display: none; justify-content: space-between; font-size: 8px; color: #aaa; margin-top: 3px; padding: 0 40px;">
                 <span title="Tiefste Festland-Depression: Totes Meer (-430 m)">-430m</span>
-                <span title="Normalnull / Meeresspiegel">0m</span>
-                <span title="Mittelgebirge / Hügelland">1.000m</span>
-                <span title="Alpen / Zugspitze (2.962 m)">3.000m</span>
-                <span title="Anden / Kilimandscharo (5.895 m)">6.000m</span>
-                <span title="Höchster Punkt der Erde: Mount Everest (8.848 m)">8.848m</span>
+                <span title="Normalnull / Küste">0m</span>
+                <span title="Hügelland">300m</span>
+                <span title="Mittelgebirge">800m</span>
+                <span title="Alpen (1.500 m)">1.500m</span>
+                <span title="Zugspitze (2.962 m)">3.000m</span>
+                <span title="Mont Blanc / Hochalpen">4.500m+</span>
             </div>
         </div>
         <!-- Versteckte Elemente für JS-Kompatibilität -->
@@ -2021,6 +2023,43 @@
         const colorRampTempTex = createColorRampTexture(colorScaleTemp, minTempRange, maxTempRange, 2048);
         const colorRampWindTex = createColorRampTexture(kmh => colorScaleWind(kmh / 3.6), 0.0, maxWindKmh, 2048);
         const colorRampSolarTex = createColorRampTexture(colorScaleSolar, minSolarRange, maxSolarRange, 2048);
+
+        // HYPSOMETRISCHE FARBSKALA (Exakt kalibriert nach topographic-map.com Bild 1)
+        const colorScaleTopo = d3.scaleLinear()
+            .domain([-500, -6, 0, 23, 89, 184, 305, 450, 618, 806, 1015, 1244, 1491, 1757, 2041, 2342, 2660, 2995, 3346, 3713, 4096, 4500, 8848])
+            .range([
+                "#2144ee", // -500m (Depression)
+                "#2979ff", // -6m (Blau)
+                "#00d7aa", // 0m (Küste / Meeresspiegel)
+                "#00e699", // 23m (Cyan-Grün)
+                "#33ff99", // 89m (Mintgrün)
+                "#66ff66", // 184m (Frisches Grün)
+                "#aaff33", // 305m (Gelbgrün)
+                "#ccff33", // 450m (Limettengrün)
+                "#ffff33", // 618m (Hellgelb)
+                "#ffdd33", // 806m (Warmgelb)
+                "#ffbb33", // 1015m (Bernsteingelb)
+                "#ff9933", // 1244m (Helles Orange)
+                "#ff6633", // 1491m (Kräftiges Orange)
+                "#ff3333", // 1757m (Rot)
+                "#dd2233", // 2041m (Karmesinrot)
+                "#cc1155", // 2342m (Tiefrot)
+                "#bb1177", // 2660m (Magenta)
+                "#aa2299", // 2995m (Purpur)
+                "#cc55cc", // 3346m (Violett)
+                "#ee88ee", // 3713m (Flieder / Rosa)
+                "#f8d0f8", // 4096m (Blassrosa)
+                "#ffffff", // 4500m (Gletscherweiß)
+                "#ffffff"  // 8848m (Mount Everest)
+            ])
+            .clamp(true);
+
+        const colorRampTopoTex = createColorRampTexture(colorScaleTopo, -500, 8848, 2048);
+        const topoBaseTexture = textureLoader.load('earth-topology.png');
+        topoBaseTexture.wrapS = THREE.ClampToEdgeWrapping;
+        topoBaseTexture.wrapT = THREE.ClampToEdgeWrapping;
+        topoBaseTexture.minFilter = THREE.LinearFilter;
+        topoBaseTexture.magFilter = THREE.LinearFilter;
 
         // Pre-baking der Wetterdaten in GPU-DataTextures (dauert dank Lookup-Tabelle nur ~80ms)
         // Generisch für jedes Skalarfeld-Grid (Temperatur, Sonneneinstrahlung, Klimatologie-Layer, ...)
@@ -2553,7 +2592,7 @@
 
         const loadedTopoTiles = new Map();
         const loadingTopoKeys = new Set();
-        let currentTopoProvider = 'opentopo'; // 'opentopo' | 'arcgis'
+        let currentTopoProvider = 'hypsometric'; // 'hypsometric' | 'opentopo' | 'arcgis'
 
         const elevationCache = new Map();
         function fetchElevationForPoint(lat, lng, callback) {
@@ -2584,7 +2623,18 @@
             if (loadedTopoTiles.has(key) || loadingTopoKeys.has(key)) return;
             loadingTopoKeys.add(key);
 
-            const url = getTopoTileUrl(currentTopoProvider, z, x, y);
+            let url = '';
+            let isTerrarium = false;
+            if (currentTopoProvider === 'hypsometric') {
+                url = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
+                isTerrarium = true;
+            } else if (currentTopoProvider === 'arcgis') {
+                url = `https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${z}/${y}/${x}`;
+            } else {
+                const sub = ['a', 'b', 'c'][((x + y) % 3 + 3) % 3];
+                url = `https://${sub}.tile.opentopomap.org/${z}/${x}/${y}.png`;
+            }
+
             textureLoader.load(url, (tex) => {
                 loadingTopoKeys.delete(key);
                 tex.generateMipmaps = true;
@@ -2592,43 +2642,58 @@
                 tex.magFilter = THREE.LinearFilter;
 
                 const geom = getTileGeometry(x, y, z, 8, earthRadius + 0.32);
-                const mat = new THREE.MeshBasicMaterial({
-                    map: tex,
-                    side: THREE.DoubleSide,
-                    transparent: false,
-                    depthWrite: true
-                });
+                let mat;
+
+                if (isTerrarium) {
+                    mat = new THREE.ShaderMaterial({
+                        vertexShader: `
+                            varying vec2 vUv;
+                            void main() {
+                                vUv = uv;
+                                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                            }
+                        `,
+                        fragmentShader: `
+                            precision highp float;
+                            uniform sampler2D u_tile;
+                            uniform sampler2D u_colorRamp;
+                            uniform float u_minElev;
+                            uniform float u_maxElev;
+                            varying vec2 vUv;
+                            void main() {
+                                vec3 rgb = texture2D(u_tile, vUv).rgb;
+                                // AWS Terrarium: (R * 255 * 256 + G * 255 + B * 255 / 256) - 32768
+                                float elev = (rgb.r * 65280.0 + rgb.g * 255.0 + rgb.b * 0.99609375) - 32768.0;
+                                float norm = clamp((elev - u_minElev) / (u_maxElev - u_minElev), 0.0, 1.0);
+                                vec3 col = texture2D(u_colorRamp, vec2(norm, 0.5)).rgb;
+                                gl_FragColor = vec4(col, 1.0);
+                            }
+                        `,
+                        uniforms: {
+                            u_tile: { value: tex },
+                            u_colorRamp: { value: colorRampTopoTex },
+                            u_minElev: { value: -500.0 },
+                            u_maxElev: { value: 8848.0 }
+                        },
+                        side: THREE.DoubleSide,
+                        transparent: false,
+                        depthWrite: true
+                    });
+                } else {
+                    mat = new THREE.MeshBasicMaterial({
+                        map: tex,
+                        side: THREE.DoubleSide,
+                        transparent: false,
+                        depthWrite: true
+                    });
+                }
 
                 const mesh = new THREE.Mesh(geom, mat);
                 mesh.renderOrder = 1;
                 topoTileGroup.add(mesh);
                 loadedTopoTiles.set(key, { z, x, y, mesh, provider: currentTopoProvider, lastUsed: performance.now() });
             }, undefined, () => {
-                // Fallback zu ArcGIS World Topo bei Timeout oder Ausfall von OpenTopoMap
-                if (currentTopoProvider === 'opentopo') {
-                    const fallbackUrl = getTopoTileUrl('arcgis', z, x, y);
-                    textureLoader.load(fallbackUrl, (tex) => {
-                        loadingTopoKeys.delete(key);
-                        tex.generateMipmaps = true;
-                        tex.minFilter = THREE.LinearMipmapLinearFilter;
-                        tex.magFilter = THREE.LinearFilter;
-                        const geom = getTileGeometry(x, y, z, 8, earthRadius + 0.32);
-                        const mat = new THREE.MeshBasicMaterial({
-                            map: tex,
-                            side: THREE.DoubleSide,
-                            transparent: false,
-                            depthWrite: true
-                        });
-                        const mesh = new THREE.Mesh(geom, mat);
-                        mesh.renderOrder = 1;
-                        topoTileGroup.add(mesh);
-                        loadedTopoTiles.set(key, { z, x, y, mesh, provider: 'arcgis', lastUsed: performance.now() });
-                    }, undefined, () => {
-                        loadingTopoKeys.delete(key);
-                    });
-                } else {
-                    loadingTopoKeys.delete(key);
-                }
+                loadingTopoKeys.delete(key);
             });
         }
 
@@ -2663,10 +2728,12 @@
             if (uFrac < 0) uFrac += 1;
             const centerLng = uFrac * 360 - 180;
 
-            const spanDeg = Math.min(75, (h / earthRadius) * camera.fov * 1.35);
-            const cosLat = Math.max(0.18, Math.cos(centerLat * Math.PI / 180));
-            const latSpan = spanDeg * 0.65;
-            const lngSpan = (spanDeg * 0.65) / cosLat;
+            const aspect = Math.max(1.0, window.innerWidth / Math.max(1, window.innerHeight));
+            const tanFovHalf = Math.tan((camera.fov * Math.PI / 180) / 2);
+            const groundSpanDeg = Math.min(80, (tanFovHalf * (h * 1.8) / earthRadius) * (180 / Math.PI));
+            const cosLat = Math.max(0.15, Math.cos(centerLat * Math.PI / 180));
+            const latSpan = groundSpanDeg;
+            const lngSpan = (groundSpanDeg * aspect) / cosLat;
 
             const latMin = Math.max(-84, centerLat - latSpan);
             const latMax = Math.min(84, centerLat + latSpan);
@@ -2694,7 +2761,7 @@
                 }
             }
             candidateTiles.sort((a, b) => a.d2 - b.d2);
-            const maxTiles = (z >= 8) ? 36 : 24;
+            const maxTiles = (z >= 8) ? 48 : 32;
             const activeKeys = new Set(candidateTiles.slice(0, maxTiles).map(t => t.key));
 
             candidateTiles.slice(0, maxTiles).forEach(t => {
@@ -9633,17 +9700,26 @@
                 if (playSpeedBtn) playSpeedBtn.style.display = 'none';
                 if (timeSlider) timeSlider.style.display = 'none';
                 if (timeLabels) timeLabels.style.display = 'none';
-                if (timeDisplayTitle) timeDisplayTitle.innerText = '⛰️ Weltweite Topographie (-430 m bis 8.848 m)';
+                if (timeDisplayTitle) timeDisplayTitle.innerText = '⛰️ Topographisches Farbrelief';
 
-                dataMesh.visible = false;
+                // Basis-Globus bleibt IMMER sichtbar und zeigt lückenloses Höhenrelief (Bild 1)
+                dataMesh.visible = true;
+                dataMaterial.uniforms.u_dataA.value = topoBaseTexture;
+                dataMaterial.uniforms.u_dataB.value = topoBaseTexture;
+                dataMaterial.uniforms.u_blend.value = 0.0;
+                dataMaterial.uniforms.u_colorRamp.value = colorRampTopoTex;
+                dataMaterial.uniforms.u_minVal.value = 0.0;
+                dataMaterial.uniforms.u_maxVal.value = 1.0;
+                dataMaterial.uniforms.u_showNightClouds.value = 0.0;
+
                 topoTileGroup.visible = true;
 
-                document.getElementById('legend-min').innerText = '-430 m';
-                document.getElementById('legend-max').innerText = '8.848 m';
+                document.getElementById('legend-min').innerText = '-6 m';
+                document.getElementById('legend-max').innerText = '4.500+ m';
                 const topoTicks = document.getElementById('topo-legend-ticks');
                 if (topoTicks) topoTicks.style.display = 'flex';
-                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #004d40 0.0%, #00796b 3.0%, #1b5e20 4.6%, #2e7d32 8.0%, #689f38 13.0%, #afb42b 18.0%, #fbc02d 23.0%, #f57c00 30.0%, #d84315 37.0%, #8d4e2a 46.0%, #5d3a1a 55.0%, #4e342e 65.0%, #616161 74.0%, #90a4ae 84.0%, #cfd8dc 92.0%, #ffffff 100.0%)';
-                document.getElementById('timeLabel').innerText = 'Weltweite topographische Reliefkarte & Geländehöhen (-430 m bis 8.848 m)';
+                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #2144ee 0.0%, #2979ff 4.5%, #00d7aa 5.3%, #00e699 6.0%, #33ff99 7.0%, #66ff66 9.0%, #aaff33 11.5%, #ccff33 14.0%, #ffff33 18.0%, #ffdd33 22.0%, #ffbb33 26.0%, #ff9933 30.0%, #ff6633 35.0%, #ff3333 40.0%, #dd2233 46.0%, #cc1155 52.0%, #bb1177 58.0%, #aa2299 64.0%, #cc55cc 72.0%, #ee88ee 80.0%, #f8d0f8 88.0%, #ffffff 94.0%, #ffffff 100.0%)';
+                document.getElementById('timeLabel').innerText = 'Topographisches Farbrelief & Geländehöhen';
 
                 updateTopoTiles(true);
             } else {
