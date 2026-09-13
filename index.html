@@ -157,6 +157,33 @@
             border-color: rgba(255, 219, 0, 0.5);
             color: #ffdb00;
         }
+        .layer-toggle-btn.active-topo {
+            background: rgba(0, 230, 118, 0.15);
+            border-color: rgba(0, 230, 118, 0.5);
+            color: #00e676;
+        }
+        #topoSubSelectWrap {
+            display: none;
+            align-items: center;
+        }
+        #topoSubSelect {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            color: #ddd;
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 10px;
+            padding: 2px 6px;
+            outline: none;
+            cursor: pointer;
+        }
+        #topoSubSelect:hover {
+            border-color: rgba(0, 230, 118, 0.4);
+        }
+        #topoSubSelect option {
+            background: #151821;
+            color: #fff;
+        }
         #solarClimSelectWrap {
             display: none;
             align-items: center;
@@ -1710,6 +1737,7 @@
         <div id="layer-toggles-visible">
             <button id="btn-temp-vis" class="layer-toggle-btn active" onclick="switchLayer('temp')">🌡️ Temperatur</button>
             <button id="btn-solar-vis" class="layer-toggle-btn" onclick="switchLayer('solar')">☀️ Einstrahlung</button>
+            <button id="btn-topo-vis" class="layer-toggle-btn" onclick="switchLayer('topo')">⛰️ Topographie</button>
             <div id="solarClimSelectWrap" style="display:none;">
                 <select id="solarClimSelect" onchange="setSolarClimSelection(this.value)" title="Zeitraum wählen">
                     <option value="live">Live</option>
@@ -1726,6 +1754,12 @@
                     <option value="NOV">November ⌀</option>
                     <option value="DEC">Dezember ⌀</option>
                     <option value="ANN">Jahresmittel</option>
+                </select>
+            </div>
+            <div id="topoSubSelectWrap" style="display:none;">
+                <select id="topoSubSelect" onchange="setTopoSubSelection(this.value)" title="Kartenstil wählen">
+                    <option value="opentopo">OpenTopoMap (Höhenlinien)</option>
+                    <option value="arcgis">ArcGIS World Topo</option>
                 </select>
             </div>
         </div>
@@ -2501,6 +2535,193 @@
         controls.addEventListener('change', updateHillshadeTiles);
         updateHillshadeTiles();
 
+        // DYNAMISCHE 3D TOPOGRAPHISCHE KARTE (OpenTopoMap & ArcGIS Topo)
+        const topoTileGroup = new THREE.Group();
+        topoTileGroup.rotation.y = -Math.PI / 2;
+        topoTileGroup.visible = false;
+        scene.add(topoTileGroup);
+
+        const loadedTopoTiles = new Map();
+        const loadingTopoKeys = new Set();
+        let currentTopoProvider = 'opentopo'; // 'opentopo' | 'arcgis'
+
+        const elevationCache = new Map();
+        function fetchElevationForPoint(lat, lng, callback) {
+            const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+            if (elevationCache.has(key)) {
+                callback(elevationCache.get(key));
+                return;
+            }
+            fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}`)
+                .then(res => res.json())
+                .then(data => {
+                    const elev = (data && data.elevation && data.elevation[0] !== undefined) ? data.elevation[0] : null;
+                    if (elev !== null) elevationCache.set(key, elev);
+                    callback(elev);
+                })
+                .catch(() => callback(null));
+        }
+
+        function getTopoTileUrl(provider, z, x, y) {
+            if (provider === 'arcgis') {
+                return `https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${z}/${y}/${x}`;
+            }
+            const sub = ['a', 'b', 'c'][((x + y) % 3 + 3) % 3];
+            return `https://${sub}.tile.opentopomap.org/${z}/${x}/${y}.png`;
+        }
+
+        function loadTopoTileMesh(z, x, y, key) {
+            if (loadedTopoTiles.has(key) || loadingTopoKeys.has(key)) return;
+            loadingTopoKeys.add(key);
+
+            const url = getTopoTileUrl(currentTopoProvider, z, x, y);
+            textureLoader.load(url, (tex) => {
+                loadingTopoKeys.delete(key);
+                tex.generateMipmaps = true;
+                tex.minFilter = THREE.LinearMipmapLinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+
+                const geom = getTileGeometry(x, y, z, 8, earthRadius + 0.32);
+                const mat = new THREE.MeshBasicMaterial({
+                    map: tex,
+                    side: THREE.DoubleSide,
+                    transparent: false,
+                    depthWrite: true
+                });
+
+                const mesh = new THREE.Mesh(geom, mat);
+                mesh.renderOrder = 1;
+                topoTileGroup.add(mesh);
+                loadedTopoTiles.set(key, { z, x, y, mesh, provider: currentTopoProvider, lastUsed: performance.now() });
+            }, undefined, () => {
+                // Fallback zu ArcGIS World Topo bei Timeout oder Ausfall von OpenTopoMap
+                if (currentTopoProvider === 'opentopo') {
+                    const fallbackUrl = getTopoTileUrl('arcgis', z, x, y);
+                    textureLoader.load(fallbackUrl, (tex) => {
+                        loadingTopoKeys.delete(key);
+                        tex.generateMipmaps = true;
+                        tex.minFilter = THREE.LinearMipmapLinearFilter;
+                        tex.magFilter = THREE.LinearFilter;
+                        const geom = getTileGeometry(x, y, z, 8, earthRadius + 0.32);
+                        const mat = new THREE.MeshBasicMaterial({
+                            map: tex,
+                            side: THREE.DoubleSide,
+                            transparent: false,
+                            depthWrite: true
+                        });
+                        const mesh = new THREE.Mesh(geom, mat);
+                        mesh.renderOrder = 1;
+                        topoTileGroup.add(mesh);
+                        loadedTopoTiles.set(key, { z, x, y, mesh, provider: 'arcgis', lastUsed: performance.now() });
+                    }, undefined, () => {
+                        loadingTopoKeys.delete(key);
+                    });
+                } else {
+                    loadingTopoKeys.delete(key);
+                }
+            });
+        }
+
+        let lastTopoTileUpdate = 0;
+        let lastTopoCameraPos = new THREE.Vector3();
+
+        function updateTopoTiles(force = false) {
+            if (currentMode !== 'topo') return;
+            const now = performance.now();
+            if (!force && now - lastTopoTileUpdate < 100) return;
+            if (!force && camera.position.distanceToSquared(lastTopoCameraPos) < 0.05) return;
+            lastTopoCameraPos.copy(camera.position);
+            lastTopoTileUpdate = now;
+
+            const dist = camera.position.length();
+            const h = Math.max(1, dist - earthRadius);
+
+            let z = 5;
+            if (h < 5) z = 10;
+            else if (h < 12) z = 9;
+            else if (h < 25) z = 8;
+            else if (h < 50) z = 7;
+            else if (h < 100) z = 6;
+
+            const Px = camera.position.z;
+            const Py = camera.position.y;
+            const Pz = -camera.position.x;
+            const vFrac = Math.acos(Math.min(Math.max(Py / dist, -1), 1)) / Math.PI;
+            const centerLat = 90 - vFrac * 180;
+            let uFrac = Math.atan2(Pz, -Px) / (2 * Math.PI);
+            if (uFrac < 0) uFrac += 1;
+            const centerLng = uFrac * 360 - 180;
+
+            const spanDeg = Math.min(75, (h / earthRadius) * camera.fov * 1.35);
+            const cosLat = Math.max(0.18, Math.cos(centerLat * Math.PI / 180));
+            const latSpan = spanDeg * 0.65;
+            const lngSpan = (spanDeg * 0.65) / cosLat;
+
+            const latMin = Math.max(-84, centerLat - latSpan);
+            const latMax = Math.min(84, centerLat + latSpan);
+            const lngMin = centerLng - lngSpan;
+            const lngMax = centerLng + lngSpan;
+
+            const nTiles = Math.pow(2, z);
+            const xMin = lon2tile(lngMin, z);
+            const xMax = lon2tile(lngMax, z);
+            const yMin = lat2tile(latMax, z);
+            const yMax = lat2tile(latMin, z);
+
+            const candidateTiles = [];
+            for (let y = yMin; y <= yMax; y++) {
+                if (y < 0 || y >= nTiles) continue;
+                for (let x = xMin; x <= xMax; x++) {
+                    const wrappedX = ((x % nTiles) + nTiles) % nTiles;
+                    const tLon = (wrappedX + 0.5) / nTiles * 360 - 180;
+                    const tN = Math.PI - (2 * Math.PI * (y + 0.5)) / nTiles;
+                    const tLat = (180 / Math.PI) * Math.atan(Math.sinh(tN));
+                    const dLat = tLat - centerLat;
+                    const dLng = (tLon - centerLng) * cosLat;
+                    const d2 = dLat * dLat + dLng * dLng;
+                    candidateTiles.push({ z, x: wrappedX, y, d2, key: `${currentTopoProvider}_${z}_${wrappedX}_${y}` });
+                }
+            }
+            candidateTiles.sort((a, b) => a.d2 - b.d2);
+            const maxTiles = (z >= 8) ? 36 : 24;
+            const activeKeys = new Set(candidateTiles.slice(0, maxTiles).map(t => t.key));
+
+            candidateTiles.slice(0, maxTiles).forEach(t => {
+                loadTopoTileMesh(t.z, t.x, t.y, t.key);
+            });
+
+            for (const [key, tileObj] of loadedTopoTiles.entries()) {
+                if (!activeKeys.has(key)) {
+                    if (tileObj.z !== z || tileObj.provider !== currentTopoProvider || (now - tileObj.lastUsed > 5000)) {
+                        topoTileGroup.remove(tileObj.mesh);
+                        tileObj.mesh.geometry.dispose();
+                        if (tileObj.mesh.material.map) tileObj.mesh.material.map.dispose();
+                        tileObj.mesh.material.dispose();
+                        loadedTopoTiles.delete(key);
+                    }
+                } else {
+                    tileObj.lastUsed = now;
+                }
+            }
+        }
+        controls.addEventListener('change', () => {
+            if (currentMode === 'topo') updateTopoTiles();
+        });
+
+        function setTopoSubSelection(provider) {
+            currentTopoProvider = provider;
+            for (const [key, tileObj] of loadedTopoTiles.entries()) {
+                topoTileGroup.remove(tileObj.mesh);
+                tileObj.mesh.geometry.dispose();
+                if (tileObj.mesh.material.map) tileObj.mesh.material.map.dispose();
+                tileObj.mesh.material.dispose();
+            }
+            loadedTopoTiles.clear();
+            loadingTopoKeys.clear();
+            updateTopoTiles(true);
+        }
+        window.setTopoSubSelection = setTopoSubSelection;
+
         // SCREEN-SPACE WIND & CITY LABELS (Windy.com Architektur - IMMER GESTOCHEN SCHARF!)
         const screenWindCanvas = document.getElementById('screenWindCanvas');
         let screenW = window.innerWidth;
@@ -2538,6 +2759,10 @@
         const tempVec1 = new THREE.Vector3();
 
         function renderScreenWindParticles(timeScale = 1.0) {
+            if (currentMode === 'topo') {
+                screenWindCtx.clearRect(0, 0, screenW, screenH);
+                return;
+            }
             const dist = camera.position.length();
             const h = Math.max(1, dist - earthRadius);
 
@@ -2801,6 +3026,9 @@
             try {
                 if (typeof updateHillshadeTiles === 'function') updateHillshadeTiles();
             } catch(e) { /* hillshade render safe */ }
+            try {
+                if (typeof updateTopoTiles === 'function' && currentMode === 'topo') updateTopoTiles();
+            } catch(e) { /* topo render safe */ }
             
             renderer.render(scene, camera);
         }
@@ -8711,6 +8939,11 @@
             if (countryEl) {
                 const countryPart = country ? `${country} · ` : `${lat.toFixed(1)}°N, ${lng.toFixed(1)}°E · `;
                 countryEl.innerText = `${countryPart}🕒 ${localTimeStr} Uhr (Ortszeit)`;
+                fetchElevationForPoint(lat, lng, (elev) => {
+                    if (countryEl && elev !== null) {
+                        countryEl.innerText = `${countryPart}🕒 ${localTimeStr} Uhr · ⛰️ ${Math.round(elev).toLocaleString('de-DE')} m ü. NHN`;
+                    }
+                });
             }
 
             if (currentMode === 'solar') {
@@ -8951,8 +9184,31 @@
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
+        let lastClickedElevation = null;
+        let lastElevationPointKey = null;
+
         function updatePopupContent() {
             if (!clickedPopupPoint) return;
+            if (currentMode === 'topo') {
+                const ptKey = `${clickedPopupPoint.lat.toFixed(3)},${clickedPopupPoint.lng.toFixed(3)}`;
+                if (lastElevationPointKey === ptKey && lastClickedElevation !== null) {
+                    popupEl.innerHTML = `<span style="font-size:11px; color:#aaa;">Geländehöhe</span><br><strong style="font-size:14px; color:#00e676;">⛰️ ${Math.round(lastClickedElevation).toLocaleString('de-DE')} m</strong> <span style="font-size:10px; color:#aaa;">ü. NHN</span>`;
+                } else {
+                    popupEl.innerHTML = `<span style="font-size:11px; color:#aaa;">Geländehöhe...</span>`;
+                    fetchElevationForPoint(clickedPopupPoint.lat, clickedPopupPoint.lng, (elev) => {
+                        lastClickedElevation = elev;
+                        lastElevationPointKey = ptKey;
+                        if (clickedPopupPoint && currentMode === 'topo') {
+                            if (elev !== null) {
+                                popupEl.innerHTML = `<span style="font-size:11px; color:#aaa;">Geländehöhe</span><br><strong style="font-size:14px; color:#00e676;">⛰️ ${Math.round(elev).toLocaleString('de-DE')} m</strong> <span style="font-size:10px; color:#aaa;">ü. NHN</span>`;
+                            } else {
+                                popupEl.innerHTML = `<span style="font-size:11px; color:#aaa;">Geländehöhe unbekannt</span>`;
+                            }
+                        }
+                    });
+                }
+                return;
+            }
             const real = getInterpolatedData(clickedPopupPoint.lat, clickedPopupPoint.lng);
             let html = "";
             if (currentMode === 'temp') {
@@ -9176,6 +9432,12 @@
         }
 
         function updateActiveData() {
+            if (currentMode === 'topo') {
+                const titleEl = document.getElementById('timeDisplayTitle');
+                if (titleEl) titleEl.innerText = '⛰️ Topographie & Geländehöhen';
+                updatePopupContent();
+                return;
+            }
             const liveIdx = getLiveStepIndex();
             // GFS-Zeitschritte liegen 3h auseinander; currentHourOffset läuft jetzt stündlich
             // (Play-Button), daher hier als Bruchteil zwischen zwei Schritten behandeln und per
@@ -9292,39 +9554,84 @@
         function switchLayer(mode) {
             currentMode = mode;
 
-            document.getElementById('btn-temp').className = mode === 'temp' ? 'toggle-btn active' : 'toggle-btn';
-            document.getElementById('btn-wind').className = mode === 'wind' ? 'toggle-btn active' : 'toggle-btn';
+            const btnTemp = document.getElementById('btn-temp');
+            const btnWind = document.getElementById('btn-wind');
+            if (btnTemp) btnTemp.className = mode === 'temp' ? 'toggle-btn active' : 'toggle-btn';
+            if (btnWind) btnWind.className = mode === 'wind' ? 'toggle-btn active' : 'toggle-btn';
+
             const btnTempVis = document.getElementById('btn-temp-vis');
             const btnSolarVis = document.getElementById('btn-solar-vis');
+            const btnTopoVis = document.getElementById('btn-topo-vis');
             if (btnTempVis) btnTempVis.className = 'layer-toggle-btn' + (mode === 'temp' ? ' active' : '');
             if (btnSolarVis) btnSolarVis.className = 'layer-toggle-btn' + (mode === 'solar' ? ' active-solar' : '');
+            if (btnTopoVis) btnTopoVis.className = 'layer-toggle-btn' + (mode === 'topo' ? ' active-topo' : '');
+
             const climWrap = document.getElementById('solarClimSelectWrap');
             if (climWrap) climWrap.style.display = mode === 'solar' ? 'flex' : 'none';
+            const topoWrap = document.getElementById('topoSubSelectWrap');
+            if (topoWrap) topoWrap.style.display = mode === 'topo' ? 'flex' : 'none';
 
-            if (mode === 'temp') {
-                document.getElementById('legend-min').innerText = '-30°C';
-                document.getElementById('legend-max').innerText = '+50°C';
-                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #8c52ff 0.0%, #a473b6 12.5%, #b388ff 18.8%, #88ccee 25.0%, #3399cc 31.3%, #1d5cae 37.5%, #1b7a42 41.3%, #32962a 46.3%, #55ad26 51.2%, #84c424 56.3%, #b2d820 58.8%, #d8e61e 61.3%, #f7e318 62.5%, #ffdb00 67.5%, #ffa600 71.3%, #ff6200 75.0%, #ee3a14 78.1%, #dc2222 81.3%, #a80e14 84.4%, #700408 87.5%, #521a10 91.3%, #38140c 95.0%, #1e0c08 97.5%, #000000 100.0%)';
-                document.getElementById('timeLabel').innerText = 'Live Oberflächentemperatur (3D Globus)';
-                dataMaterial.uniforms.u_colorRamp.value = colorRampTempTex;
-                dataMaterial.uniforms.u_minVal.value = useFloat ? minTempRange : 0.0;
-                dataMaterial.uniforms.u_maxVal.value = useFloat ? maxTempRange : 1.0;
-                if (dataMaterial.uniforms.u_texSize) dataMaterial.uniforms.u_texSize.value.set(1441.0, 721.0);
-            } else if (mode === 'solar') {
-                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #440154 0%, #482878 5.5%, #3e4989 11.1%, #31688e 16.6%, #26828e 22.2%, #1f9e89 27.8%, #35b779 33.4%, #6ece58 38.9%, #b5de2b 44.5%, #fde725 50%, #fab942 58.2%, #f28f3a 65.5%, #dd5f34 72.7%, #b8392f 80%, #d9a76a 87.3%, #ecd9b8 93.6%, #ffffff 100%)';
-                dataMaterial.uniforms.u_colorRamp.value = colorRampSolarTex;
-                applySolarRangeAndLegend();
+            const playBtn = document.getElementById('playBtn');
+            const playSpeedBtn = document.getElementById('playSpeedBtn');
+            const timeSlider = document.getElementById('timeSlider');
+            const timeLabels = document.querySelector('.time-labels');
+            const timeDisplayTitle = document.getElementById('timeDisplayTitle');
+
+            if (mode === 'topo') {
+                if (playAnimId) {
+                    cancelAnimationFrame(playAnimId);
+                    playAnimId = null;
+                    if (playBtn) playBtn.innerText = '▶ Play';
+                }
+                if (playBtn) playBtn.style.display = 'none';
+                if (playSpeedBtn) playSpeedBtn.style.display = 'none';
+                if (timeSlider) timeSlider.style.display = 'none';
+                if (timeLabels) timeLabels.style.display = 'none';
+                if (timeDisplayTitle) timeDisplayTitle.innerText = '⛰️ Topographie & Geländehöhen';
+
+                dataMesh.visible = false;
+                topoTileGroup.visible = true;
+
+                document.getElementById('legend-min').innerText = '0 m';
+                document.getElementById('legend-max').innerText = '3.000 m';
+                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #2d7f36 0%, #5ba742 12%, #9bc44d 25%, #d8de58 38%, #e6d152 50%, #dca446 62%, #ba6d32 75%, #8f4625 85%, #6e331c 93%, #ffffff 100%)';
+                document.getElementById('timeLabel').innerText = 'Topographische Reliefkarte (3D Globus)';
+
+                updateTopoTiles(true);
             } else {
-                document.getElementById('legend-min').innerText = '0 km/h';
-                document.getElementById('legend-max').innerText = '100+ km/h';
-                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #1a1a3a, #0033cc, #00ccff, #00ff00, #ffff00, #ff6600, #cc00ff)';
-                document.getElementById('timeLabel').innerText = 'Live Wind-Geschwindigkeit (3D Globus)';
-                dataMaterial.uniforms.u_colorRamp.value = colorRampWindTex;
-                dataMaterial.uniforms.u_minVal.value = 0.0;
-                dataMaterial.uniforms.u_maxVal.value = useFloat ? maxWindKmh : 1.0;
-                if (dataMaterial.uniforms.u_texSize) dataMaterial.uniforms.u_texSize.value.set(361.0, 181.0);
+                if (playBtn) playBtn.style.display = '';
+                if (playSpeedBtn) playSpeedBtn.style.display = '';
+                if (timeSlider) timeSlider.style.display = '';
+                if (timeLabels) timeLabels.style.display = '';
+
+                topoTileGroup.visible = false;
+                dataMesh.visible = true;
+
+                if (mode === 'temp') {
+                    document.getElementById('legend-min').innerText = '-30°C';
+                    document.getElementById('legend-max').innerText = '+50°C';
+                    document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #8c52ff 0.0%, #a473b6 12.5%, #b388ff 18.8%, #88ccee 25.0%, #3399cc 31.3%, #1d5cae 37.5%, #1b7a42 41.3%, #32962a 46.3%, #55ad26 51.2%, #84c424 56.3%, #b2d820 58.8%, #d8e61e 61.3%, #f7e318 62.5%, #ffdb00 67.5%, #ffa600 71.3%, #ff6200 75.0%, #ee3a14 78.1%, #dc2222 81.3%, #a80e14 84.4%, #700408 87.5%, #521a10 91.3%, #38140c 95.0%, #1e0c08 97.5%, #000000 100.0%)';
+                    document.getElementById('timeLabel').innerText = 'Live Oberflächentemperatur (3D Globus)';
+                    dataMaterial.uniforms.u_colorRamp.value = colorRampTempTex;
+                    dataMaterial.uniforms.u_minVal.value = useFloat ? minTempRange : 0.0;
+                    dataMaterial.uniforms.u_maxVal.value = useFloat ? maxTempRange : 1.0;
+                    if (dataMaterial.uniforms.u_texSize) dataMaterial.uniforms.u_texSize.value.set(1441.0, 721.0);
+                } else if (mode === 'solar') {
+                    document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #440154 0%, #482878 5.5%, #3e4989 11.1%, #31688e 16.6%, #26828e 22.2%, #1f9e89 27.8%, #35b779 33.4%, #6ece58 38.9%, #b5de2b 44.5%, #fde725 50%, #fab942 58.2%, #f28f3a 65.5%, #dd5f34 72.7%, #b8392f 80%, #d9a76a 87.3%, #ecd9b8 93.6%, #ffffff 100%)';
+                    dataMaterial.uniforms.u_colorRamp.value = colorRampSolarTex;
+                    applySolarRangeAndLegend();
+                } else {
+                    document.getElementById('legend-min').innerText = '0 km/h';
+                    document.getElementById('legend-max').innerText = '100+ km/h';
+                    document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #1a1a3a, #0033cc, #00ccff, #00ff00, #ffff00, #ff6600, #cc00ff)';
+                    document.getElementById('timeLabel').innerText = 'Live Wind-Geschwindigkeit (3D Globus)';
+                    dataMaterial.uniforms.u_colorRamp.value = colorRampWindTex;
+                    dataMaterial.uniforms.u_minVal.value = 0.0;
+                    dataMaterial.uniforms.u_maxVal.value = useFloat ? maxWindKmh : 1.0;
+                    if (dataMaterial.uniforms.u_texSize) dataMaterial.uniforms.u_texSize.value.set(361.0, 181.0);
+                }
+                updateActiveData();
             }
-            updateActiveData();
         }
         window.switchLayer = switchLayer;
 
