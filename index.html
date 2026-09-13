@@ -1770,14 +1770,10 @@
                 <div id="legend-bar" class="color-bar" style="background: linear-gradient(to right, #8c52ff 0.0%, #a473b6 12.5%, #b388ff 18.8%, #88ccee 25.0%, #3399cc 31.3%, #1d5cae 37.5%, #1b7a42 41.3%, #32962a 46.3%, #55ad26 51.2%, #84c424 56.3%, #b2d820 58.8%, #d8e61e 61.3%, #f7e318 62.5%, #ffdb00 67.5%, #ffa600 71.3%, #ff6200 75.0%, #ee3a14 78.1%, #dc2222 81.3%, #a80e14 84.4%, #700408 87.5%, #521a10 91.3%, #38140c 95.0%, #1e0c08 97.5%, #000000 100.0%);"></div>
                 <span id="legend-max">+50°C</span>
             </div>
-            <div id="topo-legend-ticks" style="display: none; justify-content: space-between; font-size: 8px; color: #aaa; margin-top: 3px; padding: 0 40px;">
-                <span title="Tiefste Festland-Depression: Totes Meer (-430 m)">-430m</span>
-                <span title="Normalnull / Küste">0m</span>
-                <span title="Hügelland">300m</span>
-                <span title="Mittelgebirge">800m</span>
-                <span title="Alpen (1.500 m)">1.500m</span>
-                <span title="Zugspitze (2.962 m)">3.000m</span>
-                <span title="Mont Blanc / Hochalpen">4.500m+</span>
+            <div id="topo-legend-ticks" style="display: none; justify-content: space-between; font-size: 9px; color: rgba(255, 255, 255, 0.75); margin-top: 3px; padding: 0 45px; text-shadow: 0 1px 2px rgba(0,0,0,0.8);">
+                <span style="flex:1; text-align:left;">25%</span>
+                <span style="flex:1; text-align:center;">50%</span>
+                <span style="flex:1; text-align:right;">75%</span>
             </div>
         </div>
         <!-- Versteckte Elemente für JS-Kompatibilität -->
@@ -2024,37 +2020,34 @@
         const colorRampWindTex = createColorRampTexture(kmh => colorScaleWind(kmh / 3.6), 0.0, maxWindKmh, 2048);
         const colorRampSolarTex = createColorRampTexture(colorScaleSolar, minSolarRange, maxSolarRange, 2048);
 
-        // HYPSOMETRISCHE FARBSKALA (Exakt kalibriert nach topographic-map.com Bild 1)
+        // HYPSOMETRISCHE FARBSKALA (Exakt kalibriert nach topographic-map.com)
+        // Definiert die relative Farbprogression von 0% (tiefste sichtbare Stelle) bis 100% (höchster sichtbarer Gipfel)
+        const topoColorStops = [
+            { p: 0.00, c: "#2144ee" }, // 0% Tiefste Stelle / Meeresdepression
+            { p: 0.04, c: "#2979ff" }, // 4% Blau
+            { p: 0.07, c: "#00d7aa" }, // 7% Küste / Tiefland (Türkisgrün)
+            { p: 0.12, c: "#00e699" }, // 12% Cyan-Grün
+            { p: 0.18, c: "#33ff99" }, // 18% Mintgrün
+            { p: 0.25, c: "#66ff66" }, // 25% Frisches Wiesengrün
+            { p: 0.32, c: "#aaff33" }, // 32% Gelbgrün
+            { p: 0.40, c: "#ffff33" }, // 40% Helles Gelb
+            { p: 0.48, c: "#ffbb33" }, // 48% Bernsteingelb / Hügelland
+            { p: 0.56, c: "#ff7733" }, // 56% Warmes Orange
+            { p: 0.65, c: "#ff3333" }, // 65% Rot / Bergland
+            { p: 0.74, c: "#cc1155" }, // 74% Karmesinrot
+            { p: 0.82, c: "#9922aa" }, // 82% Purpur / Hochgebirge
+            { p: 0.90, c: "#dd77dd" }, // 90% Flieder / Felsregion
+            { p: 0.96, c: "#f8e0f8" }, // 96% Blassrosa
+            { p: 1.00, c: "#ffffff" }  // 100% Gletscherweiß / Höchster sichtbarer Gipfel
+        ];
+
         const colorScaleTopo = d3.scaleLinear()
-            .domain([-500, -6, 0, 23, 89, 184, 305, 450, 618, 806, 1015, 1244, 1491, 1757, 2041, 2342, 2660, 2995, 3346, 3713, 4096, 4500, 8848])
-            .range([
-                "#2144ee", // -500m (Depression)
-                "#2979ff", // -6m (Blau)
-                "#00d7aa", // 0m (Küste / Meeresspiegel)
-                "#00e699", // 23m (Cyan-Grün)
-                "#33ff99", // 89m (Mintgrün)
-                "#66ff66", // 184m (Frisches Grün)
-                "#aaff33", // 305m (Gelbgrün)
-                "#ccff33", // 450m (Limettengrün)
-                "#ffff33", // 618m (Hellgelb)
-                "#ffdd33", // 806m (Warmgelb)
-                "#ffbb33", // 1015m (Bernsteingelb)
-                "#ff9933", // 1244m (Helles Orange)
-                "#ff6633", // 1491m (Kräftiges Orange)
-                "#ff3333", // 1757m (Rot)
-                "#dd2233", // 2041m (Karmesinrot)
-                "#cc1155", // 2342m (Tiefrot)
-                "#bb1177", // 2660m (Magenta)
-                "#aa2299", // 2995m (Purpur)
-                "#cc55cc", // 3346m (Violett)
-                "#ee88ee", // 3713m (Flieder / Rosa)
-                "#f8d0f8", // 4096m (Blassrosa)
-                "#ffffff", // 4500m (Gletscherweiß)
-                "#ffffff"  // 8848m (Mount Everest)
-            ])
+            .domain(topoColorStops.map(s => s.p))
+            .range(topoColorStops.map(s => s.c))
             .clamp(true);
 
-        const colorRampTopoTex = createColorRampTexture(colorScaleTopo, -500, 8848, 2048);
+        const colorRampTopoTex = createColorRampTexture(colorScaleTopo, 0.0, 1.0, 2048);
+        const topoGradientCss = `linear-gradient(to right, ${topoColorStops.map(s => `${s.c} ${(s.p * 100).toFixed(1)}%`).join(', ')})`;
         const topoBaseTexture = textureLoader.load('earth-topology.png');
         topoBaseTexture.wrapS = THREE.ClampToEdgeWrapping;
         topoBaseTexture.wrapT = THREE.ClampToEdgeWrapping;
@@ -2619,6 +2612,111 @@
             return `https://${sub}.tile.opentopomap.org/${z}/${x}/${y}.png`;
         }
 
+        let topoSampleCanvas = null;
+        let topoSampleCtx = null;
+
+        function sampleTileElevationBounds(img) {
+            if (!img || !img.width || !img.height) return { minElev: 0, maxElev: 500 };
+            if (!topoSampleCanvas) {
+                topoSampleCanvas = document.createElement('canvas');
+                topoSampleCanvas.width = 16;
+                topoSampleCanvas.height = 16;
+                topoSampleCtx = topoSampleCanvas.getContext('2d', { willReadFrequently: true });
+            }
+            topoSampleCtx.clearRect(0, 0, 16, 16);
+            topoSampleCtx.drawImage(img, 0, 0, 16, 16);
+            const data = topoSampleCtx.getImageData(0, 0, 16, 16).data;
+            let minE = Infinity;
+            let maxE = -Infinity;
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                // Terrarium decode: (R * 256.0 + G + B / 256.0) - 32768.0
+                const elev = (r * 256.0 + g + b / 256.0) - 32768.0;
+                if (elev > -500 && elev < 9000) {
+                    if (elev < minE) minE = elev;
+                    if (elev > maxE) maxE = elev;
+                }
+            }
+            if (minE === Infinity || maxE === -Infinity) {
+                return { minElev: 0, maxElev: 500 };
+            }
+            return { minElev: minE, maxElev: maxE };
+        }
+
+        let currentVisibleMinElev = 0.0;
+        let currentVisibleMaxElev = 4500.0;
+        let activeTopoKeys = new Set();
+
+        function applyDynamicElevationRange(minElev, maxElev) {
+            if (currentVisibleMinElev === minElev && currentVisibleMaxElev === maxElev) return;
+            currentVisibleMinElev = minElev;
+            currentVisibleMaxElev = maxElev;
+
+            // 1. Uniforms aller aktiven Kacheln aktualisieren
+            for (const [key, tileObj] of loadedTopoTiles.entries()) {
+                if (tileObj.mesh && tileObj.mesh.material && tileObj.mesh.material.uniforms) {
+                    const u = tileObj.mesh.material.uniforms;
+                    if (u.u_minElev) u.u_minElev.value = minElev;
+                    if (u.u_maxElev) u.u_maxElev.value = maxElev;
+                }
+            }
+
+            // 2. Legenden-Labels unten rechts aktualisieren
+            const minEl = document.getElementById('legend-min');
+            const maxEl = document.getElementById('legend-max');
+            if (minEl) minEl.innerText = `${Math.round(minElev).toLocaleString('de-DE')} m`;
+            if (maxEl) maxEl.innerText = `${Math.round(maxElev).toLocaleString('de-DE')} m`;
+
+            // 3. Zwischen-Marken (25%, 50%, 75%) der Skala aktualisieren
+            const ticksEl = document.getElementById('topo-legend-ticks');
+            if (ticksEl) {
+                const span = maxElev - minElev;
+                const v25 = Math.round(minElev + 0.25 * span);
+                const v50 = Math.round(minElev + 0.50 * span);
+                const v75 = Math.round(minElev + 0.75 * span);
+                ticksEl.innerHTML = `
+                    <span style="flex:1; text-align:left;">25% (${v25.toLocaleString('de-DE')} m)</span>
+                    <span style="flex:1; text-align:center;">50% (${v50.toLocaleString('de-DE')} m)</span>
+                    <span style="flex:1; text-align:right;">75% (${v75.toLocaleString('de-DE')} m)</span>
+                `;
+            }
+        }
+
+        function refreshVisibleElevationRange() {
+            if (currentMode !== 'topo' || currentTopoProvider !== 'hypsometric') return;
+
+            let visMin = Infinity;
+            let visMax = -Infinity;
+            let validCount = 0;
+
+            for (const key of activeTopoKeys) {
+                const tile = loadedTopoTiles.get(key);
+                if (tile && tile.minElev !== undefined && tile.maxElev !== undefined) {
+                    if (tile.minElev < visMin) visMin = tile.minElev;
+                    if (tile.maxElev > visMax) visMax = tile.maxElev;
+                    validCount++;
+                }
+            }
+
+            if (validCount > 0 && visMin !== Infinity && visMax !== -Infinity) {
+                if (visMax - visMin < 20) visMax = visMin + 20;
+
+                const span = visMax - visMin;
+                let step = 10;
+                if (span < 100) step = 5;
+                else if (span < 500) step = 20;
+                else if (span < 2000) step = 50;
+                else step = 100;
+
+                const targetMin = Math.floor(visMin / step) * step;
+                const targetMax = Math.ceil(visMax / step) * step;
+
+                applyDynamicElevationRange(targetMin, targetMax);
+            }
+        }
+
         function loadTopoTileMesh(z, x, y, key) {
             if (loadedTopoTiles.has(key) || loadingTopoKeys.has(key)) return;
             loadingTopoKeys.add(key);
@@ -2644,7 +2742,16 @@
                 const geom = getTileGeometry(x, y, z, 8, earthRadius + 0.32);
                 let mat;
 
+                let tileMinElev = 0;
+                let tileMaxElev = 100;
+
                 if (isTerrarium) {
+                    try {
+                        const bounds = sampleTileElevationBounds(tex.image);
+                        tileMinElev = bounds.minElev;
+                        tileMaxElev = bounds.maxElev;
+                    } catch (e) {}
+
                     mat = new THREE.ShaderMaterial({
                         vertexShader: `
                             varying vec2 vUv;
@@ -2664,7 +2771,7 @@
                                 vec3 rgb = texture2D(u_tile, vUv).rgb;
                                 // AWS Terrarium: (R * 255 * 256 + G * 255 + B * 255 / 256) - 32768
                                 float elev = (rgb.r * 65280.0 + rgb.g * 255.0 + rgb.b * 0.99609375) - 32768.0;
-                                float norm = clamp((elev - u_minElev) / (u_maxElev - u_minElev), 0.0, 1.0);
+                                float norm = clamp((elev - u_minElev) / max(1.0, (u_maxElev - u_minElev)), 0.0, 1.0);
                                 vec3 col = texture2D(u_colorRamp, vec2(norm, 0.5)).rgb;
                                 gl_FragColor = vec4(col, 1.0);
                             }
@@ -2672,8 +2779,8 @@
                         uniforms: {
                             u_tile: { value: tex },
                             u_colorRamp: { value: colorRampTopoTex },
-                            u_minElev: { value: -500.0 },
-                            u_maxElev: { value: 8848.0 }
+                            u_minElev: { value: currentVisibleMinElev },
+                            u_maxElev: { value: currentVisibleMaxElev }
                         },
                         side: THREE.DoubleSide,
                         transparent: false,
@@ -2691,7 +2798,12 @@
                 const mesh = new THREE.Mesh(geom, mat);
                 mesh.renderOrder = 1;
                 topoTileGroup.add(mesh);
-                loadedTopoTiles.set(key, { z, x, y, mesh, provider: currentTopoProvider, lastUsed: performance.now() });
+                loadedTopoTiles.set(key, { z, x, y, mesh, provider: currentTopoProvider, minElev: tileMinElev, maxElev: tileMaxElev, lastUsed: performance.now() });
+
+                // Falls diese Kachel im aktuellen Viewport liegt, sofort Dynamik-Bereich anpassen
+                if (activeTopoKeys.has(key)) {
+                    refreshVisibleElevationRange();
+                }
             }, undefined, () => {
                 loadingTopoKeys.delete(key);
             });
@@ -2703,8 +2815,8 @@
         function updateTopoTiles(force = false) {
             if (currentMode !== 'topo') return;
             const now = performance.now();
-            if (!force && now - lastTopoTileUpdate < 100) return;
-            if (!force && camera.position.distanceToSquared(lastTopoCameraPos) < 0.05) return;
+            if (!force && now - lastTopoTileUpdate < 80) return;
+            if (!force && camera.position.distanceToSquared(lastTopoCameraPos) < 0.01) return;
             lastTopoCameraPos.copy(camera.position);
             lastTopoTileUpdate = now;
 
@@ -2712,12 +2824,12 @@
             const h = Math.max(1, dist - earthRadius);
 
             let z = 5;
-            if (h < 4) z = 11;
-            else if (h < 8) z = 10;
-            else if (h < 18) z = 9;
-            else if (h < 35) z = 8;
-            else if (h < 70) z = 7;
-            else if (h < 130) z = 6;
+            if (h < 1.2) z = 11;
+            else if (h < 2.8) z = 10;
+            else if (h < 6.5) z = 9;
+            else if (h < 15.0) z = 8;
+            else if (h < 35.0) z = 7;
+            else if (h < 75.0) z = 6;
 
             const Px = camera.position.z;
             const Py = camera.position.y;
@@ -2730,8 +2842,15 @@
 
             const aspect = Math.max(1.0, window.innerWidth / Math.max(1, window.innerHeight));
             const tanFovHalf = Math.tan((camera.fov * Math.PI / 180) / 2);
-            const groundSpanDeg = Math.min(80, (tanFovHalf * (h * 1.8) / earthRadius) * (180 / Math.PI));
-            const cosLat = Math.max(0.15, Math.cos(centerLat * Math.PI / 180));
+            const horizonRad = Math.acos(Math.min(1.0, earthRadius / dist));
+            const horizonDeg = horizonRad * (180 / Math.PI);
+
+            // Blickfeld auf dem Globus (Winkelbereich in Grad vom Zentrum aus)
+            // Großzügige Randabdeckung verhindert jegliche Lücken an den Rändern bei Schrägsicht und Breitbildschirmen
+            const fovGroundDeg = (tanFovHalf * (h * 1.5) / earthRadius) * (180 / Math.PI);
+            const groundSpanDeg = Math.max(0.5, Math.min(horizonDeg * 0.95, fovGroundDeg));
+
+            const cosLat = Math.max(0.18, Math.cos(centerLat * Math.PI / 180));
             const latSpan = groundSpanDeg;
             const lngSpan = (groundSpanDeg * aspect) / cosLat;
 
@@ -2741,10 +2860,10 @@
             const lngMax = centerLng + lngSpan;
 
             const nTiles = Math.pow(2, z);
-            const xMin = lon2tile(lngMin, z);
-            const xMax = lon2tile(lngMax, z);
-            const yMin = lat2tile(latMax, z);
-            const yMax = lat2tile(latMin, z);
+            const xMin = lon2tile(lngMin, z) - 1;
+            const xMax = lon2tile(lngMax, z) + 1;
+            const yMin = Math.max(0, lat2tile(latMax, z) - 1);
+            const yMax = Math.min(nTiles - 1, lat2tile(latMin, z) + 1);
 
             const candidateTiles = [];
             for (let y = yMin; y <= yMax; y++) {
@@ -2761,16 +2880,19 @@
                 }
             }
             candidateTiles.sort((a, b) => a.d2 - b.d2);
-            const maxTiles = (z >= 8) ? 48 : 32;
-            const activeKeys = new Set(candidateTiles.slice(0, maxTiles).map(t => t.key));
+            const maxTiles = 128;
+            const activeTiles = candidateTiles.slice(0, maxTiles);
+            const activeKeys = new Set(activeTiles.map(t => t.key));
+            activeTopoKeys = activeKeys;
 
-            candidateTiles.slice(0, maxTiles).forEach(t => {
+            activeTiles.forEach(t => {
                 loadTopoTileMesh(t.z, t.x, t.y, t.key);
             });
 
+            // Vorhandene Kacheln des aktuellen Providers mindestens 8s cachen, damit beim Zoomen kein blaues Loch entsteht
             for (const [key, tileObj] of loadedTopoTiles.entries()) {
                 if (!activeKeys.has(key)) {
-                    if (tileObj.z !== z || tileObj.provider !== currentTopoProvider || (now - tileObj.lastUsed > 5000)) {
+                    if (tileObj.provider !== currentTopoProvider || (now - tileObj.lastUsed > 8000)) {
                         topoTileGroup.remove(tileObj.mesh);
                         tileObj.mesh.geometry.dispose();
                         if (tileObj.mesh.material.map) tileObj.mesh.material.map.dispose();
@@ -2781,6 +2903,8 @@
                     tileObj.lastUsed = now;
                 }
             }
+
+            refreshVisibleElevationRange();
         }
         controls.addEventListener('change', () => {
             if (currentMode === 'topo') updateTopoTiles();
@@ -2796,6 +2920,25 @@
             }
             loadedTopoTiles.clear();
             loadingTopoKeys.clear();
+            activeTopoKeys.clear();
+
+            const ticksEl = document.getElementById('topo-legend-ticks');
+            const legendBar = document.getElementById('legend-bar');
+            if (provider === 'hypsometric') {
+                if (ticksEl) ticksEl.style.display = 'flex';
+                if (legendBar) {
+                    legendBar.style.display = '';
+                    legendBar.style.background = topoGradientCss;
+                }
+                applyDynamicElevationRange(currentVisibleMinElev, currentVisibleMaxElev);
+            } else {
+                if (ticksEl) ticksEl.style.display = 'none';
+                const minEl = document.getElementById('legend-min');
+                const maxEl = document.getElementById('legend-max');
+                if (minEl) minEl.innerText = provider === 'opentopo' ? 'OpenTopoMap' : 'ArcGIS';
+                if (maxEl) maxEl.innerText = 'Relief';
+            }
+
             updateTopoTiles(true);
         }
         window.setTopoSubSelection = setTopoSubSelection;
@@ -9714,11 +9857,14 @@
 
                 topoTileGroup.visible = true;
 
-                document.getElementById('legend-min').innerText = '-6 m';
-                document.getElementById('legend-max').innerText = '4.500+ m';
+                const legendBar = document.getElementById('legend-bar');
+                if (legendBar) {
+                    legendBar.style.display = '';
+                    legendBar.style.background = topoGradientCss;
+                }
                 const topoTicks = document.getElementById('topo-legend-ticks');
-                if (topoTicks) topoTicks.style.display = 'flex';
-                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #2144ee 0.0%, #2979ff 4.5%, #00d7aa 5.3%, #00e699 6.0%, #33ff99 7.0%, #66ff66 9.0%, #aaff33 11.5%, #ccff33 14.0%, #ffff33 18.0%, #ffdd33 22.0%, #ffbb33 26.0%, #ff9933 30.0%, #ff6633 35.0%, #ff3333 40.0%, #dd2233 46.0%, #cc1155 52.0%, #bb1177 58.0%, #aa2299 64.0%, #cc55cc 72.0%, #ee88ee 80.0%, #f8d0f8 88.0%, #ffffff 94.0%, #ffffff 100.0%)';
+                if (topoTicks) topoTicks.style.display = currentTopoProvider === 'hypsometric' ? 'flex' : 'none';
+                applyDynamicElevationRange(currentVisibleMinElev, currentVisibleMaxElev);
                 document.getElementById('timeLabel').innerText = 'Topographisches Farbrelief & Geländehöhen';
 
                 updateTopoTiles(true);
