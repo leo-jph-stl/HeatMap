@@ -1041,21 +1041,6 @@
         </div>
     </div>
 
-    <!-- Immer öffentlich sichtbar (kein Login nötig): anonymisierte PV-Produktion + Strompreis.
-         Alles andere PV-Bezogene ist hinter dem Login-Overlay oben verborgen. -->
-    <div id="pv-public-container" style="position:absolute; bottom:190px; right:16px; width:230px; z-index:45; background:rgba(18,18,24,0.92); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,0.15); border-radius:12px; overflow:hidden; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-        <button id="pvPublicToggleBtn" type="button" style="width:100%; display:flex; justify-content:space-between; align-items:center; background:none; border:none; padding:8px 10px; cursor:pointer; color:#fff; font-size:11px; font-weight:600;">
-            <span>☀️ PV &amp; Strompreis</span>
-            <span id="pvPublicChevron" style="color:#888; font-size:10px;">▸</span>
-        </button>
-        <div id="pvPublicBody" style="display:none; padding: 0 10px 10px 10px;">
-            <div style="font-size:9px; color:#888; margin-bottom:3px;">PV-Produktion (anonymisiert)</div>
-            <svg id="pvPublicChart" viewBox="0 0 230 55" preserveAspectRatio="none" style="width:100%; height:55px; display:block;"></svg>
-            <div style="font-size:9px; color:#888; margin:6px 0 3px;">Strompreis (Day-Ahead, ct/kWh)</div>
-            <svg id="pvPublicPriceChart" viewBox="0 0 230 55" preserveAspectRatio="none" style="width:100%; height:55px; display:block;"></svg>
-        </div>
-    </div>
-
     <!-- PV-Anlagen Dashboard Karte (Dual-Anlagen: FoxESS & zun) -->
     <div id="pv-container">
         <div class="forecast-header">
@@ -1075,8 +1060,8 @@
         
         <!-- Dual-Anlagen Umschalter -->
         <div class="pv-plant-switcher" style="display: flex; gap: 6px; padding: 4px 14px 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 8px;">
-            <button id="btnSelectPlantFox" class="pv-switch-btn active" onclick="switchPvPlant('foxess')">☀️ System 1</button>
-            <button id="btnSelectPlantZun" class="pv-switch-btn" onclick="switchPvPlant('zun')">☀️ System 2</button>
+            <button id="btnSelectPlantFox" class="pv-switch-btn active" onclick="togglePvPlant('foxess')" title="Hochheim am Main auswählen / einblenden">☀️ System 1</button>
+            <button id="btnSelectPlantZun" class="pv-switch-btn" onclick="togglePvPlant('zun')" title="Weilbach auswählen / einblenden">☀️ System 2</button>
         </div>
         
         <div id="pvBody">
@@ -3100,13 +3085,27 @@
             name: null, fullName: null, cityName: null, lat: null, lng: null, worldPos: null
         };
 
-        let currentActivePvPlant = 'foxess'; // 'foxess' | 'zun'
+        let currentActivePvPlant = 'foxess'; // 'foxess' | 'zun' | 'both'
+        let pvActivePlants = { foxess: true, zun: false };
         let livePvDataFoxess = null;
         let livePvDataZun = null;
         let livePvData = livePvDataFoxess;
 
+        function isBothPvPlantsActive() {
+            return !!(pvActivePlants.foxess && pvActivePlants.zun);
+        }
+
         function getActivePvLocation() {
-            return currentActivePvPlant === 'zun' ? ZUN_PV_SYSTEM_LOCATION : PV_SYSTEM_LOCATION;
+            if (pvActivePlants.foxess && pvActivePlants.zun) {
+                return {
+                    lat: (PV_SYSTEM_LOCATION.lat && ZUN_PV_SYSTEM_LOCATION.lat) ? (PV_SYSTEM_LOCATION.lat + ZUN_PV_SYSTEM_LOCATION.lat) / 2 : (PV_SYSTEM_LOCATION.lat || ZUN_PV_SYSTEM_LOCATION.lat),
+                    lng: (PV_SYSTEM_LOCATION.lng && ZUN_PV_SYSTEM_LOCATION.lng) ? (PV_SYSTEM_LOCATION.lng + ZUN_PV_SYSTEM_LOCATION.lng) / 2 : (PV_SYSTEM_LOCATION.lng || ZUN_PV_SYSTEM_LOCATION.lng),
+                    name: "Beide PV-Anlagen",
+                    fullName: "☀️ FoxESS + zun (Vergleich)",
+                    cityName: "Hochheim & Weilbach"
+                };
+            }
+            return pvActivePlants.zun ? ZUN_PV_SYSTEM_LOCATION : PV_SYSTEM_LOCATION;
         }
 
         function syncLocationFromData(target, sourceData, defaultFullName) {
@@ -3127,10 +3126,8 @@
         }
 
         // --- Echter, backend-durchgesetzter Login (Cloudflare Worker + KV) ---
-        // Alles außer dem öffentlichen Mini-Graph (siehe #pv-public-container) und dem
-        // Strompreis-Graph bleibt hinter diesem Login verborgen. Die Prüfung passiert serverseitig
-        // im Worker (jeder /api/private/*-Aufruf verifiziert das Token neu) - das Token hier ist
-        // nur der Schlüssel dazu, keine eigene Zugriffskontrolle.
+        // PV-Dashboard und detaillierte Betriebsdaten bleiben hinter diesem Login geschützt.
+        // Die Prüfung passiert serverseitig im Worker (jeder /api/private/*-Aufruf verifiziert das Token neu).
         const PV_API_BASE = 'https://heatmap-pv-auth.leosteil.workers.dev';
         let pvAuthToken = null;
         try { pvAuthToken = localStorage.getItem('pv_admin_token'); } catch (e) {}
@@ -3238,75 +3235,11 @@
                 if (res.ok) priceData = await res.json();
             } catch (e) {}
             drawPriceChart();
-            drawPublicPriceChart();
             const euroBody = document.getElementById('pvEuroBody');
             if (euroBody && euroBody.style.display !== 'none') renderEuroTable();
             if (typeof refreshActivePvAnalysisContainers === 'function') {
                 refreshActivePvAnalysisContainers();
             }
-        }
-
-        // --- Immer öffentlicher Mini-Graph (kein Login nötig) ---
-        // Bewusst unabhängig von drawPvChart()/pvChartState/computePvForecast(), die eng mit dem
-        // Login-gesperrten Dashboard verzahnt sind - hier nur einfache, anonymisierte Zeitreihen ohne
-        // Namen/Adresse/Finanzdaten (siehe build_pv_public_series.js / build_zun_public_series.js).
-        let publicPvSeriesFox = [];
-        let publicPvSeriesZun = [];
-        async function loadPublicPvSeries() {
-            try {
-                const res = await fetch('pv_public_series.json?_t=' + Date.now());
-                if (res.ok) publicPvSeriesFox = await res.json();
-            } catch (e) {}
-            try {
-                const resZun = await fetch('zun_public_series.json?_t=' + Date.now());
-                if (resZun.ok) publicPvSeriesZun = await resZun.json();
-            } catch (e) {}
-            drawPublicPvChart();
-        }
-
-        function drawPublicPvChart() {
-            const svg = document.getElementById('pvPublicChart');
-            if (!svg) return;
-            const series = [
-                { data: publicPvSeriesFox, color: '#ffdb00' },
-                { data: publicPvSeriesZun, color: '#00e5ff' }
-            ].filter(s => s.data && s.data.length > 1);
-            if (!series.length) { svg.innerHTML = ''; return; }
-
-            const W = 230, H = 55, PAD = 4;
-            const allT = series.flatMap(s => s.data.map(p => new Date(p.t).getTime()));
-            const allPv = series.flatMap(s => s.data.map(p => p.pv));
-            const tMin = Math.min(...allT), tMax = Math.max(...allT);
-            const pvMax = Math.max(1, ...allPv);
-            const x = (t) => PAD + (tMax > tMin ? (t - tMin) / (tMax - tMin) : 0) * (W - 2 * PAD);
-            const y = (v) => (H - PAD) - Math.max(0, v / pvMax) * (H - 2 * PAD);
-
-            let svgContent = '';
-            series.forEach(s => {
-                const pts = s.data.map(p => `${x(new Date(p.t).getTime()).toFixed(1)},${y(p.pv).toFixed(1)}`).join(' ');
-                svgContent += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="1.5"/>`;
-            });
-            svg.innerHTML = svgContent;
-        }
-
-        function drawPublicPriceChart() {
-            const svg = document.getElementById('pvPublicPriceChart');
-            if (!svg || !priceData.length) { if (svg) svg.innerHTML = ''; return; }
-            const W = 230, H = 55, PAD_L = 4, PAD_R = 4, PAD_T = 4, PAD_B = 4;
-            const recent = priceData.slice(-48); // letzte ~48h reichen für einen groben öffentlichen Überblick
-            const tMin = recent[0].t, tMax = recent[recent.length - 1].endT;
-            const vals = recent.map(r => r.ctKwh);
-            const vMin = Math.min(0, ...vals), vMax = Math.max(10, ...vals);
-            const range = (vMax - vMin) || 1;
-            const x = (t) => PAD_L + (tMax > tMin ? (t - tMin) / (tMax - tMin) : 0) * (W - PAD_L - PAD_R);
-            const y = (v) => (H - PAD_B) - ((v - vMin) / range) * (H - PAD_T - PAD_B);
-
-            const stepPts = [];
-            recent.forEach(r => {
-                stepPts.push(`${x(r.t).toFixed(1)},${y(r.ctKwh).toFixed(1)}`);
-                stepPts.push(`${x(r.endT).toFixed(1)},${y(r.ctKwh).toFixed(1)}`);
-            });
-            svg.innerHTML = `<polyline points="${stepPts.join(' ')}" fill="none" stroke="#00ff88" stroke-width="1.5"/>`;
         }
 
         // Ermittelt den Day-Ahead-Strompreis für einen konkreten Zeitpunkt (Stundenintervall) via schnellem O(log N) Binärsuch-Algorithmus
@@ -3601,28 +3534,83 @@
             handle.addEventListener('pointercancel', stopDrag);
         }
 
+        function togglePvPlant(plantKey, fly = true) {
+            if (plantKey === 'foxess') {
+                if (pvActivePlants.foxess && pvActivePlants.zun) {
+                    pvActivePlants.foxess = false;
+                } else if (!pvActivePlants.foxess && pvActivePlants.zun) {
+                    pvActivePlants.foxess = true;
+                }
+            } else if (plantKey === 'zun') {
+                if (pvActivePlants.foxess && pvActivePlants.zun) {
+                    pvActivePlants.zun = false;
+                } else if (pvActivePlants.foxess && !pvActivePlants.zun) {
+                    pvActivePlants.zun = true;
+                }
+            } else if (plantKey === 'both') {
+                pvActivePlants.foxess = true;
+                pvActivePlants.zun = true;
+            }
+            applyPvPlantSelection(fly);
+        }
+
         function switchPvPlant(plantKey, fly = true) {
-            currentActivePvPlant = plantKey || 'foxess';
+            if (plantKey === 'both') {
+                pvActivePlants.foxess = true;
+                pvActivePlants.zun = true;
+            } else if (plantKey === 'zun') {
+                pvActivePlants.foxess = false;
+                pvActivePlants.zun = true;
+            } else {
+                pvActivePlants.foxess = true;
+                pvActivePlants.zun = false;
+            }
+            applyPvPlantSelection(fly);
+        }
+
+        function applyPvPlantSelection(fly = true) {
+            if (pvActivePlants.foxess && pvActivePlants.zun) {
+                currentActivePvPlant = 'both';
+            } else if (pvActivePlants.zun) {
+                currentActivePvPlant = 'zun';
+            } else {
+                currentActivePvPlant = 'foxess';
+            }
+
             livePvData = (currentActivePvPlant === 'zun') ? livePvDataZun : livePvDataFoxess;
-            
+
             const btnFox = document.getElementById('btnSelectPlantFox');
             const btnZun = document.getElementById('btnSelectPlantZun');
             if (btnFox && btnZun) {
-                btnFox.classList.toggle('active', currentActivePvPlant === 'foxess');
-                btnZun.classList.toggle('active', currentActivePvPlant === 'zun');
-                btnZun.classList.toggle('zun-active', currentActivePvPlant === 'zun');
+                btnFox.classList.toggle('active', !!pvActivePlants.foxess);
+                btnZun.classList.toggle('active', !!pvActivePlants.zun);
+                btnZun.classList.toggle('zun-active', !!pvActivePlants.zun);
                 if (PV_SYSTEM_LOCATION.name) btnFox.textContent = "☀️ " + PV_SYSTEM_LOCATION.name;
                 if (ZUN_PV_SYSTEM_LOCATION.name) btnZun.textContent = "☀️ " + ZUN_PV_SYSTEM_LOCATION.name;
             }
-            
-            const loc = getActivePvLocation();
+
             const titleEl = document.getElementById('pvPlantTitle');
             const subEl = document.getElementById('pvLocationSub');
             if (titleEl) {
-                titleEl.textContent = currentActivePvPlant === 'zun' ? (loc.fullName || "☀️ zun PV-Anlage") : "☀️ FoxESS PV-Anlage";
-                titleEl.style.color = currentActivePvPlant === 'zun' ? "#00e5ff" : "#ffdb00";
+                if (currentActivePvPlant === 'both') {
+                    titleEl.textContent = "☀️ Beide PV-Anlagen (Vergleich)";
+                    titleEl.style.color = "#ffdb00";
+                } else if (currentActivePvPlant === 'zun') {
+                    titleEl.textContent = ZUN_PV_SYSTEM_LOCATION.fullName || "☀️ zun PV-Anlage";
+                    titleEl.style.color = "#00e5ff";
+                } else {
+                    titleEl.textContent = "☀️ FoxESS PV-Anlage";
+                    titleEl.style.color = "#ffdb00";
+                }
             }
-            if (subEl) subEl.textContent = loc.cityName || loc.name;
+            if (subEl) {
+                if (currentActivePvPlant === 'both') {
+                    subEl.innerHTML = '<span style="color:#ffdb00">' + (PV_SYSTEM_LOCATION.name || 'Hochheim') + '</span> &amp; <span style="color:#00e5ff">' + (ZUN_PV_SYSTEM_LOCATION.name || 'Weilbach') + '</span>';
+                } else {
+                    const loc = getActivePvLocation();
+                    subEl.textContent = loc.cityName || loc.name;
+                }
+            }
 
             if (typeof pvChartState !== 'undefined') {
                 pvChartState.viewStart = null;
@@ -3636,7 +3624,10 @@
                 refreshActivePvAnalysisContainers();
             }
             if (fly && typeof flyToLocation === 'function') {
-                flyToLocation(loc.lat, loc.lng, loc.fullName);
+                const loc = getActivePvLocation();
+                if (loc && loc.lat !== null && loc.lng !== null) {
+                    flyToLocation(loc.lat, loc.lng, loc.fullName);
+                }
             }
         }
 
@@ -3686,42 +3677,114 @@
         }
 
         function updatePvDashboardUI() {
-            if (!livePvData) return;
-            const solarVal = livePvData.solar_power !== undefined ? livePvData.solar_power.toFixed(2) : '--';
-            const houseVal = livePvData.house_load !== undefined ? livePvData.house_load.toFixed(2) + ' kW' : '--';
-            const socVal = livePvData.battery_soc !== undefined ? livePvData.battery_soc + ' %' : '--';
+            if (!livePvData && !livePvDataFoxess && !livePvDataZun) return;
+            const isBoth = isBothPvPlantsActive();
 
-            const gridFeed = livePvData.grid_feed_in !== undefined ? livePvData.grid_feed_in : 0;
-            const gridStr = (gridFeed >= 0 ? '+' : '') + gridFeed.toFixed(2) + ' kW';
-            const gridColor = gridFeed >= 0 ? '#00e5ff' : '#ff9100';
-
-            const batPower = livePvData.battery_power !== undefined ? livePvData.battery_power : 0;
-            const batStr = (batPower >= 0 ? '+' : '') + batPower.toFixed(2) + ' kW';
-            const batColor = batPower <= 0 ? '#00ff88' : '#b388ff';
+            let solarVal = '--', houseVal = '--', socVal = '--', gridStr = '-- kW', gridColor = '#00e5ff', batStr = '-- kW', batColor = '#00ff88';
+            let todayYieldVal = '-- kWh', weekYieldVal = '-- kWh', monthYieldVal = '-- kWh', yearYieldVal = '-- kWh', cumulativeStr = '';
+            let updatedStr = 'Live';
+            let st = { color: '#888', label: 'Offline' };
+            let hasDayDetail = false;
+            let fIn = null, gImp = null, bCh = null, bDis = null;
 
             const fmtYield = (v) => (v !== undefined && v !== null) ? v.toFixed(1) + ' kWh' : '-- kWh';
-            const todayYieldVal = fmtYield(livePvData.today_yield);
-            const weekYieldVal = fmtYield(livePvData.week_yield);
-            const monthYieldVal = fmtYield(livePvData.month_yield);
-            const yearYieldVal = fmtYield(livePvData.year_yield);
-            const cumulativeStr = (livePvData.cumulative_yield !== undefined && livePvData.cumulative_yield !== null)
-                ? 'Gesamt: ' + livePvData.cumulative_yield.toFixed(0) + ' kWh' : '';
-
             const fmtKwh = (v) => (v !== undefined && v !== null) ? v.toFixed(1) + ' kWh' : '-- kWh';
-            const hasDayDetail = ['today_feedin', 'today_grid_import', 'today_battery_charge', 'today_battery_discharge']
-                .some(k => livePvData[k] !== undefined && livePvData[k] !== null);
 
-            const statusMap = {
-                online: { color: '#00ff88', label: 'Online' },
-                offline: { color: '#888', label: 'Offline' },
-                fault: { color: '#ff5252', label: 'Fehler' },
-                unknown: { color: '#888', label: '' }
-            };
-            const st = statusMap[livePvData.status || livePvData.device_status] || statusMap.unknown;
+            if (isBoth) {
+                const fSol = (livePvDataFoxess && typeof livePvDataFoxess.solar_power === 'number') ? livePvDataFoxess.solar_power : 0;
+                const zSol = (livePvDataZun && typeof livePvDataZun.solar_power === 'number') ? livePvDataZun.solar_power : 0;
+                solarVal = (fSol + zSol).toFixed(2);
 
-            let updatedStr = 'Live';
-            if (livePvData.last_updated) {
-                const d = new Date(livePvData.last_updated);
+                const fLoad = (livePvDataFoxess && typeof livePvDataFoxess.house_load === 'number') ? livePvDataFoxess.house_load : 0;
+                const zLoad = (livePvDataZun && typeof livePvDataZun.house_load === 'number') ? livePvDataZun.house_load : 0;
+                houseVal = (fLoad + zLoad).toFixed(2) + ' kW';
+
+                const fSoc = (livePvDataFoxess && livePvDataFoxess.battery_soc !== undefined) ? `${livePvDataFoxess.battery_soc}%` : null;
+                const zSoc = (livePvDataZun && livePvDataZun.battery_soc !== undefined) ? `${livePvDataZun.battery_soc}%` : null;
+                socVal = (fSoc && zSoc) ? `${fSoc} | ${zSoc}` : (fSoc || zSoc || '-- %');
+
+                const fGrid = (livePvDataFoxess && livePvDataFoxess.grid_feed_in !== undefined) ? livePvDataFoxess.grid_feed_in : 0;
+                const zGrid = (livePvDataZun && livePvDataZun.grid_feed_in !== undefined) ? livePvDataZun.grid_feed_in : 0;
+                const totGrid = fGrid + zGrid;
+                gridStr = (totGrid >= 0 ? '+' : '') + totGrid.toFixed(2) + ' kW';
+                gridColor = totGrid >= 0 ? '#00e5ff' : '#ff9100';
+
+                const fBat = (livePvDataFoxess && livePvDataFoxess.battery_power !== undefined) ? livePvDataFoxess.battery_power : 0;
+                const zBat = (livePvDataZun && livePvDataZun.battery_power !== undefined) ? livePvDataZun.battery_power : 0;
+                const totBat = fBat + zBat;
+                batStr = (totBat >= 0 ? '+' : '') + totBat.toFixed(2) + ' kW';
+                batColor = totBat <= 0 ? '#00ff88' : '#b388ff';
+
+                const fTy = (livePvDataFoxess && typeof livePvDataFoxess.today_yield === 'number') ? livePvDataFoxess.today_yield : 0;
+                const zTy = (livePvDataZun && typeof livePvDataZun.today_yield === 'number') ? livePvDataZun.today_yield : 0;
+                todayYieldVal = fmtYield(fTy + zTy);
+
+                const fWy = (livePvDataFoxess && typeof livePvDataFoxess.week_yield === 'number') ? livePvDataFoxess.week_yield : 0;
+                const zWy = (livePvDataZun && typeof livePvDataZun.week_yield === 'number') ? livePvDataZun.week_yield : 0;
+                weekYieldVal = fmtYield(fWy + zWy);
+
+                const fMy = (livePvDataFoxess && typeof livePvDataFoxess.month_yield === 'number') ? livePvDataFoxess.month_yield : 0;
+                const zMy = (livePvDataZun && typeof livePvDataZun.month_yield === 'number') ? livePvDataZun.month_yield : 0;
+                monthYieldVal = fmtYield(fMy + zMy);
+
+                const fYy = (livePvDataFoxess && typeof livePvDataFoxess.year_yield === 'number') ? livePvDataFoxess.year_yield : 0;
+                const zYy = (livePvDataZun && typeof livePvDataZun.year_yield === 'number') ? livePvDataZun.year_yield : 0;
+                yearYieldVal = fmtYield(fYy + zYy);
+
+                const fCy = (livePvDataFoxess && typeof livePvDataFoxess.cumulative_yield === 'number') ? livePvDataFoxess.cumulative_yield : 0;
+                const zCy = (livePvDataZun && typeof livePvDataZun.cumulative_yield === 'number') ? livePvDataZun.cumulative_yield : 0;
+                cumulativeStr = 'Gesamt: ' + (fCy + zCy).toFixed(0) + ' kWh';
+
+                const fOn = livePvDataFoxess && (livePvDataFoxess.status === 'online' || livePvDataFoxess.device_status === 'online');
+                const zOn = livePvDataZun && (livePvDataZun.status === 'online' || livePvDataZun.device_status === 'online');
+                if (fOn && zOn) st = { color: '#00ff88', label: 'Beide Online' };
+                else if (fOn || zOn) st = { color: '#ff9100', label: '1 Online' };
+                else st = { color: '#888', label: 'Offline' };
+
+                fIn = ((livePvDataFoxess && livePvDataFoxess.today_feedin) || 0) + ((livePvDataZun && livePvDataZun.today_feedin) || 0);
+                gImp = ((livePvDataFoxess && livePvDataFoxess.today_grid_import) || 0) + ((livePvDataZun && livePvDataZun.today_grid_import) || 0);
+                bCh = ((livePvDataFoxess && livePvDataFoxess.today_battery_charge) || 0) + ((livePvDataZun && livePvDataZun.today_battery_charge) || 0);
+                bDis = ((livePvDataFoxess && livePvDataFoxess.today_battery_discharge) || 0) + ((livePvDataZun && livePvDataZun.today_battery_discharge) || 0);
+                hasDayDetail = true;
+            } else if (livePvData) {
+                solarVal = livePvData.solar_power !== undefined ? livePvData.solar_power.toFixed(2) : '--';
+                houseVal = livePvData.house_load !== undefined ? livePvData.house_load.toFixed(2) + ' kW' : '--';
+                socVal = livePvData.battery_soc !== undefined ? livePvData.battery_soc + ' %' : '--';
+
+                const gridFeed = livePvData.grid_feed_in !== undefined ? livePvData.grid_feed_in : 0;
+                gridStr = (gridFeed >= 0 ? '+' : '') + gridFeed.toFixed(2) + ' kW';
+                gridColor = gridFeed >= 0 ? '#00e5ff' : '#ff9100';
+
+                const batPower = livePvData.battery_power !== undefined ? livePvData.battery_power : 0;
+                batStr = (batPower >= 0 ? '+' : '') + batPower.toFixed(2) + ' kW';
+                batColor = batPower <= 0 ? '#00ff88' : '#b388ff';
+
+                todayYieldVal = fmtYield(livePvData.today_yield);
+                weekYieldVal = fmtYield(livePvData.week_yield);
+                monthYieldVal = fmtYield(livePvData.month_yield);
+                yearYieldVal = fmtYield(livePvData.year_yield);
+                cumulativeStr = (livePvData.cumulative_yield !== undefined && livePvData.cumulative_yield !== null)
+                    ? 'Gesamt: ' + livePvData.cumulative_yield.toFixed(0) + ' kWh' : '';
+
+                const statusMap = {
+                    online: { color: '#00ff88', label: 'Online' },
+                    offline: { color: '#888', label: 'Offline' },
+                    fault: { color: '#ff5252', label: 'Fehler' },
+                    unknown: { color: '#888', label: '' }
+                };
+                st = statusMap[livePvData.status || livePvData.device_status] || statusMap.unknown;
+
+                hasDayDetail = ['today_feedin', 'today_grid_import', 'today_battery_charge', 'today_battery_discharge']
+                    .some(k => livePvData[k] !== undefined && livePvData[k] !== null);
+                fIn = livePvData.today_feedin;
+                gImp = livePvData.today_grid_import;
+                bCh = livePvData.today_battery_charge;
+                bDis = livePvData.today_battery_discharge;
+            }
+
+            const latestTs = (livePvData && livePvData.last_updated) || (livePvDataFoxess && livePvDataFoxess.last_updated) || (livePvDataZun && livePvDataZun.last_updated);
+            if (latestTs) {
+                const d = new Date(latestTs);
                 updatedStr = 'Stand: ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr';
             }
 
@@ -3770,12 +3833,12 @@
                 statusLabelEl.style.color = st.color;
             }
             if (dayDetailEl) dayDetailEl.style.display = hasDayDetail ? 'block' : 'none';
-            if (feedinEl) feedinEl.innerText = fmtKwh(livePvData.today_feedin);
-            if (gridImportEl) gridImportEl.innerText = fmtKwh(livePvData.today_grid_import);
-            if (batChargeEl) batChargeEl.innerText = fmtKwh(livePvData.today_battery_charge);
-            if (batDischargeEl) batDischargeEl.innerText = fmtKwh(livePvData.today_battery_discharge);
+            if (feedinEl) feedinEl.innerText = fmtKwh(fIn);
+            if (gridImportEl) gridImportEl.innerText = fmtKwh(gImp);
+            if (batChargeEl) batChargeEl.innerText = fmtKwh(bCh);
+            if (batDischargeEl) batDischargeEl.innerText = fmtKwh(bDis);
 
-            renderPvHistoryChart(livePvData.history_3d);
+            renderPvHistoryChart();
         }
 
         function parsePvTimestamp(t) {
@@ -3831,17 +3894,27 @@
         // dieses Log noch zu jung ist (frisch installiertes Feature, oder Backend-Log noch nicht
         // nachgeladen), fällt die Funktion auf die letzten 24h der gerade geladenen Live-Historie zurück,
         // damit die Prognose von Anfang an funktioniert und sich mit der Zeit von selbst verbessert.
-        function computePvForecast() {
-            const actual = (pvChartState && pvChartState.data && pvChartState.data.length)
-                ? pvChartState.data
-                : ((livePvData && Array.isArray(livePvData.history_3d)) ? livePvData.history_3d : []);
+        function computePvForecast(plantKey = null) {
+            const activePlant = plantKey || (currentActivePvPlant === 'zun' ? 'zun' : 'foxess');
+            const targetLive = (activePlant === 'zun') ? livePvDataZun : livePvDataFoxess;
+            const targetLoc = (activePlant === 'zun') ? ZUN_PV_SYSTEM_LOCATION : PV_SYSTEM_LOCATION;
+
+            let actual = [];
+            if (pvChartState) {
+                if (activePlant === 'zun' && pvChartState.dataZun && pvChartState.dataZun.length) {
+                    actual = pvChartState.dataZun;
+                } else if (activePlant === 'foxess' && pvChartState.dataFox && pvChartState.dataFox.length) {
+                    actual = pvChartState.dataFox;
+                } else if (pvChartState.data && pvChartState.data.length) {
+                    actual = pvChartState.data;
+                }
+            }
+            if (!actual.length && targetLive && Array.isArray(targetLive.history_3d)) {
+                actual = targetLive.history_3d.map(p => ({ t: parsePvTimestamp(p.t), pv: p.pv })).filter(p => !isNaN(p.t));
+            }
             if (!actual.length || typeof solarData === 'undefined' || !solarData.length) return null;
 
             const now = Date.now();
-
-            // Mittleres Einstrahlungsband bevorzugt: sehr niedrige Werte (Dämmerung) sind verrauscht,
-            // sehr hohe Werte laufen Gefahr, durch die Wechselrichter-Leistungsgrenze (Clipping)
-            // verfälscht zu sein - beides würde den linearen Faktor verzerren.
             const pickCalibPairs = (pairs) => {
                 let filtered = pairs.filter(pr => pr.ghi >= 50 && pr.ghi <= 700);
                 if (filtered.length < 5) filtered = pairs.filter(pr => pr.ghi >= 30);
@@ -3851,7 +3924,7 @@
             let calibPairs = [];
             let calibSource = '24h', calibDays = 1;
 
-            if (currentActivePvPlant === 'zun') {
+            if (activePlant === 'zun') {
                 const calibWindowStart = now - 72 * 3600 * 1000;
                 const livePairs = [];
                 for (const p of actual) {
@@ -3863,7 +3936,7 @@
                 calibPairs = pickCalibPairs(livePairs);
             } else {
                 const logWindowStart = now - PV_FORECAST_LOG_MAX_AGE_MS;
-                const logPairs = pvForecastLog
+                const logPairs = (typeof pvForecastLog !== 'undefined' ? pvForecastLog : [])
                     .filter(r => r.t >= logWindowStart && r.t <= now && typeof r.pv === 'number' && typeof r.ghi === 'number')
                     .map(r => ({ pv: r.pv, ghi: r.ghi }));
 
@@ -3872,7 +3945,6 @@
                 calibDays = Math.round(PV_FORECAST_LOG_MAX_AGE_MS / 86400000);
 
                 if (calibPairs.length < 5) {
-                    // Log noch zu jung/dünn: letzte 24h direkt aus der Live-Historie kalibrieren
                     const calibWindowStart = now - 24 * 3600 * 1000;
                     const livePairs = [];
                     for (const p of actual) {
@@ -3886,26 +3958,21 @@
                     calibDays = 1;
                 }
             }
-            if (calibPairs.length < 5) return null; // zu wenig verwertbare Datenpunkte für eine seriöse Schätzung
+            if (calibPairs.length < 5) return null;
 
             const ratios = calibPairs.map(pr => pr.pv / pr.ghi).sort((a, b) => a - b);
             const mid = Math.floor(ratios.length / 2);
             const medianRatio = ratios.length % 2 ? ratios[mid] : (ratios[mid - 1] + ratios[mid]) / 2;
             if (!(medianRatio > 0)) return null;
 
-            // Praktische Obergrenze (Wechselrichter-Clipping): etwas über dem höchsten beobachteten
-            // Wert der letzten 3 Tage, damit die Prognose nicht unbegrenzt über die real gezeigte
-            // Anlagenleistung hinausschießt.
-            const capKw = Math.max(1, ...actual.map(p => p.pv), livePvData && typeof livePvData.solar_power === 'number' ? livePvData.solar_power : 0) * 1.05;
-
-            const loc = (typeof getActivePvLocation === 'function') ? getActivePvLocation() : PV_SYSTEM_LOCATION;
+            const capKw = Math.max(1, ...actual.map(p => p.pv), targetLive && typeof targetLive.solar_power === 'number' ? targetLive.solar_power : 0) * 1.05;
             const lastAvailable = solarData[solarData.length - 1].timeMs;
             const nowGhi = interpSolarAtTime(now);
-            const nowPv = (livePvData && typeof livePvData.solar_power === 'number') ? livePvData.solar_power : Math.min(capKw, (nowGhi || 0) * medianRatio);
+            const nowPv = (targetLive && typeof targetLive.solar_power === 'number') ? targetLive.solar_power : Math.min(capKw, (nowGhi || 0) * medianRatio);
             const points = [{ t: now, pv: Math.max(0, nowPv) }];
             for (const step of solarData) {
                 if (step.timeMs <= now || step.timeMs > lastAvailable) continue;
-                const ghi = Math.max(0, getTempAtStep(step, loc.lat, loc.lng));
+                const ghi = Math.max(0, getTempAtStep(step, targetLoc.lat || PV_SYSTEM_LOCATION.lat, targetLoc.lng || PV_SYSTEM_LOCATION.lng));
                 points.push({ t: step.timeMs, pv: Math.min(capKw, ghi * medianRatio) });
             }
             if (points.length < 2) return null;
@@ -7285,15 +7352,44 @@
             }
         }
 
-        function renderPvHistoryChart(history) {
+        function renderPvHistoryChart() {
             const svg = document.getElementById('pvHistoryChart');
             if (!svg) return;
-            const points = (history || [])
+
+            const parsePoints = (arr) => (arr || [])
                 .map(p => ({ t: parsePvTimestamp(p.t), pv: p.pv }))
                 .filter(p => !isNaN(p.t) && typeof p.pv === 'number')
                 .sort((a, b) => a.t - b.t);
 
-            if (!points.length) {
+            const foxRaw = (livePvDataFoxess && Array.isArray(livePvDataFoxess.history_3d)) ? livePvDataFoxess.history_3d : [];
+            const zunRaw = (livePvDataZun && Array.isArray(livePvDataZun.history_3d)) ? livePvDataZun.history_3d : [];
+
+            const ptsFox = parsePoints(foxRaw);
+            const ptsZun = parsePoints(zunRaw);
+
+            const useFox = !!pvActivePlants.foxess;
+            const useZun = !!pvActivePlants.zun;
+
+            pvChartState.dataFox = useFox ? ptsFox : [];
+            pvChartState.dataZun = useZun ? ptsZun : [];
+            pvChartState.data = (useFox && useZun) ? ptsFox : (useZun ? ptsZun : ptsFox);
+
+            if (useFox) {
+                const fcFox = computePvForecast('foxess');
+                pvChartState.forecastFox = fcFox ? fcFox.points : null;
+            } else {
+                pvChartState.forecastFox = null;
+            }
+            if (useZun) {
+                const fcZun = computePvForecast('zun');
+                pvChartState.forecastZun = fcZun ? fcZun.points : null;
+            } else {
+                pvChartState.forecastZun = null;
+            }
+            pvChartState.forecast = (useFox && !useZun) ? pvChartState.forecastFox : (useZun && !useFox ? pvChartState.forecastZun : pvChartState.forecastFox);
+
+            const allActivePoints = [...pvChartState.dataFox, ...pvChartState.dataZun];
+            if (!allActivePoints.length) {
                 svg.innerHTML = '';
                 pvChartState.data = [];
                 pvChartState.forecast = null;
@@ -7302,29 +7398,36 @@
                 if (rangeEl) rangeEl.innerText = '';
                 const resetBtn = document.getElementById('pvHistoryResetBtn');
                 if (resetBtn) resetBtn.style.display = 'none';
-                updatePvForecastLegend(null);
+                if (typeof updatePvForecastLegend === 'function') updatePvForecastLegend(null);
                 return;
             }
 
-            pvChartState.data = points;
-            const forecast = computePvForecast();
-            pvChartState.forecast = forecast ? forecast.points : null;
-            updatePvForecastLegend(forecast);
+            if (typeof updatePvForecastLegend === 'function') {
+                updatePvForecastLegend(useFox ? computePvForecast('foxess') : (useZun ? computePvForecast('zun') : null));
+            }
             const euroBody = document.getElementById('pvEuroBody');
-            if (euroBody && euroBody.style.display !== 'none') renderEuroTable();
+            if (euroBody && euroBody.style.display !== 'none' && typeof renderEuroTable === 'function') {
+                renderEuroTable();
+            }
 
-            const dataFullStart = points[0].t, dataFullEnd = points[points.length - 1].t;
-            const newFullStart = dataFullStart;
-            const newFullEnd = forecast ? Math.max(dataFullEnd, forecast.points[forecast.points.length - 1].t) : dataFullEnd;
+            const allStarts = allActivePoints.map(p => p.t);
+            const allEnds = [...allStarts];
+            if (pvChartState.forecastFox && pvChartState.forecastFox.length) {
+                allEnds.push(pvChartState.forecastFox[pvChartState.forecastFox.length - 1].t);
+            }
+            if (pvChartState.forecastZun && pvChartState.forecastZun.length) {
+                allEnds.push(pvChartState.forecastZun[pvChartState.forecastZun.length - 1].t);
+            }
+
+            const newFullStart = Math.min(...allStarts);
+            const newFullEnd = Math.max(...allEnds);
             const hadView = pvChartState.viewStart !== null && pvChartState.viewEnd !== null;
             const wasZoomed = hadView && (pvChartState.viewStart > pvChartState.fullStart + 1000 || pvChartState.viewEnd < pvChartState.fullEnd - 1000);
 
             if (!hadView || !wasZoomed) {
-                // Nicht gezoomt (oder Erstladung): Ansicht mit den Daten mitführen (inkl. Prognose)
                 pvChartState.viewStart = newFullStart;
                 pvChartState.viewEnd = newFullEnd;
             } else {
-                // Nutzer ist reingezoomt: Fenstergröße/-position beibehalten, nur an neue Datengrenzen klemmen
                 const span = pvChartState.viewEnd - pvChartState.viewStart;
                 pvChartState.viewStart = Math.max(newFullStart, Math.min(pvChartState.viewStart, newFullEnd - span));
                 pvChartState.viewEnd = pvChartState.viewStart + span;
@@ -7340,8 +7443,6 @@
             drawPriceChart();
         }
 
-        // Liefert für ein Array von Punkten (aufsteigend nach t) die sichtbaren Punkte plus je
-        // einen Rahmenpunkt links/rechts, damit eine Linie nicht an den Fensterkanten "abgeschnitten" wirkt.
         function clipPointsToView(arr, viewStart, viewEnd) {
             if (!arr || !arr.length) return [];
             const visible = arr.filter(p => p.t >= viewStart && p.t <= viewEnd);
@@ -7359,9 +7460,16 @@
             const svg = document.getElementById('pvHistoryChart');
             const rangeEl = document.getElementById('pvHistoryRange');
             const resetBtn = document.getElementById('pvHistoryResetBtn');
-            if (!svg || !pvChartState.data.length) return;
+            if (!svg) return;
 
-            const { data, forecast, fullStart, fullEnd } = pvChartState;
+            const showFox = !!(pvActivePlants.foxess && pvChartState.dataFox && pvChartState.dataFox.length);
+            const showZun = !!(pvActivePlants.zun && pvChartState.dataZun && pvChartState.dataZun.length);
+            if (!showFox && !showZun) {
+                svg.innerHTML = '';
+                return;
+            }
+
+            const { fullStart, fullEnd } = pvChartState;
             let { viewStart, viewEnd } = pvChartState;
             if (viewEnd - viewStart < PV_CHART_MIN_SPAN_MS) {
                 const mid = (viewStart + viewEnd) / 2;
@@ -7374,21 +7482,48 @@
             const x = (t) => PAD_L + (viewEnd > viewStart ? (t - viewStart) / (viewEnd - viewStart) : 0) * (W - PAD_L - PAD_R);
             const y = (pv, pvMax) => (H - PAD_B) - (pv / pvMax) * (H - PAD_B - PAD_T);
 
-            const plotPoints = clipPointsToView(data, viewStart, viewEnd);
-            const fPlotPoints = forecast ? clipPointsToView(forecast, viewStart, viewEnd) : [];
+            const plotFox = showFox ? clipPointsToView(pvChartState.dataFox, viewStart, viewEnd) : [];
+            const plotZun = showZun ? clipPointsToView(pvChartState.dataZun, viewStart, viewEnd) : [];
+            const fcFox = (showFox && pvChartState.forecastFox) ? clipPointsToView(pvChartState.forecastFox, viewStart, viewEnd) : [];
+            const fcZun = (showZun && pvChartState.forecastZun) ? clipPointsToView(pvChartState.forecastZun, viewStart, viewEnd) : [];
 
-            const pvMax = Math.max(1, ...plotPoints.map(p => p.pv), ...fPlotPoints.map(p => p.pv));
-            const linePts = plotPoints.map(p => `${x(p.t).toFixed(1)},${y(p.pv, pvMax).toFixed(1)}`).join(' ');
-            const areaPts = plotPoints.length ? `${x(plotPoints[0].t).toFixed(1)},${H - PAD_B} ` + linePts + ` ${x(plotPoints[plotPoints.length - 1].t).toFixed(1)},${H - PAD_B}` : '';
-            const forecastLinePts = fPlotPoints.map(p => `${x(p.t).toFixed(1)},${y(p.pv, pvMax).toFixed(1)}`).join(' ');
+            const allPvs = [
+                ...plotFox.map(p => p.pv),
+                ...plotZun.map(p => p.pv),
+                ...fcFox.map(p => p.pv),
+                ...fcZun.map(p => p.pv)
+            ];
+            const pvMax = Math.max(1, ...allPvs);
 
-            // Tagesgrenzen (Mitternacht) als dezente vertikale Linien + Wochentag-Label, nur im sichtbaren Fenster.
+            let foxElements = '';
+            if (showFox && plotFox.length) {
+                const linePts = plotFox.map(p => `${x(p.t).toFixed(1)},${y(p.pv, pvMax).toFixed(1)}`).join(' ');
+                const areaPts = `${x(plotFox[0].t).toFixed(1)},${H - PAD_B} ` + linePts + ` ${x(plotFox[plotFox.length - 1].t).toFixed(1)},${H - PAD_B}`;
+                const fcPts = fcFox.map(p => `${x(p.t).toFixed(1)},${y(p.pv, pvMax).toFixed(1)}`).join(' ');
+                foxElements = `
+                    <polygon points="${areaPts}" fill="rgba(255,219,0,0.12)" stroke="none"></polygon>
+                    <polyline points="${linePts}" fill="none" stroke="#ffdb00" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"></polyline>
+                    ${fcPts ? `<polyline points="${fcPts}" fill="none" stroke="#ffdb00" stroke-width="1.5" stroke-dasharray="3,2.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.65"></polyline>` : ''}
+                `;
+            }
+
+            let zunElements = '';
+            if (showZun && plotZun.length) {
+                const linePts = plotZun.map(p => `${x(p.t).toFixed(1)},${y(p.pv, pvMax).toFixed(1)}`).join(' ');
+                const areaPts = `${x(plotZun[0].t).toFixed(1)},${H - PAD_B} ` + linePts + ` ${x(plotZun[plotZun.length - 1].t).toFixed(1)},${H - PAD_B}`;
+                const fcPts = fcZun.map(p => `${x(p.t).toFixed(1)},${y(p.pv, pvMax).toFixed(1)}`).join(' ');
+                zunElements = `
+                    <polygon points="${areaPts}" fill="rgba(0,229,255,0.12)" stroke="none"></polygon>
+                    <polyline points="${linePts}" fill="none" stroke="#00e5ff" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"></polyline>
+                    ${fcPts ? `<polyline points="${fcPts}" fill="none" stroke="#00e5ff" stroke-width="1.5" stroke-dasharray="3,2.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.65"></polyline>` : ''}
+                `;
+            }
+
             let dayLines = '', dayLabels = '', actualDayLabels = '';
             const dayMs = 24 * 60 * 60 * 1000;
             const span = viewEnd - viewStart;
             const nowForDays = Date.now();
 
-            // 1. Vertikale Tageslinien und Wochentagsbeschriftung an den Mitternachtsgrenzen
             if (isFinite(viewStart) && isFinite(viewEnd) && span > 0 && span < 365 * dayMs) {
                 let dayStart = Math.ceil(viewStart / dayMs) * dayMs;
                 let maxSteps = 400;
@@ -7401,23 +7536,23 @@
                     }
                 }
 
-                // 2. Tatsächliche Tageserträge (kWh) für alle vergangenen Tage mit Solarertrag
-                // Unabhängig von der Mitternachtslinie zentriert unter dem jeweiligen Tages-Erzeugungspeak platziert.
-                if (data.length) {
+                const activeDataForYield = showFox ? pvChartState.dataFox : pvChartState.dataZun;
+                if (activeDataForYield && activeDataForYield.length) {
                     const minDay = Math.floor(viewStart / dayMs) * dayMs;
                     const maxDay = Math.min(nowForDays, viewEnd);
                     let maxDaySteps = 400;
                     for (let d = minDay; d < maxDay && maxDaySteps > 0; d += dayMs, maxDaySteps--) {
-                        const segStart = Math.max(d, data[0].t);
+                        const segStart = Math.max(d, activeDataForYield[0].t);
                         const segEnd = Math.min(d + dayMs, nowForDays);
                         if (segEnd > segStart) {
-                            const actualKwh = integrateKwh(data, segStart, segEnd);
-                            // Nur Tage mit relevanter Produktion (> 0.5 kWh) beschriften
-                            if (actualKwh >= 0.5) {
+                            let kwhFox = showFox ? integrateKwh(pvChartState.dataFox, segStart, segEnd) : 0;
+                            let kwhZun = showZun ? integrateKwh(pvChartState.dataZun, segStart, segEnd) : 0;
+                            let totalKwh = kwhFox + kwhZun;
+                            if (totalKwh >= 0.5) {
                                 const noonT = d + 12 * 3600 * 1000;
                                 const cx = x(noonT);
                                 if (cx >= PAD_L + 12 && cx <= W - PAD_R - 12) {
-                                    actualDayLabels += `<text x="${cx.toFixed(1)}" y="${PV_CHART_FORECAST_ROW_Y}" font-size="7" fill="#fff" text-anchor="middle" opacity="0.85">${actualKwh.toFixed(1)} kWh</text>`;
+                                    actualDayLabels += `<text x="${cx.toFixed(1)}" y="${PV_CHART_FORECAST_ROW_Y}" font-size="7" fill="#fff" text-anchor="middle" opacity="0.85">${totalKwh.toFixed(1)} kWh</text>`;
                                 }
                             }
                         }
@@ -7425,30 +7560,13 @@
                 }
             }
 
-            // Prognose-Checkpoints (Tag +1/+2/+3): kumulierte kWh direkt unter dem jeweiligen
-            // Zeitfenster im Chart platziert, in einer eigenen Zeile unterhalb der Wochentage, damit
-            // sich beide Beschriftungen nie überlappen. Mit "≈" und ohne Nachkommastelle, weil es sich
-            // um eine Schätzung handelt - eine Nachkommastelle würde eine Genauigkeit vortäuschen, die
-            // die Prognose nicht hat.
-            let forecastCheckpointLabels = '';
-            if (forecast) {
-                computeForecastCheckpoints().forEach(cp => {
-                    const centerT = (cp.fromT + cp.toT) / 2;
-                    if (centerT < viewStart || centerT > viewEnd) return;
-                    const cx = x(centerT).toFixed(1);
-                    forecastCheckpointLabels += `<text x="${cx}" y="${PV_CHART_FORECAST_ROW_Y}" font-size="7" fill="#ffdb00" text-anchor="middle" opacity="0.85">≈${Math.round(cp.kwh)} kWh</text>`;
-                });
-            }
-
-            // "Jetzt"-Markierung, sobald eine Prognose existiert (trennt Messwerte von Schätzung)
             let nowLine = '';
             const nowMs = Date.now();
-            if (forecast && nowMs >= viewStart && nowMs <= viewEnd) {
+            if ((fcFox.length || fcZun.length) && nowMs >= viewStart && nowMs <= viewEnd) {
                 const nx = x(nowMs).toFixed(1);
                 nowLine = `<line x1="${nx}" y1="${PAD_T}" x2="${nx}" y2="${H - PAD_B}" stroke="rgba(255,255,255,0.35)" stroke-width="1" stroke-dasharray="1,2"/>`;
             }
 
-            // Y-Achse: Gitterlinien + Beschriftung bei 0, Mitte, Maximum
             let yAxis = '';
             [0, pvMax / 2, pvMax].forEach((v, i) => {
                 const yy = y(v, pvMax);
@@ -7457,46 +7575,80 @@
             });
             yAxis += `<text x="${(PAD_L - 3).toFixed(1)}" y="${PAD_T + 5}" font-size="6" fill="#555" text-anchor="end">kW</text>`;
 
-            // X-Achse: Start-/Endzeit des sichtbaren Fensters
             const fmtHM = (t) => new Date(t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
             const xAxis = `
                 <text x="${PAD_L}" y="${PV_CHART_WEEKDAY_ROW_Y}" font-size="7" fill="#666" text-anchor="start">${fmtHM(viewStart)}</text>
                 <text x="${W - PAD_R}" y="${PV_CHART_WEEKDAY_ROW_Y}" font-size="7" fill="#666" text-anchor="end">${fmtHM(viewEnd)}</text>
             `;
 
-            // Ausgewählter Punkt (Tap/Klick): Fadenkreuz + Zeit/Leistungs-Label (synchron zu Strompreis)
             let selectedSvg = '';
             if (pvChartState.selected) {
                 const selT = pvChartState.selected.t;
                 if (selT >= viewStart && selT <= viewEnd) {
-                    let best = null, bestDist = Infinity;
-                    if (data && data.length) {
-                        for (const p of data) {
+                    const findClosest = (arr) => {
+                        if (!arr || !arr.length) return null;
+                        let best = null, bestDist = Infinity;
+                        for (const p of arr) {
                             const d = Math.abs(p.t - selT);
-                            if (d < bestDist) { bestDist = d; best = { t: p.t, pv: p.pv, isForecast: false }; }
+                            if (d < bestDist) { bestDist = d; best = p; }
                         }
-                    }
-                    if (forecast && forecast.length) {
-                        for (const p of forecast) {
-                            const d = Math.abs(p.t - selT);
-                            if (d < bestDist) { bestDist = d; best = { t: p.t, pv: p.pv, isForecast: true }; }
-                        }
-                    }
-                    if (best) {
-                        const sx = x(selT), sy = y(best.pv, pvMax);
+                        return (bestDist < 45 * 60 * 1000) ? best : null;
+                    };
+
+                    const bestFox = showFox ? (findClosest(pvChartState.dataFox) || findClosest(pvChartState.forecastFox)) : null;
+                    const bestZun = showZun ? (findClosest(pvChartState.dataZun) || findClosest(pvChartState.forecastZun)) : null;
+
+                    if (bestFox || bestZun) {
+                        const sx = x(selT);
                         const timeStr = new Date(selT).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-                        const pvStr = best.pv.toFixed(2) + ' kW' + (best.isForecast ? ' (Prognose)' : '');
-                        const dotColor = best.isForecast ? '#fff' : '#ffdb00';
-                        const boxW = 80, boxH = 20;
+
+                        let circlesSvg = '';
+                        if (bestFox) {
+                            circlesSvg += `<circle cx="${x(bestFox.t).toFixed(1)}" cy="${y(bestFox.pv, pvMax).toFixed(1)}" r="2.5" fill="#ffdb00" stroke="#000" stroke-width="0.6"/>`;
+                        }
+                        if (bestZun) {
+                            circlesSvg += `<circle cx="${x(bestZun.t).toFixed(1)}" cy="${y(bestZun.pv, pvMax).toFixed(1)}" r="2.5" fill="#00e5ff" stroke="#000" stroke-width="0.6"/>`;
+                        }
+
+                        let boxW = 88, boxH = 22;
+                        let linesHtml = '';
+                        if (showFox && showZun) {
+                            boxW = 105;
+                            boxH = 38;
+                            const fVal = bestFox ? bestFox.pv.toFixed(2) + ' kW' : '--';
+                            const zVal = bestZun ? bestZun.pv.toFixed(2) + ' kW' : '--';
+                            const sumVal = ((bestFox ? bestFox.pv : 0) + (bestZun ? bestZun.pv : 0)).toFixed(2) + ' kW';
+                            linesHtml = `
+                                <text x="__BX__" y="__BY_1__" font-size="6.5" fill="#aaa">${timeStr}</text>
+                                <text x="__BX__" y="__BY_2__" font-size="7" fill="#ffdb00" font-weight="700">Hochheim: ${fVal}</text>
+                                <text x="__BX__" y="__BY_3__" font-size="7" fill="#00e5ff" font-weight="700">Weilbach: ${zVal}</text>
+                                <text x="__BX__" y="__BY_4__" font-size="7" fill="#ffffff" font-weight="700">Σ Gesamt: ${sumVal}</text>
+                            `;
+                        } else {
+                            const val = bestFox || bestZun;
+                            const color = showFox ? '#ffdb00' : '#00e5ff';
+                            linesHtml = `
+                                <text x="__BX__" y="__BY_1__" font-size="7" fill="#aaa">${timeStr}</text>
+                                <text x="__BX__" y="__BY_2__" font-size="7.5" fill="${color}" font-weight="700">${val.pv.toFixed(2)} kW</text>
+                            `;
+                        }
+
                         const anchorRight = sx > PAD_L + (W - PAD_L - PAD_R) * 0.55;
                         const bx = Math.max(PAD_L, Math.min(W - PAD_R - boxW, anchorRight ? sx - boxW - 5 : sx + 5));
-                        const by = Math.max(PAD_T, sy - boxH - 4 < PAD_T ? sy + 6 : sy - boxH - 4);
+                        const by = PAD_T + 4;
+
+                        linesHtml = linesHtml
+                            .replace(/__BX__/g, (bx + 4).toFixed(1))
+                            .replace('__BY_1__', (by + 8).toFixed(1))
+                            .replace('__BY_2__', (by + 16).toFixed(1))
+                            .replace('__BY_3__', (by + 24).toFixed(1))
+                            .replace('__BY_4__', (by + 32).toFixed(1));
+
                         selectedSvg = `
-                            <line x1="${sx.toFixed(1)}" y1="${PAD_T}" x2="${sx.toFixed(1)}" y2="${H - PAD_B}" stroke="rgba(255,219,0,0.45)" stroke-width="1"/>
-                            <circle cx="${x(best.t).toFixed(1)}" cy="${sy.toFixed(1)}" r="2.5" fill="${dotColor}" stroke="#000" stroke-width="0.6"/>
+                            <line x1="${sx.toFixed(1)}" y1="${PAD_T}" x2="${sx.toFixed(1)}" y2="${H - PAD_B}" stroke="rgba(255,255,255,0.4)" stroke-width="1"/>
+                            ${circlesSvg}
                             <rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${boxW}" height="${boxH}" rx="3" fill="rgba(10,10,14,0.92)" stroke="rgba(255,255,255,0.18)"/>
-                            <text x="${(bx + 4).toFixed(1)}" y="${(by + 9).toFixed(1)}" font-size="7" fill="#aaa">${timeStr}</text>
-                            <text x="${(bx + 4).toFixed(1)}" y="${(by + 17).toFixed(1)}" font-size="7.5" fill="${dotColor}" font-weight="700">${pvStr}</text>
+                            ${linesHtml}
                         `;
                     }
                 }
@@ -7504,15 +7656,13 @@
 
             svg.innerHTML = `
                 ${yAxis}
-                <polygon points="${areaPts}" fill="rgba(255,219,0,0.18)" stroke="none"></polygon>
+                ${foxElements}
+                ${zunElements}
                 ${dayLines}
                 ${nowLine}
-                <polyline points="${linePts}" fill="none" stroke="#ffdb00" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"></polyline>
-                <polyline points="${forecastLinePts}" fill="none" stroke="#ffdb00" stroke-width="1.5" stroke-dasharray="3,2.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.6"></polyline>
                 ${dayLabels}
                 ${xAxis}
                 ${actualDayLabels}
-                ${forecastCheckpointLabels}
                 ${selectedSvg}
             `;
 
@@ -7523,11 +7673,16 @@
                     ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }
                     : { hour: '2-digit', minute: '2-digit' });
                 const sameDay = new Date(viewStart).toDateString() === new Date(viewEnd).toDateString();
-                rangeEl.innerText = zoomed ? `· ${fmt(viewStart, !sameDay)} – ${fmt(viewEnd, !sameDay)}` : (forecast ? '· 3 Tage + Prognose' : '· letzte 3 Tage');
+                const baseRange = zoomed ? `· ${fmt(viewStart, !sameDay)} – ${fmt(viewEnd, !sameDay)}` : '· 3 Tage + Prognose';
+                if (showFox && showZun) {
+                    rangeEl.innerHTML = `${baseRange} <span style="color:#ffdb00; margin-left:5px;">● Hochheim</span> <span style="color:#00e5ff; margin-left:3px;">● Weilbach</span>`;
+                } else {
+                    rangeEl.innerText = baseRange;
+                }
             }
         }
 
-        function pvChartZoom(factor, anchorRel) {
+        function pvChartZoom(factor, anchorRel) {function pvChartZoom(factor, anchorRel) {
             const { fullStart, fullEnd } = pvChartState;
             if (fullStart === null) return;
             const span = pvChartState.viewEnd - pvChartState.viewStart;
@@ -7641,7 +7796,8 @@
 
                 // Tippen/Klicken ohne nennenswerte Bewegung: gemeinsamen Zeitstempel setzen und in beiden Charts anzeigen
                 function handleChartTap(clientX) {
-                    if (!pvChartState.data.length && !priceData.length) return;
+                    const allData = [...(pvChartState.dataFox || []), ...(pvChartState.dataZun || []), ...(pvChartState.data || [])];
+                    if (!allData.length && !priceData.length) return;
                     let { viewStart, viewEnd } = pvChartState;
                     if (viewStart === null || viewEnd === null) return;
                     if (viewEnd - viewStart < PV_CHART_MIN_SPAN_MS) {
@@ -7651,21 +7807,18 @@
                     }
                     const tapT = viewStart + relX(clientX) * (viewEnd - viewStart);
 
-                    // Falls im PV-Chart getippt, nächsten PV-Messpunkt für präzisen Wert wählen
                     let targetT = tapT;
                     if (svg === pvSvg) {
                         let best = null, bestDist = Infinity;
-                        if (pvChartState.data) {
-                            for (const p of pvChartState.data) {
-                                const d = Math.abs(p.t - tapT);
-                                if (d < bestDist) { bestDist = d; best = p; }
-                            }
-                        }
-                        if (pvChartState.forecast) {
-                            for (const p of pvChartState.forecast) {
-                                const d = Math.abs(p.t - tapT);
-                                if (d < bestDist) { bestDist = d; best = p; }
-                            }
+                        const candidates = [
+                            ...(pvChartState.dataFox || []),
+                            ...(pvChartState.dataZun || []),
+                            ...(pvChartState.forecastFox || []),
+                            ...(pvChartState.forecastZun || [])
+                        ];
+                        for (const p of candidates) {
+                            const d = Math.abs(p.t - tapT);
+                            if (d < bestDist) { bestDist = d; best = p; }
                         }
                         if (best) targetT = best.t;
                     }
@@ -9403,16 +9556,7 @@
                 if (e.key === 'Enter') submitPvLogin();
             });
         }
-        const pvPublicToggleBtn = document.getElementById('pvPublicToggleBtn');
-        if (pvPublicToggleBtn) {
-            pvPublicToggleBtn.addEventListener('click', () => {
-                const body = document.getElementById('pvPublicBody');
-                const chevron = document.getElementById('pvPublicChevron');
-                const open = body.style.display !== 'none';
-                body.style.display = open ? 'none' : 'block';
-                if (chevron) chevron.textContent = open ? '▸' : '▾';
-            });
-        }
+          }
         initPvHistoryChartInteraction();
         initPvEuroToggle();
 
@@ -9424,7 +9568,6 @@
         updateSliderBounds();
         updateActiveData();
         switchLayer('temp');
-        loadPublicPvSeries();
         checkPvSession().then(() => {
             updatePvLoginUI();
             if (isPvAuthenticated) {
@@ -9440,7 +9583,6 @@
         setInterval(loadPvData, 60 * 1000); // FoxESS Daten alle 60 Sek. aktualisieren (No-Op ohne Login)
         setInterval(loadPvForecastLog, 30 * 60 * 1000); // Log wächst nur stündlich, seltener nachladen reicht
         setInterval(loadPriceData, 30 * 60 * 1000); // Preise ändern sich ebenfalls nur stündlich/täglich
-        setInterval(loadPublicPvSeries, 15 * 60 * 1000); // Öffentliche PV-Serie, unabhängig vom Login
 
     </script>
 </body>
