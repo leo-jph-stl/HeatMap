@@ -3313,9 +3313,12 @@
             const scaleItems = visiblePrices.length ? visiblePrices : priceData;
             const pMinVal = Math.min(...scaleItems.map(r => r.ctKwh));
             const pMaxVal = Math.max(...scaleItems.map(r => r.ctKwh));
-            let priceMin = Math.floor(Math.min(0, pMinVal));
-            let priceMax = Math.ceil(Math.max(10, pMaxVal));
-            if (priceMax - pMaxVal < 1) priceMax += 2;
+            // 15-20% dynamischer Freiraum (Headroom) über/unter den Preisspitzen
+            const pSpan = Math.max(6, pMaxVal - Math.min(0, pMinVal));
+            const topHeadroom = pSpan * 0.18;
+            let priceMax = Math.ceil(pMaxVal + topHeadroom);
+            let priceMin = (pMinVal < 0) ? Math.floor(pMinVal - pSpan * 0.10) : 0;
+            if (priceMax - priceMin < 4) priceMax = priceMin + 4;
             const range = (priceMax - priceMin) || 1;
             const y = (v) => (H - PAD_B) - ((v - priceMin) / range) * (H - PAD_B - PAD_T);
 
@@ -7493,7 +7496,9 @@
                 ...fcFox.map(p => p.pv),
                 ...fcZun.map(p => p.pv)
             ];
-            const pvMax = Math.max(1, ...allPvs);
+            const peakPv = Math.max(1, ...allPvs);
+            // 20% dynamischer Freiraum (Headroom) über den Produktionspeaks (z. B. 10 kW Peak -> 12 kW Y-Achse)
+            const pvMax = peakPv * 1.20;
 
             let foxElements = '';
             if (showFox && plotFox.length) {
