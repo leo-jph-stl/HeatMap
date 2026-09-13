@@ -7756,8 +7756,9 @@
             const input = document.getElementById('pvLoginPasswordInput');
             const err = document.getElementById('pvLoginError');
             const btn = document.getElementById('pvLoginSubmitBtn');
-            const password = input ? input.value : '';
+            const password = input ? input.value.trim() : '';
             if (!password) return;
+            if (err) err.style.display = 'none';
             if (btn) { btn.disabled = true; btn.textContent = '...'; }
             const ok = await pvLogin(password);
             if (btn) { btn.disabled = false; btn.textContent = 'Login'; }
