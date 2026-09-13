@@ -1763,10 +1763,20 @@
                 </select>
             </div>
         </div>
-        <div id="legend">
-            <span id="legend-min">-30°C</span>
-            <div id="legend-bar" class="color-bar" style="background: linear-gradient(to right, #8c52ff 0.0%, #a473b6 12.5%, #b388ff 18.8%, #88ccee 25.0%, #3399cc 31.3%, #1d5cae 37.5%, #1b7a42 41.3%, #32962a 46.3%, #55ad26 51.2%, #84c424 56.3%, #b2d820 58.8%, #d8e61e 61.3%, #f7e318 62.5%, #ffdb00 67.5%, #ffa600 71.3%, #ff6200 75.0%, #ee3a14 78.1%, #dc2222 81.3%, #a80e14 84.4%, #700408 87.5%, #521a10 91.3%, #38140c 95.0%, #1e0c08 97.5%, #000000 100.0%);"></div>
-            <span id="legend-max">+50°C</span>
+        <div id="legend" style="display: flex; flex-direction: column; width: 100%;">
+            <div style="display: flex; align-items: center; width: 100%;">
+                <span id="legend-min">-30°C</span>
+                <div id="legend-bar" class="color-bar" style="background: linear-gradient(to right, #8c52ff 0.0%, #a473b6 12.5%, #b388ff 18.8%, #88ccee 25.0%, #3399cc 31.3%, #1d5cae 37.5%, #1b7a42 41.3%, #32962a 46.3%, #55ad26 51.2%, #84c424 56.3%, #b2d820 58.8%, #d8e61e 61.3%, #f7e318 62.5%, #ffdb00 67.5%, #ffa600 71.3%, #ff6200 75.0%, #ee3a14 78.1%, #dc2222 81.3%, #a80e14 84.4%, #700408 87.5%, #521a10 91.3%, #38140c 95.0%, #1e0c08 97.5%, #000000 100.0%);"></div>
+                <span id="legend-max">+50°C</span>
+            </div>
+            <div id="topo-legend-ticks" style="display: none; justify-content: space-between; font-size: 8.5px; color: #888; margin-top: 3px; padding: 0 42px;">
+                <span title="Tiefste Festland-Depression: Totes Meer (-430 m)">-430m</span>
+                <span title="Normalnull / Meeresspiegel">0m</span>
+                <span title="Mittelgebirge / Hügelland">1.000m</span>
+                <span title="Alpen / Zugspitze (2.962 m)">3.000m</span>
+                <span title="Anden / Kilimandscharo (5.895 m)">6.000m</span>
+                <span title="Höchster Punkt der Erde: Mount Everest (8.848 m)">8.848m</span>
+            </div>
         </div>
         <!-- Versteckte Elemente für JS-Kompatibilität -->
         <span id="timeLabel" style="display: none;"></span>
@@ -2637,11 +2647,12 @@
             const h = Math.max(1, dist - earthRadius);
 
             let z = 5;
-            if (h < 5) z = 10;
-            else if (h < 12) z = 9;
-            else if (h < 25) z = 8;
-            else if (h < 50) z = 7;
-            else if (h < 100) z = 6;
+            if (h < 4) z = 11;
+            else if (h < 8) z = 10;
+            else if (h < 18) z = 9;
+            else if (h < 35) z = 8;
+            else if (h < 70) z = 7;
+            else if (h < 130) z = 6;
 
             const Px = camera.position.z;
             const Py = camera.position.y;
@@ -8941,7 +8952,11 @@
                 countryEl.innerText = `${countryPart}🕒 ${localTimeStr} Uhr (Ortszeit)`;
                 fetchElevationForPoint(lat, lng, (elev) => {
                     if (countryEl && elev !== null) {
-                        countryEl.innerText = `${countryPart}🕒 ${localTimeStr} Uhr · ⛰️ ${Math.round(elev).toLocaleString('de-DE')} m ü. NHN`;
+                        const m = Math.round(elev);
+                        const hStr = (m < 0) 
+                            ? ` · 🌊 ${m.toLocaleString('de-DE')} m (unter NN)` 
+                            : ` · ⛰️ ${m.toLocaleString('de-DE')} m ü. NHN`;
+                        countryEl.innerText = `${countryPart}🕒 ${localTimeStr} Uhr${hStr}`;
                     }
                 });
             }
@@ -9191,19 +9206,50 @@
             if (!clickedPopupPoint) return;
             if (currentMode === 'topo') {
                 const ptKey = `${clickedPopupPoint.lat.toFixed(3)},${clickedPopupPoint.lng.toFixed(3)}`;
+                const renderElevHtml = (elev) => {
+                    if (elev === null) {
+                        popupEl.innerHTML = `<span style="font-size:11px; color:#aaa;">Geländehöhe unbekannt</span>`;
+                        return;
+                    }
+                    const m = Math.round(elev);
+                    let title = 'Geländehöhe';
+                    let color = '#00e676';
+                    let sub = 'ü. NHN';
+                    let icon = '⛰️';
+
+                    if (m < 0) {
+                        title = 'Geländesenke (unter Meereshöhe)';
+                        color = '#00e5ff';
+                        sub = 'unter Normalnull';
+                        icon = '🌊';
+                    } else if (m >= 8000) {
+                        title = 'Achttausender / Extremzone';
+                        color = '#ffffff';
+                        sub = 'ü. M. (Himalaya / Karakorum)';
+                        icon = '🏔️';
+                    } else if (m >= 4000) {
+                        title = 'Hochgebirge / Hochplateau';
+                        color = '#ffb74d';
+                        sub = 'ü. M.';
+                        icon = '🏔️';
+                    } else if (m >= 1500) {
+                        title = 'Gebirge / Alpine Stufe';
+                        color = '#ffca28';
+                        sub = 'ü. NHN';
+                        icon = '⛰️';
+                    }
+                    popupEl.innerHTML = `<span style="font-size:11px; color:#aaa;">${title}</span><br><strong style="font-size:14px; color:${color};">${icon} ${m.toLocaleString('de-DE')} m</strong> <span style="font-size:10px; color:#aaa;">${sub}</span>`;
+                };
+
                 if (lastElevationPointKey === ptKey && lastClickedElevation !== null) {
-                    popupEl.innerHTML = `<span style="font-size:11px; color:#aaa;">Geländehöhe</span><br><strong style="font-size:14px; color:#00e676;">⛰️ ${Math.round(lastClickedElevation).toLocaleString('de-DE')} m</strong> <span style="font-size:10px; color:#aaa;">ü. NHN</span>`;
+                    renderElevHtml(lastClickedElevation);
                 } else {
                     popupEl.innerHTML = `<span style="font-size:11px; color:#aaa;">Geländehöhe...</span>`;
                     fetchElevationForPoint(clickedPopupPoint.lat, clickedPopupPoint.lng, (elev) => {
                         lastClickedElevation = elev;
                         lastElevationPointKey = ptKey;
                         if (clickedPopupPoint && currentMode === 'topo') {
-                            if (elev !== null) {
-                                popupEl.innerHTML = `<span style="font-size:11px; color:#aaa;">Geländehöhe</span><br><strong style="font-size:14px; color:#00e676;">⛰️ ${Math.round(elev).toLocaleString('de-DE')} m</strong> <span style="font-size:10px; color:#aaa;">ü. NHN</span>`;
-                            } else {
-                                popupEl.innerHTML = `<span style="font-size:11px; color:#aaa;">Geländehöhe unbekannt</span>`;
-                            }
+                            renderElevHtml(elev);
                         }
                     });
                 }
@@ -9587,15 +9633,17 @@
                 if (playSpeedBtn) playSpeedBtn.style.display = 'none';
                 if (timeSlider) timeSlider.style.display = 'none';
                 if (timeLabels) timeLabels.style.display = 'none';
-                if (timeDisplayTitle) timeDisplayTitle.innerText = '⛰️ Topographie & Geländehöhen';
+                if (timeDisplayTitle) timeDisplayTitle.innerText = '⛰️ Weltweite Topographie (-430 m bis 8.848 m)';
 
                 dataMesh.visible = false;
                 topoTileGroup.visible = true;
 
-                document.getElementById('legend-min').innerText = '0 m';
-                document.getElementById('legend-max').innerText = '3.000 m';
-                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #2d7f36 0%, #5ba742 12%, #9bc44d 25%, #d8de58 38%, #e6d152 50%, #dca446 62%, #ba6d32 75%, #8f4625 85%, #6e331c 93%, #ffffff 100%)';
-                document.getElementById('timeLabel').innerText = 'Topographische Reliefkarte (3D Globus)';
+                document.getElementById('legend-min').innerText = '-430 m';
+                document.getElementById('legend-max').innerText = '8.848 m';
+                const topoTicks = document.getElementById('topo-legend-ticks');
+                if (topoTicks) topoTicks.style.display = 'flex';
+                document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #004d40 0.0%, #00796b 3.0%, #1b5e20 4.6%, #2e7d32 8.0%, #689f38 13.0%, #afb42b 18.0%, #fbc02d 23.0%, #f57c00 30.0%, #d84315 37.0%, #8d4e2a 46.0%, #5d3a1a 55.0%, #4e342e 65.0%, #616161 74.0%, #90a4ae 84.0%, #cfd8dc 92.0%, #ffffff 100.0%)';
+                document.getElementById('timeLabel').innerText = 'Weltweite topographische Reliefkarte & Geländehöhen (-430 m bis 8.848 m)';
 
                 updateTopoTiles(true);
             } else {
@@ -9603,6 +9651,8 @@
                 if (playSpeedBtn) playSpeedBtn.style.display = '';
                 if (timeSlider) timeSlider.style.display = '';
                 if (timeLabels) timeLabels.style.display = '';
+                const topoTicks = document.getElementById('topo-legend-ticks');
+                if (topoTicks) topoTicks.style.display = 'none';
 
                 topoTileGroup.visible = false;
                 dataMesh.visible = true;
