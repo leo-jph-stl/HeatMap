@@ -209,28 +209,33 @@
 
         #popup {
             position: absolute;
-            background: white;
-            color: #333;
-            padding: 5px 10px;
-            border-radius: 4px;
+            background: rgba(18, 22, 28, 0.94);
+            color: #ffffff;
+            padding: 7px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
             font-weight: bold;
-            font-size: 16px;
+            font-size: 15px;
             pointer-events: none;
             display: none;
             transform: translate(-50%, -100%);
-            margin-top: -10px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            margin-top: -12px;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.55);
             z-index: 20;
+            white-space: nowrap;
+            text-align: center;
         }
         #popup::after {
             content: '';
             position: absolute;
-            bottom: -5px;
+            bottom: -6px;
             left: 50%;
             transform: translateX(-50%);
-            border-width: 5px 5px 0;
+            border-width: 6px 6px 0;
             border-style: solid;
-            border-color: white transparent transparent transparent;
+            border-color: rgba(18, 22, 28, 0.94) transparent transparent transparent;
         }
 
         #screenWindCanvas {
@@ -9484,18 +9489,18 @@
                 const ptKey = `${clickedPopupPoint.lat.toFixed(3)},${clickedPopupPoint.lng.toFixed(3)}`;
                 const renderElevHtml = (elev) => {
                     if (elev === null) {
-                        popupEl.innerHTML = `<span style="font-size:11px; color:#aaa;">Geländehöhe unbekannt</span>`;
+                        popupEl.innerHTML = `<span style="font-size:11px; color:#94a3b8;">Geländehöhe unbekannt</span>`;
                         return;
                     }
                     const m = Math.round(elev);
                     let title = 'Geländehöhe';
-                    let color = '#00e676';
+                    let color = '#4ade80';
                     let sub = 'ü. NHN';
                     let icon = '⛰️';
 
                     if (m < 0) {
                         title = 'Geländesenke (unter Meereshöhe)';
-                        color = '#00e5ff';
+                        color = '#38bdf8';
                         sub = 'unter Normalnull';
                         icon = '🌊';
                     } else if (m >= 8000) {
@@ -9505,16 +9510,16 @@
                         icon = '🏔️';
                     } else if (m >= 4000) {
                         title = 'Hochgebirge / Hochplateau';
-                        color = '#ffb74d';
+                        color = '#fb923c';
                         sub = 'ü. M.';
                         icon = '🏔️';
                     } else if (m >= 1500) {
                         title = 'Gebirge / Alpine Stufe';
-                        color = '#ffca28';
+                        color = '#facc15';
                         sub = 'ü. NHN';
                         icon = '⛰️';
                     }
-                    popupEl.innerHTML = `<span style="font-size:11px; color:#aaa;">${title}</span><br><strong style="font-size:14px; color:${color};">${icon} ${m.toLocaleString('de-DE')} m</strong> <span style="font-size:10px; color:#aaa;">${sub}</span>`;
+                    popupEl.innerHTML = `<span style="font-size:11px; color:#94a3b8; letter-spacing:0.3px;">${title}</span><br><strong style="font-size:15px; color:${color}; text-shadow:0 1px 4px rgba(0,0,0,0.6);">${icon} ${m.toLocaleString('de-DE')} m</strong> <span style="font-size:10px; color:#94a3b8;">${sub}</span>`;
                 };
 
                 if (clickedPopupTileElevation !== null) {
@@ -9524,7 +9529,7 @@
                 } else if (lastElevationPointKey === ptKey && lastClickedElevation !== null) {
                     renderElevHtml(lastClickedElevation);
                 } else {
-                    popupEl.innerHTML = `<span style="font-size:11px; color:#aaa;">Geländehöhe...</span>`;
+                    popupEl.innerHTML = `<span style="font-size:11px; color:#94a3b8;">Geländehöhe...</span>`;
                     fetchElevationForPoint(clickedPopupPoint.lat, clickedPopupPoint.lng, (elev) => {
                         lastClickedElevation = elev;
                         lastElevationPointKey = ptKey;
