@@ -2024,21 +2024,20 @@
         // Definiert die relative Farbprogression von 0% (tiefste sichtbare Stelle) bis 100% (höchster sichtbarer Gipfel)
         const topoColorStops = [
             { p: 0.00, c: "#2144ee" }, // 0% Tiefste Stelle / Meeresdepression
-            { p: 0.04, c: "#2979ff" }, // 4% Blau
-            { p: 0.07, c: "#00d7aa" }, // 7% Küste / Tiefland (Türkisgrün)
+            { p: 0.03, c: "#2979ff" }, // 3% Blau
+            { p: 0.06, c: "#00d7aa" }, // 6% Küste / Tiefland (Türkisgrün)
             { p: 0.12, c: "#00e699" }, // 12% Cyan-Grün
-            { p: 0.18, c: "#33ff99" }, // 18% Mintgrün
-            { p: 0.25, c: "#66ff66" }, // 25% Frisches Wiesengrün
-            { p: 0.32, c: "#aaff33" }, // 32% Gelbgrün
-            { p: 0.40, c: "#ffff33" }, // 40% Helles Gelb
-            { p: 0.48, c: "#ffbb33" }, // 48% Bernsteingelb / Hügelland
-            { p: 0.56, c: "#ff7733" }, // 56% Warmes Orange
-            { p: 0.65, c: "#ff3333" }, // 65% Rot / Bergland
-            { p: 0.74, c: "#cc1155" }, // 74% Karmesinrot
-            { p: 0.82, c: "#9922aa" }, // 82% Purpur / Hochgebirge
-            { p: 0.90, c: "#dd77dd" }, // 90% Flieder / Felsregion
-            { p: 0.96, c: "#f8e0f8" }, // 96% Blassrosa
-            { p: 1.00, c: "#ffffff" }  // 100% Gletscherweiß / Höchster sichtbarer Gipfel
+            { p: 0.20, c: "#33ff99" }, // 20% Frisches Wiesengrün
+            { p: 0.30, c: "#77ff33" }, // 30% Gelbgrün
+            { p: 0.42, c: "#ffee22" }, // 42% Helles Gelb
+            { p: 0.52, c: "#ffaa22" }, // 52% Warmes Orange
+            { p: 0.62, c: "#ff3322" }, // 62% Rot / Bergland
+            { p: 0.72, c: "#cc1155" }, // 72% Karmesinrot
+            { p: 0.82, c: "#881188" }, // 82% Tiefviolett / Hochgebirge
+            { p: 0.90, c: "#aa2299" }, // 90% Purpur / Grate
+            { p: 0.95, c: "#cc66cc" }, // 95% Helles Violett / Hochalpin
+            { p: 0.98, c: "#f0d0f0" }, // 98% Zartrosa / Firnschnee
+            { p: 1.00, c: "#ffffff" }  // 100% Gletscherweiß (Gipfelspitze)
         ];
 
         const colorScaleTopo = d3.scaleLinear()
@@ -2614,40 +2613,67 @@
 
         let topoSampleCanvas = null;
         let topoSampleCtx = null;
+        let topoClickCanvas = null;
+        let topoClickCtx = null;
 
         function sampleTileElevationBounds(img) {
             if (!img || !img.width || !img.height) return { minElev: 0, maxElev: 500 };
             if (!topoSampleCanvas) {
                 topoSampleCanvas = document.createElement('canvas');
-                topoSampleCanvas.width = 16;
-                topoSampleCanvas.height = 16;
+                topoSampleCanvas.width = 256;
+                topoSampleCanvas.height = 256;
                 topoSampleCtx = topoSampleCanvas.getContext('2d', { willReadFrequently: true });
             }
-            topoSampleCtx.clearRect(0, 0, 16, 16);
-            topoSampleCtx.drawImage(img, 0, 0, 16, 16);
-            const data = topoSampleCtx.getImageData(0, 0, 16, 16).data;
-            let minE = Infinity;
-            let maxE = -Infinity;
-            for (let i = 0; i < data.length; i += 4) {
-                const r = data[i];
-                const g = data[i + 1];
-                const b = data[i + 2];
-                // Terrarium decode: (R * 256.0 + G + B / 256.0) - 32768.0
-                const elev = (r * 256.0 + g + b / 256.0) - 32768.0;
-                if (elev > -500 && elev < 9000) {
-                    if (elev < minE) minE = elev;
-                    if (elev > maxE) maxE = elev;
+            topoSampleCtx.drawImage(img, 0, 0);
+            const data = topoSampleCtx.getImageData(0, 0, 256, 256).data;
+            const samples = [];
+            // Unverzerrtes Sampling eines 16x16-Rasters echter innerer Pixelwerte (ohne Downsampling-Mischfehler)
+            for (let y = 8; y < 256; y += 16) {
+                for (let x = 8; x < 256; x += 16) {
+                    const idx = (y * 256 + x) * 4;
+                    const r = data[idx];
+                    const g = data[idx + 1];
+                    const b = data[idx + 2];
+                    const elev = (r * 256.0 + g + b / 256.0) - 32768.0;
+                    if (elev > -500 && elev < 8900) {
+                        samples.push(elev);
+                    }
                 }
             }
-            if (minE === Infinity || maxE === -Infinity) {
-                return { minElev: 0, maxElev: 500 };
+            if (samples.length === 0) return { minElev: 0, maxElev: 500 };
+            samples.sort((a, b) => a - b);
+            return { minElev: samples[0], maxElev: samples[samples.length - 1] };
+        }
+
+        function getExactTileElevation(tileMesh, uv) {
+            try {
+                if (!tileMesh || !tileMesh.material || !tileMesh.material.uniforms) return null;
+                const tex = tileMesh.material.uniforms.u_tile ? tileMesh.material.uniforms.u_tile.value : null;
+                if (!tex || !tex.image) return null;
+                const img = tex.image;
+                if (!img.width || !img.height) return null;
+
+                if (!topoClickCanvas) {
+                    topoClickCanvas = document.createElement('canvas');
+                    topoClickCanvas.width = 256;
+                    topoClickCanvas.height = 256;
+                    topoClickCtx = topoClickCanvas.getContext('2d', { willReadFrequently: true });
+                }
+                topoClickCtx.drawImage(img, 0, 0);
+                const px = Math.min(255, Math.max(0, Math.floor(uv.x * 256)));
+                const py = Math.min(255, Math.max(0, Math.floor((1.0 - uv.y) * 256)));
+                const p = topoClickCtx.getImageData(px, py, 1, 1).data;
+                const elev = (p[0] * 256.0 + p[1] + p[2] / 256.0) - 32768.0;
+                return (elev > -500 && elev < 9000) ? Math.round(elev) : null;
+            } catch (e) {
+                return null;
             }
-            return { minElev: minE, maxElev: maxE };
         }
 
         let currentVisibleMinElev = 0.0;
         let currentVisibleMaxElev = 4500.0;
         let activeTopoKeys = new Set();
+        let clickedPopupTileElevation = null;
 
         function applyDynamicElevationRange(minElev, maxElev) {
             if (currentVisibleMinElev === minElev && currentVisibleMaxElev === maxElev) return;
@@ -2735,8 +2761,10 @@
 
             textureLoader.load(url, (tex) => {
                 loadingTopoKeys.delete(key);
-                tex.generateMipmaps = true;
-                tex.minFilter = THREE.LinearMipmapLinearFilter;
+                // WICHTIG: Keine WebGL-Mipmaps auf Höhen-Datentexturen erzeugen! Mipmap-Mittelwertbildung
+                // korrumpiert die Byte-Kanäle von Höhen-DEMs und verursacht verwaschene, unsaubere Kanten.
+                tex.generateMipmaps = false;
+                tex.minFilter = THREE.LinearFilter;
                 tex.magFilter = THREE.LinearFilter;
 
                 const geom = getTileGeometry(x, y, z, 8, earthRadius + 0.32);
@@ -2766,21 +2794,42 @@
                             uniform sampler2D u_colorRamp;
                             uniform float u_minElev;
                             uniform float u_maxElev;
+                            uniform vec2 u_texelSize;
                             varying vec2 vUv;
+
+                            float getElev(vec2 uv) {
+                                vec3 c = texture2D(u_tile, uv).rgb;
+                                return (c.r * 65280.0 + c.g * 255.0 + c.b * 0.99609375) - 32768.0;
+                            }
+
                             void main() {
-                                vec3 rgb = texture2D(u_tile, vUv).rgb;
-                                // AWS Terrarium: (R * 255 * 256 + G * 255 + B * 255 / 256) - 32768
-                                float elev = (rgb.r * 65280.0 + rgb.g * 255.0 + rgb.b * 0.99609375) - 32768.0;
+                                float elev = getElev(vUv);
                                 float norm = clamp((elev - u_minElev) / max(1.0, (u_maxElev - u_minElev)), 0.0, 1.0);
                                 vec3 col = texture2D(u_colorRamp, vec2(norm, 0.5)).rgb;
-                                gl_FragColor = vec4(col, 1.0);
+
+                                // Dynamisches Shaded Relief (Hillshading) für gestochen scharfe Berggrate & Felskanten
+                                float eL = getElev(vUv - vec2(u_texelSize.x, 0.0));
+                                float eR = getElev(vUv + vec2(u_texelSize.x, 0.0));
+                                float eB = getElev(vUv - vec2(0.0, u_texelSize.y));
+                                float eT = getElev(vUv + vec2(0.0, u_texelSize.y));
+
+                                float dx = (eR - eL) * 0.04;
+                                float dy = (eT - eB) * 0.04;
+                                vec3 normal = normalize(vec3(-dx, -dy, 1.0));
+                                vec3 sunDir = normalize(vec3(-0.6, 0.6, 0.75)); // Nordwest-Licht
+
+                                float shade = clamp(dot(normal, sunDir), 0.0, 1.0);
+                                float hillshade = mix(0.72, 1.18, shade);
+
+                                gl_FragColor = vec4(col * hillshade, 1.0);
                             }
                         `,
                         uniforms: {
                             u_tile: { value: tex },
                             u_colorRamp: { value: colorRampTopoTex },
                             u_minElev: { value: currentVisibleMinElev },
-                            u_maxElev: { value: currentVisibleMaxElev }
+                            u_maxElev: { value: currentVisibleMaxElev },
+                            u_texelSize: { value: new THREE.Vector2(1.0 / 256.0, 1.0 / 256.0) }
                         },
                         side: THREE.DoubleSide,
                         transparent: false,
@@ -2824,12 +2873,13 @@
             const h = Math.max(1, dist - earthRadius);
 
             let z = 5;
-            if (h < 1.2) z = 11;
-            else if (h < 2.8) z = 10;
-            else if (h < 6.5) z = 9;
-            else if (h < 15.0) z = 8;
-            else if (h < 35.0) z = 7;
-            else if (h < 75.0) z = 6;
+            if (h < 1.0) z = 12;
+            else if (h < 2.5) z = 11;
+            else if (h < 5.5) z = 10;
+            else if (h < 12.0) z = 9;
+            else if (h < 25.0) z = 8;
+            else if (h < 50.0) z = 7;
+            else if (h < 100.0) z = 6;
 
             const Px = camera.position.z;
             const Py = camera.position.y;
@@ -9451,7 +9501,11 @@
                     popupEl.innerHTML = `<span style="font-size:11px; color:#aaa;">${title}</span><br><strong style="font-size:14px; color:${color};">${icon} ${m.toLocaleString('de-DE')} m</strong> <span style="font-size:10px; color:#aaa;">${sub}</span>`;
                 };
 
-                if (lastElevationPointKey === ptKey && lastClickedElevation !== null) {
+                if (clickedPopupTileElevation !== null) {
+                    lastClickedElevation = clickedPopupTileElevation;
+                    lastElevationPointKey = ptKey;
+                    renderElevHtml(clickedPopupTileElevation);
+                } else if (lastElevationPointKey === ptKey && lastClickedElevation !== null) {
                     renderElevHtml(lastClickedElevation);
                 } else {
                     popupEl.innerHTML = `<span style="font-size:11px; color:#aaa;">Geländehöhe...</span>`;
@@ -9558,16 +9612,36 @@
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
             
             raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObject(earthMesh);
+
+            let pt = null;
+            let directTileElev = null;
+
+            if (currentMode === 'topo' && topoTileGroup && topoTileGroup.children.length > 0) {
+                // Präziser Raycast direkt gegen die sichtbaren Kacheln (R = earthRadius + 0.32)
+                // Verhindert den 20-Kilometer-Parallaxenfehler, der beim Durchschießen auf die Basiskugel entsteht!
+                const topoHits = raycaster.intersectObjects(topoTileGroup.children, false);
+                if (topoHits.length > 0) {
+                    const hit = topoHits[0];
+                    pt = hit.point.clone();
+                    pt.applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
+                    if (hit.uv && hit.object) {
+                        directTileElev = getExactTileElevation(hit.object, hit.uv);
+                    }
+                }
+            }
+
+            if (!pt) {
+                const intersects = raycaster.intersectObject(earthMesh);
+                if (intersects.length > 0) {
+                    pt = intersects[0].point.clone();
+                    pt.applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
+                }
+            }
             
-            if (intersects.length > 0) {
-                const intersect = intersects[0];
-                
-                // Convert 3D intersection point to Lat/Lng
-                const pt = intersect.point.clone();
-                pt.applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
-                
-                clickedPopupPoint = sphereVertexToLatLng(pt, earthRadius);
+            if (pt) {
+                const r = (currentMode === 'topo') ? (earthRadius + 0.32) : earthRadius;
+                clickedPopupPoint = sphereVertexToLatLng(pt, r);
+                clickedPopupTileElevation = directTileElev;
                 popupEl.style.display = 'block';
                 popupEl.style.left = event.clientX + 'px';
                 popupEl.style.top = event.clientY + 'px';
