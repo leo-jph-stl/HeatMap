@@ -138,10 +138,10 @@ async function run() {
 
         const fileContent = `// GFS 0.25° Ultra-High-Resolution (1440x721 Grid, 25 Timesteps)
 // Automatisch generiert von fetch_gfs_0p25.js
-const tempMetadata = ${JSON.stringify(metadata)};
-const tempB64 = "${base64Str}";
+var tempMetadata = ${JSON.stringify(metadata)};
+var tempB64 = "${base64Str}";
 
-const tempData = (() => {
+var tempData = (() => {
     const raw = typeof atob !== 'undefined' ? atob(tempB64) : Buffer.from(tempB64, 'base64').toString('binary');
     const len = raw.length;
     const bytes = new Uint8Array(len);
@@ -160,6 +160,7 @@ const tempData = (() => {
         };
     });
 })();
+tempB64 = null;
 `;
 
         fs.writeFileSync('temp_data.js', fileContent);

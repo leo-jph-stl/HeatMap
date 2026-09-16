@@ -167,10 +167,10 @@ async function run() {
 
         const fileContent = `// Globaler Wolkenwassergehalt (kg/m^2, Säule) aus GFS 0.25°.
 // Automatisch generiert von fetch_cloud_timeline.js
-const cloudMetadata = ${JSON.stringify(metadata)};
-const cloudB64 = "${base64Str}";
+var cloudMetadata = ${JSON.stringify(metadata)};
+var cloudB64 = "${base64Str}";
 
-const cloudData = (() => {
+var cloudData = (() => {
     const raw = typeof atob !== 'undefined' ? atob(cloudB64) : Buffer.from(cloudB64, 'base64').toString('binary');
     const len = raw.length;
     const bytes = new Uint8Array(len);
@@ -189,6 +189,7 @@ const cloudData = (() => {
         };
     });
 })();
+cloudB64 = null;
 `;
 
         fs.writeFileSync('cloud_data.js', fileContent);

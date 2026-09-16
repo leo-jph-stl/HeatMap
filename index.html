@@ -13,7 +13,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
     
     <script src="wind_data.js"></script>
-    <script id="tempDataScript" src="temp_data.js?_v=20260907_gfs025_c2"></script>
+    <script id="tempDataScript" src="temp_data.js?_v=20260916_v1"></script>
     <script src="solar_data.js"></script>
     <script src="solar_climatology_data.js"></script>
     <script src="cloud_data.js"></script>
@@ -10188,6 +10188,9 @@
                         showLocationForecast(clickedPopupPoint.lat, clickedPopupPoint.lng, pName, pCountry);
                     }
                 }
+            };
+            s.onerror = (err) => {
+                console.warn('Fehler beim Neuladen der Wetterdaten:', err);
             };
             if (oldScript && oldScript.parentNode) {
                 oldScript.parentNode.replaceChild(s, oldScript);
