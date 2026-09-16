@@ -21,6 +21,7 @@
     <script src="rivers_data.js"></script>
     <script src="roads_data.js"></script>
     <script src="urban_data.js"></script>
+    <script src="cities_data.js"></script>
     <script>
         // Unregister any stale ServiceWorker from previous visits
         if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
@@ -3512,7 +3513,7 @@
         }
         initUrbanAreas();
 
-        // DYNAMISCHE STÄDTE-LABELS & MARKER (7.340+ Orte weltweit)
+        // DYNAMISCHE STÄDTE- & ORTS-LABELS (69.720+ Orte, Städte & Gemeinden weltweit)
         let citiesData = [];
         const cityGermanNames = {
             'Munich': 'München',
@@ -8520,32 +8521,41 @@
 
             // Dynamische Staffelung nach Zoom-Tiefe:
             let maxRank = 0;
-            let minSpacingX = 66;
-            let minSpacingY = 25;
+            let minSpacingX = 76;
+            let minSpacingY = 28;
 
-            if (dist <= 107) {
-                maxRank = 10;
-                minSpacingX = 38;
-                minSpacingY = 20;
-            } else if (dist <= 114) {
+            if (dist <= 103.5) {
+                // Maximale Nahbereich-Detailstufe: Alle Ortschaften & Gemeinden sichtbar
+                maxRank = 9;
+                minSpacingX = 26;
+                minSpacingY = 15;
+            } else if (dist <= 106.5) {
+                maxRank = 9;
+                minSpacingX = 34;
+                minSpacingY = 18;
+            } else if (dist <= 111) {
                 maxRank = 8;
-                minSpacingX = 46;
+                minSpacingX = 40;
+                minSpacingY = 20;
+            } else if (dist <= 118) {
+                maxRank = 7;
+                minSpacingX = 48;
                 minSpacingY = 22;
-            } else if (dist <= 122) {
-                maxRank = 6;
+            } else if (dist <= 126) {
+                maxRank = 5;
                 minSpacingX = 54;
                 minSpacingY = 23;
-            } else if (dist <= 135) {
+            } else if (dist <= 138) {
                 maxRank = 4;
                 minSpacingX = 60;
                 minSpacingY = 24;
-            } else if (dist <= 150) {
+            } else if (dist <= 152) {
                 maxRank = 2;
                 minSpacingX = 68;
                 minSpacingY = 26;
             } else {
                 maxRank = 1;
-                minSpacingX = 75;
+                minSpacingX = 76;
                 minSpacingY = 28;
             }
 
@@ -8687,7 +8697,7 @@
 
             for (let i = 0; i < citiesData.length; i++) {
                 const city = citiesData[i];
-                if (city.scalerank > maxRank) continue;
+                if (city.scalerank > maxRank) break;
 
                 // Geometrisch exakte Horizont-Prüfung für ALLE Zoomstufen (selbst bei tiefstem Zoom dist <= 101.5):
                 // Winkel zwischen Stadt und Kamera: cos(theta) = (P · C) / (|P| * |C|)
@@ -8716,31 +8726,38 @@
                 if (collision) continue;
                 placed.push({ x: sx, y: sy });
 
-                // Feiner, eleganter Stadt-Punkt mit weißem Kern & dunklem Ring
+                // Kartographische Hierarchie: Punkte & Schriftgröße nach Bedeutung
+                const isMajor = city.scalerank <= 2;
+                const isMedium = city.scalerank <= 6;
+                const dotR = isMajor ? 2.4 : (isMedium ? 1.9 : 1.5);
+
+                // Feiner Stadt-Punkt mit weißem Kern & dunklem Ring
                 cityCtx.beginPath();
-                cityCtx.arc(sx, sy, 2.0, 0, Math.PI * 2);
+                cityCtx.arc(sx, sy, dotR, 0, Math.PI * 2);
                 cityCtx.fillStyle = '#ffffff';
                 cityCtx.fill();
-                cityCtx.strokeStyle = '#1a1a1a';
-                cityCtx.lineWidth = 1.0;
+                cityCtx.strokeStyle = isMajor ? '#000000' : '#1a1a1a';
+                cityCtx.lineWidth = isMajor ? 1.2 : 0.9;
                 cityCtx.stroke();
 
                 // Lokale Temperatur ermitteln
                 const real = getInterpolatedData(city.lat, city.lng);
                 const tempStr = Math.round(real.t) + '°';
 
-                // Edler, dezenter Stadtname zentriert oberhalb
+                // Edler, lesbarer Ortsname zentriert oberhalb
                 cityCtx.textAlign = 'center';
-                cityCtx.shadowColor = 'rgba(255, 255, 255, 0.90)';
+                cityCtx.shadowColor = 'rgba(255, 255, 255, 0.92)';
                 cityCtx.shadowBlur = 3.0;
-                cityCtx.fillStyle = '#181818';
-                cityCtx.font = '500 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-                cityCtx.fillText(city.name, sx, sy - 6);
+                cityCtx.fillStyle = '#141414';
+                const fontWeight = isMajor ? '700' : (isMedium ? '600' : '500');
+                const fontSize = isMajor ? '11px' : (isMedium ? '10px' : '9.5px');
+                cityCtx.font = `${fontWeight} ${fontSize} -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+                cityCtx.fillText(city.name, sx, sy - (isMajor ? 6.5 : 5.5));
 
                 // Kräftige, klare Temperatur-Anzeige direkt unterhalb (wie bei Windy: Geneva / 18°)
-                cityCtx.font = '600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+                cityCtx.font = `600 ${isMajor ? '11px' : '10px'} -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
                 cityCtx.fillStyle = '#111111';
-                cityCtx.fillText(tempStr, sx, sy + 8);
+                cityCtx.fillText(tempStr, sx, sy + (isMajor ? 8.5 : 7.5));
                 cityCtx.shadowColor = 'transparent';
             }
             cityCtx.restore();
@@ -9763,15 +9780,18 @@
                     }
                 }
 
-                // Nächste bekannte Stadt ermitteln oder Koordinaten anzeigen
+                // Nächste bekannte Stadt / Ortschaft ermitteln oder Koordinaten anzeigen
                 let nearestCity = null;
                 let minDistSq = Infinity;
                 if (typeof citiesData !== 'undefined' && citiesData && citiesData.length > 0) {
-                    const checkCount = Math.min(citiesData.length, 500);
-                    for (let i = 0; i < checkCount; i++) {
+                    const clickLat = clickedPopupPoint.lat;
+                    const clickLng = clickedPopupPoint.lng;
+                    const cosLat = Math.cos(clickLat * Math.PI / 180);
+                    for (let i = 0; i < citiesData.length; i++) {
                         const c = citiesData[i];
-                        const dLat = c.lat - clickedPopupPoint.lat;
-                        const dLng = (c.lng - clickedPopupPoint.lng) * Math.cos(c.lat * Math.PI / 180);
+                        const dLat = c.lat - clickLat;
+                        if (Math.abs(dLat) > 0.6) continue; // Schneller Bounding-Box Vorabfilter
+                        const dLng = (c.lng - clickLng) * cosLat;
                         const dSq = dLat * dLat + dLng * dLng;
                         if (dSq < minDistSq) {
                             minDistSq = dSq;
@@ -9779,8 +9799,8 @@
                         }
                     }
                 }
-                const pName = (nearestCity && minDistSq < 0.5) ? nearestCity.name : "Ausgewählter Ort";
-                const pCountry = (nearestCity && minDistSq < 0.5) ? nearestCity.country : "";
+                const pName = (nearestCity && minDistSq < 0.25) ? nearestCity.name : "Ausgewählter Ort";
+                const pCountry = (nearestCity && minDistSq < 0.25) ? nearestCity.country : "";
                 if (dSqPv >= 0.08) {
                     showLocationForecast(clickedPopupPoint.lat, clickedPopupPoint.lng, pName, pCountry);
                 }
