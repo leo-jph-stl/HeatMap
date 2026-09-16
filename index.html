@@ -1962,8 +1962,10 @@
         // Ambient Light
         scene.add(new THREE.AmbientLight(0xffffff, 1.0));
 
-        // BASE EARTH SPHERE
+        // BASE EARTH SPHERE & SURFACE HEIGHTS (Konsistente 3D-Geometrie für Null-Parallaxe)
         const earthRadius = 100;
+        const surfaceRadius = earthRadius + 0.35;      // Exakte Oberflächenhöhe für Kacheln, Städte & Marker
+        const vectorLineRadius = surfaceRadius + 0.015; // Minimaler Versatz für Vektoren (kein Parallaxen-Schweben)
         const earthGeometry = new THREE.SphereGeometry(earthRadius, 128, 128);
         const textureLoader = new THREE.TextureLoader();
         // High-res dark earth texture from three-globe
@@ -2239,7 +2241,7 @@
         }
 
         // ULTRA-HIGH-DEFINITION TEMPERATUR-SHADER: C2 QUINTIC SMOOTHING & VEKTOR-GLÄTTUNG
-        const dataGeometry = new THREE.SphereGeometry(earthRadius + 0.3, 128, 128);
+        const dataGeometry = new THREE.SphereGeometry(surfaceRadius - 0.01, 128, 128);
         const dataMaterial = new THREE.ShaderMaterial({
             vertexShader: `
                 varying vec2 vUv;
@@ -2394,7 +2396,7 @@
             return Math.floor((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * Math.pow(2, zoom));
         }
 
-        function getTileGeometry(x, y, z, segs = 8, radius = earthRadius + 0.35) {
+        function getTileGeometry(x, y, z, segs = 8, radius = surfaceRadius) {
             const nTiles = Math.pow(2, z);
             const positions = [];
             const uvs = [];
@@ -2457,7 +2459,7 @@
                 tex.minFilter = THREE.LinearFilter;
                 tex.magFilter = THREE.LinearFilter;
 
-                const geom = getTileGeometry(x, y, z, 8, earthRadius + 0.35);
+                const geom = getTileGeometry(x, y, z, 8, surfaceRadius);
                 const mat = new THREE.ShaderMaterial({
                     vertexShader: `
                         varying vec2 vUv;
@@ -2773,7 +2775,7 @@
                 tex.minFilter = THREE.LinearFilter;
                 tex.magFilter = THREE.LinearFilter;
 
-                const geom = getTileGeometry(x, y, z, 8, earthRadius + 0.32);
+                const geom = getTileGeometry(x, y, z, 8, surfaceRadius);
                 let mat;
 
                 let tileMinElev = 0;
@@ -3269,7 +3271,7 @@
                         clickedPopupPoint = { lat: anim.targetLat, lng: anim.targetLng };
                         updatePopupContent();
                         
-                        const localP = latLngToSphereVertex(anim.targetLat, anim.targetLng, earthRadius);
+                        const localP = latLngToSphereVertex(anim.targetLat, anim.targetLng, surfaceRadius);
                         const worldP = localP.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
                         const pProj = worldP.clone().project(camera);
                         popupEl.style.display = 'block';
@@ -3331,17 +3333,40 @@
             return { lat, lng };
         }
 
-        // ECHTE 3D-VEKTORGRENZEN (GPU-gerendert - kein Pixeln beim Zoomen!)
-        function create3DGeoJsonLines(geojson, radius, colorHex, opacity) {
+        // SPHÄRISCHE SEHNEN-SUBDIVISION (Verhindert das Einsinken langer Liniensegmente in die Kugel)
+        function addSegmentSubdivided(p1, p2, radius, positions, maxStepDeg = 0.5) {
+            const lng1 = p1[0], lat1 = p1[1];
+            let lng2 = p2[0], lat2 = p2[1];
+            let dLng = lng2 - lng1;
+            if (dLng > 180) lng2 -= 360;
+            if (dLng < -180) lng2 += 360;
+            const distDeg = Math.hypot(lat2 - lat1, lng2 - lng1);
+            if (distDeg <= maxStepDeg) {
+                const v1 = latLngToSphereVertex(lat1, lng1, radius);
+                const v2 = latLngToSphereVertex(lat2, lng2, radius);
+                positions.push(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
+                return;
+            }
+            const steps = Math.min(30, Math.max(1, Math.ceil(distDeg / maxStepDeg)));
+            let prevV = latLngToSphereVertex(lat1, lng1, radius);
+            for (let s = 1; s <= steps; s++) {
+                const t = s / steps;
+                const curLat = lat1 + (lat2 - lat1) * t;
+                let curLng = lng1 + (lng2 - lng1) * t;
+                if (curLng > 180) curLng -= 360;
+                if (curLng < -180) curLng += 360;
+                const nextV = latLngToSphereVertex(curLat, curLng, radius);
+                positions.push(prevV.x, prevV.y, prevV.z, nextV.x, nextV.y, nextV.z);
+                prevV = nextV;
+            }
+        }
+
+        // ECHTE 3D-VEKTORGRENZEN (GPU-gerendert - kein Pixeln & keine Schwebeparallaxe!)
+        function create3DGeoJsonLines(geojson, radius, colorHex, opacity, renderOrder = 3) {
             const positions = [];
             function addRing(ring) {
                 for (let i = 0; i < ring.length - 1; i++) {
-                    const p1 = ring[i];
-                    const p2 = ring[i + 1];
-                    const v1 = latLngToSphereVertex(p1[1], p1[0], radius);
-                    const v2 = latLngToSphereVertex(p2[1], p2[0], radius);
-
-                    positions.push(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
+                    addSegmentSubdivided(ring[i], ring[i + 1], radius, positions, 0.5);
                 }
             }
 
@@ -3369,7 +3394,7 @@
             });
             const lineMesh = new THREE.LineSegments(geom, mat);
             lineMesh.rotation.y = -Math.PI / 2;
-            lineMesh.renderOrder = 3;
+            lineMesh.renderOrder = renderOrder;
             scene.add(lineMesh);
             return lineMesh;
         }
@@ -3394,40 +3419,62 @@
                 });
         }
 
-        fetchNaturalEarthGeoJson('ne_50m_admin_0_countries.geojson')
+        // 1. ECHTE LÄNDERGRENZEN AUF LAND (Keine Überzeichnung von Küsten als Grenzen)
+        let landBordersMesh = null;
+        fetchNaturalEarthGeoJson('ne_10m_admin_0_boundary_lines_land.geojson')
             .then(data => {
-                if (data) create3DGeoJsonLines(data, earthRadius + 0.7, 0x262626, 0.52); // Dezentere, weniger dicke Ländergrenzen
-            });
-            
-        fetchNaturalEarthGeoJson('ne_50m_admin_1_states_provinces_lines.geojson')
-            .then(data => {
-                if (data) create3DGeoJsonLines(data, earthRadius + 0.7, 0x3a3a3a, 0.20); // Noch dünnere, sehr feine Bundesstaatengrenzen
+                if (data) {
+                    landBordersMesh = create3DGeoJsonLines(data, vectorLineRadius, 0x262626, 0.52);
+                } else {
+                    fetchNaturalEarthGeoJson('ne_50m_admin_0_boundary_lines_land.geojson')
+                        .then(d50 => {
+                            if (d50) landBordersMesh = create3DGeoJsonLines(d50, vectorLineRadius, 0x262626, 0.52);
+                        });
+                }
             });
 
-        // 3D-BINNENSEEN & GEWÄSSER (Genfersee, Bodensee, Gardasee etc.)
+        // 2. BUNDESSTAATEN- & PROVINZGRENZEN
+        let statesMesh = null;
+        fetchNaturalEarthGeoJson('ne_50m_admin_1_states_provinces_lines.geojson')
+            .then(data => {
+                if (data) statesMesh = create3DGeoJsonLines(data, vectorLineRadius, 0x3a3a3a, 0.20);
+            });
+
+        // 3. DYNAMISCHE KÜSTENLINIEN (LOD: 50m Sofort-Laden + 10m Ultra-Detail bei Nah-Zoom)
+        let coastMesh50 = null;
+        let coastMesh10 = null;
+        fetchNaturalEarthGeoJson('ne_50m_coastline.geojson')
+            .then(data => {
+                if (data) coastMesh50 = create3DGeoJsonLines(data, vectorLineRadius, 0x1e3a5f, 0.40);
+            });
+        fetchNaturalEarthGeoJson('ne_10m_coastline.geojson')
+            .then(data => {
+                if (data) {
+                    coastMesh10 = create3DGeoJsonLines(data, vectorLineRadius, 0x1e3a5f, 0.45);
+                    coastMesh10.visible = false;
+                }
+            });
+
+        // 4. 3D-BINNENSEEN & GEWÄSSER (Genfersee, Bodensee, Gardasee etc.)
         let lakesMesh = null;
         if (typeof lakesData !== 'undefined') {
-            lakesMesh = create3DGeoJsonLines(lakesData, earthRadius + 0.68, 0x1a334d, 0.48);
+            lakesMesh = create3DGeoJsonLines(lakesData, vectorLineRadius - 0.003, 0x1a334d, 0.48);
         } else {
             fetchNaturalEarthGeoJson('ne_50m_lakes.geojson')
                 .then(data => {
-                    if (data) lakesMesh = create3DGeoJsonLines(data, earthRadius + 0.68, 0x1a334d, 0.48);
+                    if (data) lakesMesh = create3DGeoJsonLines(data, vectorLineRadius - 0.003, 0x1a334d, 0.48);
                 });
         }
 
-        // 3D-FLÜSSE & STROMNETZE (Rhein, Donau, Rhone, Elbe, Po, etc.)
+        // 5. 3D-FLÜSSE & STROMNETZE (Rhein, Donau, Rhone, Elbe, Po, etc.)
         let riversMesh = null;
         function initRivers() {
             if (typeof riversData === 'undefined' || !riversData) return;
             const positions = [];
-            const r = earthRadius + 0.66;
+            const r = vectorLineRadius - 0.003;
             function addLine(line) {
                 for (let i = 0; i < line.length - 1; i++) {
-                    const p1 = line[i];
-                    const p2 = line[i + 1];
-                    const v1 = latLngToSphereVertex(p1[1], p1[0], r);
-                    const v2 = latLngToSphereVertex(p2[1], p2[0], r);
-                    positions.push(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
+                    addSegmentSubdivided(line[i], line[i + 1], r, positions, 0.5);
                 }
             }
             for (let j = 0; j < riversData.length; j++) {
@@ -3456,20 +3503,20 @@
         }
         initRivers();
 
-        // 3D-STRASSENNETZ & FERNSTRASSEN (Verbindungsachsen zwischen Metropolen)
+        // 6. 3D-STRASSENNETZ & FERNSTRASSEN (Verbindungsachsen zwischen Metropolen)
         let roadsMesh = null;
         if (typeof roadsData !== 'undefined') {
-            roadsMesh = create3DGeoJsonLines(roadsData, earthRadius + 0.67, 0x4a3d33, 0.32);
+            roadsMesh = create3DGeoJsonLines(roadsData, vectorLineRadius - 0.003, 0x4a3d33, 0.32);
             roadsMesh.visible = false;
         }
 
-        // 3D-STADTGEBIETE & KONTUREN (Inhalt bleibt dezent & hell wie in Bild 1)
+        // 7. 3D-STADTGEBIETE & KONTUREN (Inhalt bleibt dezent & hell wie in Bild 1)
         let urbanFillMesh = null;
         let urbanLineMesh = null;
         function initUrbanAreas() {
             if (typeof urbanFillVerts !== 'undefined' && typeof urbanLineVerts !== 'undefined') {
-                const fillRadius = earthRadius + 0.63;
-                const lineRadius = earthRadius + 0.65;
+                const fillRadius = surfaceRadius + 0.005;
+                const lineRadius = surfaceRadius + 0.008;
 
                 // 1. Stadtinhalt / Bebaute Flächen (dezent, transparent - wie in Bild 1)
                 const fillPos = new Float32Array(urbanFillVerts.length);
@@ -3550,7 +3597,7 @@
                     const lng = item[2];
                     const rank = item[3];
                     const country = item[4] || '';
-                    const localV = latLngToSphereVertex(lat, lng, earthRadius + 0.7);
+                    const localV = latLngToSphereVertex(lat, lng, surfaceRadius);
                     // Globus-Drehung (y = -PI/2): X_world = -Z_local, Z_world = X_local
                     const worldPos = new THREE.Vector3(-localV.z, localV.y, localV.x);
                     const name = cityGermanNames[rawName] || rawName;
@@ -3577,7 +3624,7 @@
                     citiesData = data.features.map(f => {
                         const lat = f.properties.latitude;
                         const lng = f.properties.longitude;
-                        const localV = latLngToSphereVertex(lat, lng, earthRadius + 0.7);
+                        const localV = latLngToSphereVertex(lat, lng, surfaceRadius);
                         const worldPos = new THREE.Vector3(-localV.z, localV.y, localV.x);
                         const rawName = f.properties.name;
                         const name = cityGermanNames[rawName] || rawName;
@@ -3638,7 +3685,7 @@
             target.name = sourceData.location.name || target.name;
             target.fullName = sourceData.location.name ? ("☀️ " + sourceData.location.name) : defaultFullName;
             target.cityName = sourceData.location.name || target.cityName;
-            const v = latLngToSphereVertex(target.lat, target.lng, earthRadius + 0.75);
+            const v = latLngToSphereVertex(target.lat, target.lng, surfaceRadius);
             target.worldPos = new THREE.Vector3(-v.z, v.y, v.x);
         }
         function syncFoxessLocationFromData() {
@@ -8487,6 +8534,28 @@
             cityCtx.clearRect(0, 0, screenW, screenH);
             const dist = camera.position.length();
 
+            // Küstenlinien-Detailgrad dynamisch überblenden (50m Basis + 10m Ultra-Detail bei Nah-Zoom)
+            if (coastMesh10 && coastMesh50) {
+                if (dist <= 135) {
+                    coastMesh10.visible = true;
+                    coastMesh10.material.opacity = 0.45;
+                    coastMesh50.visible = false;
+                } else if (dist <= 165) {
+                    const t = (165 - dist) / 30;
+                    coastMesh10.visible = true;
+                    coastMesh10.material.opacity = t * 0.45;
+                    coastMesh50.visible = true;
+                    coastMesh50.material.opacity = (1 - t) * 0.40;
+                } else {
+                    coastMesh10.visible = false;
+                    coastMesh50.visible = true;
+                    coastMesh50.material.opacity = 0.40;
+                }
+            } else if (coastMesh50) {
+                coastMesh50.visible = true;
+                coastMesh50.material.opacity = 0.40;
+            }
+
             // Straßennetz dezent bei Zoom einblenden
             if (roadsMesh) {
                 const roadsAlpha = Math.max(0, Math.min((155 - dist) / 30, 0.32));
@@ -8562,7 +8631,7 @@
             const cx = camera.position.x;
             const cy = camera.position.y;
             const cz = camera.position.z;
-            const horizonThreshold = (earthRadius / dist) - 0.02;
+            const horizonThreshold = (surfaceRadius / dist) - 0.02;
 
             cityCtx.save();
             cityCtx.globalAlpha = fadeAlpha;
@@ -8572,7 +8641,7 @@
 
             // 1. PV-ANLAGE HOCHHEIM (Leuchtender Solar-Marker)
             if (dist < 210 && PV_SYSTEM_LOCATION.worldPos) {
-                const cosAnglePv = (PV_SYSTEM_LOCATION.worldPos.x * cx + PV_SYSTEM_LOCATION.worldPos.y * cy + PV_SYSTEM_LOCATION.worldPos.z * cz) / (100.7 * dist);
+                const cosAnglePv = (PV_SYSTEM_LOCATION.worldPos.x * cx + PV_SYSTEM_LOCATION.worldPos.y * cy + PV_SYSTEM_LOCATION.worldPos.z * cz) / (surfaceRadius * dist);
                 if (cosAnglePv >= horizonThreshold) {
                     tempCityVec.copy(PV_SYSTEM_LOCATION.worldPos).project(camera);
                     if (tempCityVec.z <= 1.0) {
@@ -8636,7 +8705,7 @@
 
             // 2. PV-ANLAGE ZUN (Türkis/Goldener Leucht-Marker)
             if (dist < 210 && ZUN_PV_SYSTEM_LOCATION && ZUN_PV_SYSTEM_LOCATION.worldPos) {
-                const cosAngleZun = (ZUN_PV_SYSTEM_LOCATION.worldPos.x * cx + ZUN_PV_SYSTEM_LOCATION.worldPos.y * cy + ZUN_PV_SYSTEM_LOCATION.worldPos.z * cz) / (100.7 * dist);
+                const cosAngleZun = (ZUN_PV_SYSTEM_LOCATION.worldPos.x * cx + ZUN_PV_SYSTEM_LOCATION.worldPos.y * cy + ZUN_PV_SYSTEM_LOCATION.worldPos.z * cz) / (surfaceRadius * dist);
                 if (cosAngleZun >= horizonThreshold) {
                     tempCityVec.copy(ZUN_PV_SYSTEM_LOCATION.worldPos).project(camera);
                     if (tempCityVec.z <= 1.0) {
@@ -8701,7 +8770,7 @@
 
                 // Geometrisch exakte Horizont-Prüfung für ALLE Zoomstufen (selbst bei tiefstem Zoom dist <= 101.5):
                 // Winkel zwischen Stadt und Kamera: cos(theta) = (P · C) / (|P| * |C|)
-                const cosAngle = (city.worldPos.x * cx + city.worldPos.y * cy + city.worldPos.z * cz) / (100.7 * dist);
+                const cosAngle = (city.worldPos.x * cx + city.worldPos.y * cy + city.worldPos.z * cz) / (surfaceRadius * dist);
                 if (cosAngle < horizonThreshold) continue;
 
                 // Auf Bildschirm projizieren
@@ -9094,6 +9163,12 @@
             if (currentMode === 'topo' && topoTileGroup && topoTileGroup.children.length > 0) {
                 hits = zoomRaycaster.intersectObjects(topoTileGroup.children, false);
             }
+            if (hits.length === 0 && hillshadeGroup && hillshadeGroup.children.length > 0) {
+                hits = zoomRaycaster.intersectObjects(hillshadeGroup.children, false);
+            }
+            if (hits.length === 0 && dataMesh) {
+                hits = zoomRaycaster.intersectObject(dataMesh);
+            }
             if (hits.length === 0) {
                 hits = zoomRaycaster.intersectObject(earthMesh);
             }
@@ -9102,7 +9177,7 @@
 
             if (hits.length > 0) {
                 const hitPoint = hits[0].point;
-                const R = Math.max(earthRadius, hitPoint.length());
+                const R = Math.max(surfaceRadius, hitPoint.length());
                 const u_p = hitPoint.clone().normalize();
 
                 // Exakte sphärische Trigonometrie: Hält den Punkt unter dem Cursor fest verankert (Pin-to-Cursor)
@@ -9772,8 +9847,8 @@
             let directTileElev = null;
 
             if (currentMode === 'topo' && topoTileGroup && topoTileGroup.children.length > 0) {
-                // Präziser Raycast direkt gegen die sichtbaren Kacheln (R = earthRadius + 0.32)
-                // Verhindert den 20-Kilometer-Parallaxenfehler, der beim Durchschießen auf die Basiskugel entsteht!
+                // Präziser Raycast direkt gegen die sichtbaren Kacheln (R = surfaceRadius)
+                // Verhindert den Parallaxenfehler, der beim Durchschießen auf die Basiskugel entsteht!
                 const topoHits = raycaster.intersectObjects(topoTileGroup.children, false);
                 if (topoHits.length > 0) {
                     const hit = topoHits[0];
@@ -9782,6 +9857,22 @@
                     if (hit.uv && hit.object) {
                         directTileElev = getExactTileElevation(hit.object, hit.uv);
                     }
+                }
+            }
+
+            if (!pt && hillshadeGroup && hillshadeGroup.children.length > 0) {
+                const hillHits = raycaster.intersectObjects(hillshadeGroup.children, false);
+                if (hillHits.length > 0) {
+                    pt = hillHits[0].point.clone();
+                    pt.applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
+                }
+            }
+
+            if (!pt && dataMesh) {
+                const dataHits = raycaster.intersectObject(dataMesh);
+                if (dataHits.length > 0) {
+                    pt = dataHits[0].point.clone();
+                    pt.applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
                 }
             }
 
@@ -9794,7 +9885,7 @@
             }
             
             if (pt) {
-                const r = (currentMode === 'topo') ? (earthRadius + 0.32) : earthRadius;
+                const r = surfaceRadius;
                 clickedPopupPoint = sphereVertexToLatLng(pt, r);
                 clickedPopupTileElevation = directTileElev;
                 popupEl.style.display = 'block';
@@ -9865,7 +9956,7 @@
         // Update popup position when rotating
         controls.addEventListener('change', () => {
             if (clickedPopupPoint) {
-                const localPos = latLngToSphereVertex(clickedPopupPoint.lat, clickedPopupPoint.lng, earthRadius);
+                const localPos = latLngToSphereVertex(clickedPopupPoint.lat, clickedPopupPoint.lng, surfaceRadius);
                 const worldPos = localPos.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
                 
                 const dotProduct = worldPos.clone().normalize().dot(camera.position.clone().normalize());
