@@ -3281,11 +3281,13 @@
                     }
                 }
             } else {
-                // Exakte physikalische 1:1 Grab-and-Drag Rotation für jeden Zoom-Level:
+                // Exakte physikalische 1:1 Grab-and-Drag Rotation & gleichmäßige Zoom-Geschwindigkeit für jeden Höhenbereich:
                 const dist = camera.position.length();
-                const h = Math.max(dist - earthRadius, 1);
+                const h = Math.max(dist - earthRadius, 0.5);
                 const tanHalfFov = Math.tan((camera.fov * Math.PI) / 360);
                 controls.rotateSpeed = (h * tanHalfFov) / (Math.PI * earthRadius);
+                const normalizedAlt = h / dist;
+                controls.zoomSpeed = Math.max(0.06, Math.min(0.85, 1.15 * normalizedAlt));
                 controls.dampingFactor = dist < 140 ? 0.16 : 0.08;
                 controls.update();
             }
@@ -9046,7 +9048,13 @@
                 const mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
                 
                 zoomRaycaster.setFromCamera({ x: mouseX, y: mouseY }, camera);
-                const hits = zoomRaycaster.intersectObject(earthMesh);
+                let hits = [];
+                if (currentMode === 'topo' && topoTileGroup && topoTileGroup.children.length > 0) {
+                    hits = zoomRaycaster.intersectObjects(topoTileGroup.children, false);
+                }
+                if (hits.length === 0) {
+                    hits = zoomRaycaster.intersectObject(earthMesh);
+                }
                 
                 if (hits.length > 0) {
                     const hitPoint = hits[0].point;
@@ -9055,10 +9063,12 @@
                     const camUnit = camPos.clone().normalize();
                     const dist = camPos.length();
                     
-                    // Sanfter Richtungsversatz zur Mausposition hin (für Mausrad und Präzisions-Touchpads)
+                    // Sanfter Richtungsversatz zur Mausposition hin (skaliert mit der Resthöhe,
+                    // damit die Kamera im Nahbereich nicht ruckartig oder übermäßig verschiebt)
                     const diff = targetUnit.clone().sub(camUnit);
                     const delta = Math.abs(event.deltaY);
-                    const shiftAlpha = Math.min(0.25, Math.max(0.02, delta * 0.0012));
+                    const altRatio = Math.max(0.02, Math.min(1.0, (dist - earthRadius) / 120.0));
+                    const shiftAlpha = Math.min(0.12, delta * 0.0006) * altRatio;
                     
                     const newCamUnit = camUnit.addScaledVector(diff, shiftAlpha).normalize();
                     camera.position.copy(newCamUnit.multiplyScalar(dist));
@@ -9559,8 +9569,10 @@
         let isPointerDown = false;
         let pointerStartX = 0;
         let pointerStartY = 0;
+        let pointerStartTime = 0;
         let isPointerDragging = false;
         let pointerDownType = 'mouse';
+        let lastSelectionTime = 0;
         // (DRAG_THRESHOLD_SQ oben global definiert)
 
         function abortCameraAnimation() {
@@ -9575,6 +9587,7 @@
             isPointerDown = true;
             pointerStartX = e.clientX;
             pointerStartY = e.clientY;
+            pointerStartTime = performance.now();
             isPointerDragging = false;
             pointerDownType = e.pointerType || 'mouse';
             // Wenn der User bewusst auf die Karte klickt: Animation abbrechen
@@ -9596,12 +9609,61 @@
             }
         }, { passive: true });
 
-        window.addEventListener('pointerup', () => {
+        window.addEventListener('pointerup', (e) => {
+            if (!isPointerDown) return;
+            const dx = e.clientX - pointerStartX;
+            const dy = e.clientY - pointerStartY;
+            const threshold = DRAG_THRESHOLD_SQ[pointerDownType] ?? DRAG_THRESHOLD_SQ.mouse;
+            const moved = (dx * dx + dy * dy) > threshold;
+            const duration = performance.now() - pointerStartTime;
             isPointerDown = false;
+
+            // Auf Smartphones/Tablets unterdrückt Three.js OrbitControls preventDefault() auf touchstart das Standard-Click-Event.
+            // Daher werten wir echte Taps (kein Drag, kurze Dauer < 500ms) direkt hier im pointerup aus!
+            if (!isPointerDragging && !moved && duration < 500) {
+                handleMapSelection(e.clientX, e.clientY, e.target);
+            }
         }, { passive: true });
 
         window.addEventListener('pointercancel', () => {
             isPointerDown = false;
+        }, { passive: true });
+
+        // Touch-Fallback für mobile Browser (iOS Safari / WebViews)
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchStartTime = 0;
+        let touchMoved = false;
+
+        window.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+                touchStartTime = performance.now();
+                touchMoved = false;
+            }
+        }, { passive: true });
+
+        window.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 1) {
+                const dx = e.touches[0].clientX - touchStartX;
+                const dy = e.touches[0].clientY - touchStartY;
+                if (dx * dx + dy * dy > (DRAG_THRESHOLD_SQ.touch || 400)) {
+                    touchMoved = true;
+                }
+            }
+        }, { passive: true });
+
+        window.addEventListener('touchend', (e) => {
+            if (e.changedTouches.length > 0 && !touchMoved) {
+                const t = e.changedTouches[0];
+                const dx = t.clientX - touchStartX;
+                const dy = t.clientY - touchStartY;
+                const duration = performance.now() - touchStartTime;
+                if (dx * dx + dy * dy <= (DRAG_THRESHOLD_SQ.touch || 400) && duration < 500) {
+                    handleMapSelection(t.clientX, t.clientY, e.target);
+                }
+            }
         }, { passive: true });
 
         // Sobald der User den Globus rotiert, scrollt oder verschiebt: Temperatur-Popup sofort schließen & Animation stoppen!
@@ -9613,24 +9675,34 @@
             }
         });
 
-        // Handle Click for popup & forecast (NUR bei echtem Tippen/Klicken)
-        window.addEventListener('click', (event) => {
-            // Wisch- oder Drehgesten ignorieren (KEIN unbeabsichtigtes Popup beim Scrollen!)
-            if (isPointerDragging) return;
+        // Zentrale Auswertung von Klicks und Taps auf dem 3D-Globus
+        function handleMapSelection(clientX, clientY, target) {
+            const now = performance.now();
+            if (now - lastSelectionTime < 350) return; // Debounce verhindert doppeltes Triggern (pointerup + click / touchend)
+            lastSelectionTime = now;
 
-            // Klicks auf Suchleiste, Prognose-Card, PV-Card oder Bottom-Dock ignorieren
-            if (event.target.closest('#search-container') || 
-                event.target.closest('#forecast-container') || 
-                event.target.closest('#pv-container') || 
-                event.target.closest('#timeline-container')) return;
+            // Klicks auf Suchleiste, Prognose-Card, PV-Card, Overlays oder Bottom-Dock ignorieren
+            if (target && typeof target.closest === 'function') {
+                if (target.closest('#search-container') || 
+                    target.closest('#forecast-container') || 
+                    target.closest('#pv-container') || 
+                    target.closest('#pv-login-overlay') || 
+                    target.closest('#pv-history-container') || 
+                    target.closest('#popup') || 
+                    target.closest('#timeline-container')) {
+                    return;
+                }
+            }
             
             // Bei Klick außerhalb der Suche Dropdown schließen
-            if (!event.target.closest('#search-container')) {
-                searchSuggestions.style.display = 'none';
+            if (!target || typeof target.closest !== 'function' || !target.closest('#search-container')) {
+                if (typeof searchSuggestions !== 'undefined' && searchSuggestions) {
+                    searchSuggestions.style.display = 'none';
+                }
             }
 
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            mouse.x = (clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(clientY / window.innerHeight) * 2 + 1;
             
             raycaster.setFromCamera(mouse, camera);
 
@@ -9664,15 +9736,15 @@
                 clickedPopupPoint = sphereVertexToLatLng(pt, r);
                 clickedPopupTileElevation = directTileElev;
                 popupEl.style.display = 'block';
-                popupEl.style.left = event.clientX + 'px';
-                popupEl.style.top = event.clientY + 'px';
+                popupEl.style.left = clientX + 'px';
+                popupEl.style.top = clientY + 'px';
                 updatePopupContent();
 
                 // PV-Anlage 1 Klick-Erkennung (bei Klick im Umkreis der Anlage) - vor Login
                 // sind lat/lng null (siehe PV_SYSTEM_LOCATION weiter oben), daher explizit ausschließen
                 // statt die Distanzformel mit dem null->0-Koerzierungs-Nebeneffekt laufen zu lassen.
                 let dSqPv = Infinity;
-                if (PV_SYSTEM_LOCATION.lat !== null) {
+                if (PV_SYSTEM_LOCATION && PV_SYSTEM_LOCATION.lat !== null) {
                     const dLatPv = clickedPopupPoint.lat - PV_SYSTEM_LOCATION.lat;
                     const dLngPv = (clickedPopupPoint.lng - PV_SYSTEM_LOCATION.lng) * Math.cos(clickedPopupPoint.lat * Math.PI / 180);
                     dSqPv = dLatPv * dLatPv + dLngPv * dLngPv;
@@ -9694,15 +9766,17 @@
                 // Nächste bekannte Stadt ermitteln oder Koordinaten anzeigen
                 let nearestCity = null;
                 let minDistSq = Infinity;
-                const checkCount = Math.min(citiesData.length, 500);
-                for (let i = 0; i < checkCount; i++) {
-                    const c = citiesData[i];
-                    const dLat = c.lat - clickedPopupPoint.lat;
-                    const dLng = (c.lng - clickedPopupPoint.lng) * Math.cos(c.lat * Math.PI / 180);
-                    const dSq = dLat * dLat + dLng * dLng;
-                    if (dSq < minDistSq) {
-                        minDistSq = dSq;
-                        nearestCity = c;
+                if (typeof citiesData !== 'undefined' && citiesData && citiesData.length > 0) {
+                    const checkCount = Math.min(citiesData.length, 500);
+                    for (let i = 0; i < checkCount; i++) {
+                        const c = citiesData[i];
+                        const dLat = c.lat - clickedPopupPoint.lat;
+                        const dLng = (c.lng - clickedPopupPoint.lng) * Math.cos(c.lat * Math.PI / 180);
+                        const dSq = dLat * dLat + dLng * dLng;
+                        if (dSq < minDistSq) {
+                            minDistSq = dSq;
+                            nearestCity = c;
+                        }
                     }
                 }
                 const pName = (nearestCity && minDistSq < 0.5) ? nearestCity.name : "Ausgewählter Ort";
@@ -9714,6 +9788,13 @@
                 clickedPopupPoint = null;
                 popupEl.style.display = 'none';
             }
+        }
+
+        // Standard-Click-Listener für Desktop-Mausklicks
+        window.addEventListener('click', (event) => {
+            // Wisch- oder Drehgesten ignorieren (KEIN unbeabsichtigtes Popup beim Scrollen!)
+            if (isPointerDragging) return;
+            handleMapSelection(event.clientX, event.clientY, event.target);
         });
 
         // Update popup position when rotating
