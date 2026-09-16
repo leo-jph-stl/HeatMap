@@ -155,10 +155,10 @@ async function run() {
 
         const fileContent = `// Globale Sonneneinstrahlung (GHI, Downward Shortwave Radiation) aus GFS 0.25°.
 // Automatisch generiert von fetch_solar_timeline.js
-const solarMetadata = ${JSON.stringify(metadata)};
-const solarB64 = "${base64Str}";
+var solarMetadata = ${JSON.stringify(metadata)};
+var solarB64 = "${base64Str}";
 
-const solarData = (() => {
+var solarData = (() => {
     const raw = typeof atob !== 'undefined' ? atob(solarB64) : Buffer.from(solarB64, 'base64').toString('binary');
     const len = raw.length;
     const bytes = new Uint8Array(len);
@@ -177,6 +177,7 @@ const solarData = (() => {
         };
     });
 })();
+solarB64 = null;
 `;
 
         fs.writeFileSync('solar_data.js', fileContent);
