@@ -9045,7 +9045,7 @@
             searchInput.focus();
         });
 
-        // CURSOR-BASIERTES ZOOMEN (Zoom to Mouse Position)
+        // CURSOR-BASIERTES ZOOMEN (Echtes Pin-to-Cursor Zooming auf der Kugeloberfläche)
         const zoomRaycaster = new THREE.Raycaster();
         window.addEventListener('wheel', (event) => {
             if (cameraAnimation) {
@@ -9053,47 +9053,92 @@
                 controls.enabled = true;
                 userNavigatedManually = true;
             }
+            // Beim Scrollen über UI-Elementen (Prognosekarte, PV-Fenster, Suche etc.) normales Scrollen erlauben
             if (event.target && typeof event.target.closest === 'function' && (
                 event.target.closest('#search-container') || event.target.closest('#forecast-container') || 
-                event.target.closest('#pv-container') || event.target.closest('#ui-container') || 
-                event.target.closest('#timeline-container'))) {
+                event.target.closest('#pv-container') || event.target.closest('#pv-history-container') || 
+                event.target.closest('#pv-login-overlay') || event.target.closest('#ui-container') || 
+                event.target.closest('#timeline-container') || event.target.closest('#popup'))) {
                 return;
             }
 
-            if (event.deltaY < 0) { // Nur beim Hineinzoomen den Cursor-Punkt anvisieren
-                const mouseX = (event.clientX / window.innerWidth) * 2 - 1;
-                const mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
-                
-                zoomRaycaster.setFromCamera({ x: mouseX, y: mouseY }, camera);
-                let hits = [];
-                if (currentMode === 'topo' && topoTileGroup && topoTileGroup.children.length > 0) {
-                    hits = zoomRaycaster.intersectObjects(topoTileGroup.children, false);
+            if (!event.deltaY) return;
+
+            // Browser-Standard und OrbitControls-Mausradzoom abfangen, um pixelgenau zum Cursor zu zoomen
+            event.preventDefault();
+            event.stopImmediatePropagation();
+
+            const d0 = camera.position.length();
+            const h0 = Math.max(d0 - earthRadius, 0.5);
+
+            // Normalisierte Scroll-Stärke (unterstützt Mausrad-Notches und Laptop-Präzisions-Touchpads)
+            const rawDelta = event.deltaMode === 1 ? event.deltaY * 25 : (event.deltaMode === 2 ? event.deltaY * 100 : event.deltaY);
+            const clampedDelta = Math.max(-120, Math.min(120, rawDelta));
+            
+            // Adaptiver Höhenfaktor: In Bodennähe skaliert der Zoom feiner, im Weltall zügiger
+            const altRatio = Math.max(0.04, Math.min(1.0, h0 / 140));
+            const zoomFactor = clampedDelta * 0.0009 * altRatio;
+
+            // Neue Ziel-Distanz
+            const minD = controls.minDistance || 101.5;
+            const maxD = controls.maxDistance || 600;
+            const d1 = Math.max(minD, Math.min(maxD, d0 * (1 + zoomFactor)));
+            if (Math.abs(d1 - d0) < 1e-6) return;
+
+            // Raycast zur Mausposition
+            const mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+            const mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+            zoomRaycaster.setFromCamera({ x: mouseX, y: mouseY }, camera);
+
+            let hits = [];
+            if (currentMode === 'topo' && topoTileGroup && topoTileGroup.children.length > 0) {
+                hits = zoomRaycaster.intersectObjects(topoTileGroup.children, false);
+            }
+            if (hits.length === 0) {
+                hits = zoomRaycaster.intersectObject(earthMesh);
+            }
+
+            const u_c = camera.position.clone().normalize();
+
+            if (hits.length > 0) {
+                const hitPoint = hits[0].point;
+                const R = Math.max(earthRadius, hitPoint.length());
+                const u_p = hitPoint.clone().normalize();
+
+                // Exakte sphärische Trigonometrie: Hält den Punkt unter dem Cursor fest verankert (Pin-to-Cursor)
+                const rayDir = zoomRaycaster.ray.direction.clone().normalize();
+                const cosAlpha = Math.max(-1, Math.min(1, -rayDir.dot(u_c)));
+                const alpha = Math.acos(cosAlpha);
+                const sinAlpha = Math.sin(alpha);
+
+                const cosTheta0 = Math.max(-1, Math.min(1, u_c.dot(u_p)));
+                const theta0 = Math.acos(cosTheta0);
+
+                const sinBeta1 = (d1 / R) * sinAlpha;
+                let deltaTheta = 0;
+
+                if (sinBeta1 < 0.998) {
+                    const beta1 = Math.asin(sinBeta1);
+                    const theta1 = beta1 - alpha;
+                    deltaTheta = theta0 - theta1;
+                } else {
+                    // Beim sehr weiten Herauszoomen am Horizont sanft dämpfen
+                    deltaTheta = theta0 * (1 - d0 / d1);
                 }
-                if (hits.length === 0) {
-                    hits = zoomRaycaster.intersectObject(earthMesh);
-                }
-                
-                if (hits.length > 0) {
-                    const hitPoint = hits[0].point;
-                    const targetUnit = hitPoint.clone().normalize();
-                    const camPos = camera.position;
-                    const camUnit = camPos.clone().normalize();
-                    const dist = camPos.length();
-                    
-                    // Sanfter Richtungsversatz zur Mausposition hin (skaliert mit der Resthöhe,
-                    // damit die Kamera im Nahbereich nicht ruckartig oder übermäßig verschiebt)
-                    const diff = targetUnit.clone().sub(camUnit);
-                    const delta = Math.abs(event.deltaY);
-                    const altRatio = Math.max(0.02, Math.min(1.0, (dist - earthRadius) / 120.0));
-                    const shiftAlpha = Math.min(0.12, delta * 0.0006) * altRatio;
-                    
-                    const newCamUnit = camUnit.addScaledVector(diff, shiftAlpha).normalize();
-                    camera.position.copy(newCamUnit.multiplyScalar(dist));
-                    camera.lookAt(0, 0, 0);
-                    controls.target.set(0, 0, 0);
+
+                // Kamera-Vektor um Rotationsachse (u_c x u_p) drehen
+                const rotAxis = new THREE.Vector3().crossVectors(u_c, u_p);
+                if (rotAxis.lengthSq() > 1e-8 && Math.abs(deltaTheta) > 1e-7) {
+                    rotAxis.normalize();
+                    u_c.applyAxisAngle(rotAxis, deltaTheta);
                 }
             }
-        }, { capture: true, passive: true });
+
+            camera.position.copy(u_c.multiplyScalar(d1));
+            camera.lookAt(0, 0, 0);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        }, { capture: true, passive: false });
 
         // PROGNOSE-FUNKTIONEN (24h / 48h Wettertrend)
         function getTempAtStep(step, lat, lng) {
