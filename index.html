@@ -8588,44 +8588,34 @@
 
             const fadeAlpha = Math.min((165 - dist) / 25, 0.85);
 
-            // Dynamische Staffelung nach Zoom-Tiefe:
-            let maxRank = 0;
-            let minSpacingX = 76;
-            let minSpacingY = 28;
+            // Dynamische Staffelung & Budgetierung nach Zoom-Tiefe:
+            let maxScanRank = 2;
+            let maxVisiblePlaces = 18;
 
-            if (dist <= 103.5) {
-                // Maximale Nahbereich-Detailstufe: Alle Ortschaften & Gemeinden sichtbar
-                maxRank = 9;
-                minSpacingX = 26;
-                minSpacingY = 15;
-            } else if (dist <= 106.5) {
-                maxRank = 9;
-                minSpacingX = 34;
-                minSpacingY = 18;
-            } else if (dist <= 111) {
-                maxRank = 8;
-                minSpacingX = 40;
-                minSpacingY = 20;
-            } else if (dist <= 118) {
-                maxRank = 7;
-                minSpacingX = 48;
-                minSpacingY = 22;
-            } else if (dist <= 126) {
-                maxRank = 5;
-                minSpacingX = 54;
-                minSpacingY = 23;
-            } else if (dist <= 138) {
-                maxRank = 4;
-                minSpacingX = 60;
-                minSpacingY = 24;
-            } else if (dist <= 152) {
-                maxRank = 2;
-                minSpacingX = 68;
-                minSpacingY = 26;
+            if (dist <= 102.0) {
+                maxScanRank = 9;
+                maxVisiblePlaces = 34;
+            } else if (dist <= 103.5) {
+                maxScanRank = 8;
+                maxVisiblePlaces = 32;
+            } else if (dist <= 105.5) {
+                maxScanRank = 7;
+                maxVisiblePlaces = 30;
+            } else if (dist <= 110.0) {
+                maxScanRank = 6;
+                maxVisiblePlaces = 28;
+            } else if (dist <= 120.0) {
+                maxScanRank = 5;
+                maxVisiblePlaces = 26;
+            } else if (dist <= 135.0) {
+                maxScanRank = 4;
+                maxVisiblePlaces = 24;
+            } else if (dist <= 150.0) {
+                maxScanRank = 3;
+                maxVisiblePlaces = 20;
             } else {
-                maxRank = 1;
-                minSpacingX = 76;
-                minSpacingY = 28;
+                maxScanRank = 2;
+                maxVisiblePlaces = 16;
             }
 
             const cx = camera.position.x;
@@ -8697,7 +8687,7 @@
                             cityCtx.fillText(badgeText, pvSx, badgeY + badgeH / 2);
 
                             cityCtx.restore();
-                            placed.push({ x: pvSx, y: pvSy });
+                            placed.push({ x: pvSx, y: pvSy, spacingX: 60, spacingY: 30 });
                         }
                     }
                 }
@@ -8758,18 +8748,22 @@
                             cityCtx.fillText(badgeText, zunSx, badgeY + badgeH / 2);
 
                             cityCtx.restore();
-                            placed.push({ x: zunSx, y: zunSy });
+                            placed.push({ x: zunSx, y: zunSy, spacingX: 60, spacingY: 30 });
                         }
                     }
                 }
             }
 
+            // PHASE 1: Schnelle Sichtbarkeitsprüfung & Fokus-Distanzberechnung
+            const candidates = [];
+            const halfW = screenW * 0.5;
+            const halfH = screenH * 0.5;
+
             for (let i = 0; i < citiesData.length; i++) {
                 const city = citiesData[i];
-                if (city.scalerank > maxRank) break;
+                if (city.scalerank > maxScanRank) break; // Array ist sortiert nach scalerank
 
-                // Geometrisch exakte Horizont-Prüfung für ALLE Zoomstufen (selbst bei tiefstem Zoom dist <= 101.5):
-                // Winkel zwischen Stadt und Kamera: cos(theta) = (P · C) / (|P| * |C|)
+                // Geometrisch exakte Horizont-Prüfung
                 const cosAngle = (city.worldPos.x * cx + city.worldPos.y * cy + city.worldPos.z * cz) / (surfaceRadius * dist);
                 if (cosAngle < horizonThreshold) continue;
 
@@ -8781,32 +8775,79 @@
                 const sy = (-tempCityVec.y * 0.5 + 0.5) * screenH;
 
                 // Ausreichend Abstand zum Bildschirmrand
-                if (sx < 20 || sx > screenW - 20 || sy < 20 || sy > screenH - 20) continue;
+                if (sx < 25 || sx > screenW - 25 || sy < 25 || sy > screenH - 25) continue;
 
-                // Intelligente Kollisionsvermeidung gegen Text-Überlappungen
+                // Normalisierter Abstand zum Bildschirmzentrum (0.0 = exakte Mitte / Zoom-Fokus, 1.0 = Bildschirmrand)
+                const normDistCenter = Math.hypot((sx - halfW) / halfW, (sy - halfH) / halfH);
+
+                // RADIALE FOKUS-FILTERUNG:
+                // Kleinere Ortschaften dürfen ausschließlich im aktiven Fokus-Zentrum des Zooms erscheinen!
+                if (city.scalerank >= 9 && normDistCenter > 0.25) continue;
+                if (city.scalerank >= 8 && normDistCenter > 0.42) continue;
+                if (city.scalerank >= 7 && normDistCenter > 0.65) continue;
+                if (city.scalerank >= 6 && normDistCenter > 0.88) continue;
+
+                candidates.push({
+                    city,
+                    sx,
+                    sy,
+                    normDistCenter,
+                    rank: city.scalerank
+                });
+            }
+
+            // PHASE 2: Priorisierung nach Größe A) vor B) und Bildschirm-Fokus
+            candidates.sort((a, b) => {
+                // Große Metropolen (z.B. Frankfurt, Rank 3) haben strikten Vorrang vor Vororten/Kleinstädten (z.B. Griesheim, Rank 7).
+                // Bei gleichem Rang entscheidet die Nähe zum Bildschirm-Zentrum (Zoom-Fokus).
+                const scoreA = a.rank * 10.0 + a.normDistCenter * 3.5;
+                const scoreB = b.rank * 10.0 + b.normDistCenter * 3.5;
+                return scoreA - scoreB;
+            });
+
+            // PHASE 3: Kollisionsvermeidung mit Schutzzonen & Rendering
+            for (let i = 0; i < candidates.length; i++) {
+                if (placed.length >= maxVisiblePlaces) break;
+                const cand = candidates[i];
+                const city = cand.city;
+                const r = cand.rank;
+
+                // Größere Städte reservieren eine größere Schutzzone, damit Vororte sie nicht bedrängen
+                const reqSpacingX = r <= 3 ? 84 : (r <= 5 ? 68 : (r <= 7 ? 54 : 44));
+                const reqSpacingY = r <= 3 ? 42 : (r <= 5 ? 34 : (r <= 7 ? 26 : 22));
+
                 let collision = false;
                 for (let j = 0; j < placed.length; j++) {
                     const p = placed[j];
-                    if (Math.abs(sx - p.x) < minSpacingX && Math.abs(sy - p.y) < minSpacingY) {
+                    const spaceX = Math.max(reqSpacingX, p.spacingX || reqSpacingX);
+                    const spaceY = Math.max(reqSpacingY, p.spacingY || reqSpacingY);
+                    if (Math.abs(cand.sx - p.x) < spaceX && Math.abs(cand.sy - p.y) < spaceY) {
                         collision = true;
                         break;
                     }
                 }
                 if (collision) continue;
-                placed.push({ x: sx, y: sy });
 
-                // Kartographische Hierarchie: Punkte & Schriftgröße nach Bedeutung
-                const isMajor = city.scalerank <= 2;
-                const isMedium = city.scalerank <= 6;
-                const dotR = isMajor ? 2.4 : (isMedium ? 1.9 : 1.5);
+                placed.push({
+                    x: cand.sx,
+                    y: cand.sy,
+                    spacingX: reqSpacingX,
+                    spacingY: reqSpacingY
+                });
+
+                // Kartographische Hierarchie nach Bedeutung
+                const isMajor = r <= 3;   // z. B. Frankfurt, München, Köln
+                const isMedium = r <= 5;  // z. B. Darmstadt, Wiesbaden, Mainz, Hanau
+                const isLocal = r <= 7;   // z. B. Rüsselsheim, Oberursel
+                const dotR = isMajor ? 2.8 : (isMedium ? 2.1 : (isLocal ? 1.6 : 1.2));
 
                 // Feiner Stadt-Punkt mit weißem Kern & dunklem Ring
                 cityCtx.beginPath();
-                cityCtx.arc(sx, sy, dotR, 0, Math.PI * 2);
+                cityCtx.arc(cand.sx, cand.sy, dotR, 0, Math.PI * 2);
                 cityCtx.fillStyle = '#ffffff';
                 cityCtx.fill();
-                cityCtx.strokeStyle = isMajor ? '#000000' : '#1a1a1a';
-                cityCtx.lineWidth = isMajor ? 1.2 : 0.9;
+                cityCtx.strokeStyle = isMajor ? '#000000' : (isMedium ? '#1a1a1a' : '#333333');
+                cityCtx.lineWidth = isMajor ? 1.3 : 1.0;
                 cityCtx.stroke();
 
                 // Lokale Temperatur ermitteln
@@ -8815,18 +8856,18 @@
 
                 // Edler, lesbarer Ortsname zentriert oberhalb
                 cityCtx.textAlign = 'center';
-                cityCtx.shadowColor = 'rgba(255, 255, 255, 0.92)';
-                cityCtx.shadowBlur = 3.0;
-                cityCtx.fillStyle = '#141414';
+                cityCtx.shadowColor = 'rgba(255, 255, 255, 0.95)';
+                cityCtx.shadowBlur = 3.5;
+                cityCtx.fillStyle = isMajor ? '#0a0a0a' : (isMedium ? '#141414' : '#222222');
                 const fontWeight = isMajor ? '700' : (isMedium ? '600' : '500');
-                const fontSize = isMajor ? '11px' : (isMedium ? '10px' : '9.5px');
+                const fontSize = isMajor ? '11.5px' : (isMedium ? '10.5px' : (isLocal ? '9.5px' : '9px'));
                 cityCtx.font = `${fontWeight} ${fontSize} -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
-                cityCtx.fillText(city.name, sx, sy - (isMajor ? 6.5 : 5.5));
+                cityCtx.fillText(city.name, cand.sx, cand.sy - (isMajor ? 7.0 : 5.5));
 
-                // Kräftige, klare Temperatur-Anzeige direkt unterhalb (wie bei Windy: Geneva / 18°)
-                cityCtx.font = `600 ${isMajor ? '11px' : '10px'} -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
-                cityCtx.fillStyle = '#111111';
-                cityCtx.fillText(tempStr, sx, sy + (isMajor ? 8.5 : 7.5));
+                // Kräftige, klare Temperatur-Anzeige direkt unterhalb
+                cityCtx.font = `${isMajor ? '700 11px' : (isMedium ? '600 10px' : '500 9.5px')} -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+                cityCtx.fillStyle = isMajor ? '#0a0a0a' : (isMedium ? '#111111' : '#2a2a2a');
+                cityCtx.fillText(tempStr, cand.sx, cand.sy + (isMajor ? 9.0 : 7.5));
                 cityCtx.shadowColor = 'transparent';
             }
             cityCtx.restore();
