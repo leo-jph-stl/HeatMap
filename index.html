@@ -910,6 +910,21 @@
             border-color: #00e5ff;
             box-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
         }
+        .route-wp-row {
+            position: relative;
+            margin-bottom: 5px;
+        }
+        .route-wp-header {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .route-wp-icon {
+            font-size: 12px;
+            width: 18px;
+            text-align: center;
+            flex-shrink: 0;
+        }
         .route-input-box {
             position: relative;
             display: flex;
@@ -918,8 +933,7 @@
             border: 1px solid rgba(255,255,255,0.15);
             border-radius: 8px;
             padding: 2px 6px;
-            margin-bottom: 6px;
-            transition: border-color 0.2s;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
         .route-input-box:focus-within {
             border-color: #00e5ff;
@@ -930,7 +944,7 @@
             background: transparent;
             border: none;
             color: #fff;
-            padding: 6px 4px;
+            padding: 5px 4px;
             font-size: 11.5px;
             outline: none;
             width: 100%;
@@ -940,18 +954,77 @@
             border: 1px solid rgba(255,255,255,0.15);
             color: #ccc;
             border-radius: 5px;
-            padding: 3px 6px;
-            font-size: 11px;
+            padding: 2.5px 6px;
+            font-size: 10px;
             cursor: pointer;
             display: flex;
             align-items: center;
             gap: 2px;
+            white-space: nowrap;
             transition: all 0.15s;
         }
         .route-pin-btn:hover, .route-pin-btn.picking {
             background: rgba(0, 229, 255, 0.25);
             border-color: #00e5ff;
             color: #00e5ff;
+            box-shadow: 0 0 8px rgba(0, 229, 255, 0.4);
+        }
+        .route-wp-btn {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            color: #aaa;
+            border-radius: 5px;
+            padding: 2px 4px;
+            font-size: 9.5px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+        }
+        .route-wp-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+        }
+        .route-remove-btn {
+            background: rgba(255, 50, 50, 0.12);
+            border: 1px solid rgba(255, 50, 50, 0.3);
+            color: #ff6666;
+            border-radius: 5px;
+            padding: 2px 5px;
+            font-size: 9.5px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .route-remove-btn:hover {
+            background: rgba(255, 50, 50, 0.35);
+            color: #fff;
+        }
+        .route-sugg-box {
+            position: absolute;
+            left: 23px;
+            right: 0;
+            top: 100%;
+            background: #14141e;
+            border: 1px solid rgba(0, 229, 255, 0.45);
+            border-radius: 8px;
+            max-height: 140px;
+            overflow-y: auto;
+            font-size: 10.5px;
+            z-index: 120;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.85), 0 0 14px rgba(0,229,255,0.25);
+            scrollbar-width: thin;
+        }
+        .route-sugg-item {
+            padding: 6px 8px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            color: #ddd;
+            transition: background 0.15s ease;
+        }
+        .route-sugg-item:hover {
+            background: rgba(0, 229, 255, 0.20);
+            color: #fff;
         }
         .route-kpi-grid {
             display: grid;
@@ -1869,14 +1942,14 @@
         </div>
     </div>
     
-    <!-- 3D ROUTENPLANER & TOPOGRAPHIE HÖHENPROFIL -->
+    <!-- 3D ROUTENPLANER & TOPOGRAPHIE HÖHENPROFIL (MULTI-STOPP) -->
     <div id="route-container" style="display: none;">
         <div class="forecast-header">
             <div class="forecast-title-box">
                 <div class="forecast-place" style="color: #00e5ff; display: flex; align-items: center; gap: 6px;">
                     <span class="drag-grip" title="Fenster verschieben">⋮⋮</span> 🧭 3D-Routenplaner
                 </div>
-                <div class="forecast-sub">Topographie, Höhenprofil &amp; Streckenanalyse</div>
+                <div class="forecast-sub">Topographie, Höhenprofil &amp; Multi-Stopp-Routing</div>
             </div>
             <div class="forecast-btn-group">
                 <button id="routeCloseBtn" class="forecast-action-btn" title="Schließen" onclick="toggleRoutePlanner(false)">✕</button>
@@ -1885,39 +1958,27 @@
 
         <div id="routeBody">
             <!-- Modus-Wahlschalter (Auto, Fahrrad, Fußgänger) -->
-            <div style="display: flex; gap: 5px; margin-bottom: 9px; background: rgba(0,0,0,0.3); padding: 3px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+            <div style="display: flex; gap: 5px; margin-bottom: 8px; background: rgba(0,0,0,0.3); padding: 3px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
                 <button type="button" id="routeModeDriving" class="route-mode-btn active" onclick="setRouteMode('driving')">🚗 Auto</button>
                 <button type="button" id="routeModeBike" class="route-mode-btn" onclick="setRouteMode('bike')">🚴 Fahrrad</button>
                 <button type="button" id="routeModeFoot" class="route-mode-btn" onclick="setRouteMode('foot')">🥾 Fuß</button>
             </div>
 
-            <!-- Startpunkt-Eingabe -->
-            <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 5px;">
-                <span style="font-size: 13px; color: #00ff88; width: 16px; text-align: center;">🟢</span>
-                <div class="route-input-box" style="flex: 1; margin-bottom: 0;">
-                    <input type="text" id="routeStartInput" placeholder="Startpunkt (Stadt, Adresse oder Klick)..." autocomplete="off">
-                    <button type="button" id="routePickStartBtn" class="route-pin-btn" title="Startpunkt per Klick auf die Erdkugel wählen" onclick="toggleRoutePicking('start')">📍 Karte</button>
-                </div>
-            </div>
-            <div id="routeStartSuggestions" style="display: none; background: #1a1a24; border: 1px solid rgba(0,229,255,0.3); border-radius: 6px; margin: -2px 0 6px 20px; max-height: 120px; overflow-y: auto; font-size: 10.5px; z-index: 50;"></div>
+            <!-- Dynamische Wegpunkte-Liste (Start, Zwischenstopps, Ziel) -->
+            <div id="routeWaypointsList" style="margin-bottom: 6px;"></div>
 
-            <!-- Tausch-Button -->
-            <div style="display: flex; justify-content: flex-end; padding-right: 8px; margin: -2px 0 2px 0;">
-                <button type="button" id="routeSwapBtn" onclick="swapRoutePoints()" title="Start und Ziel vertauschen" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); color: #00e5ff; border-radius: 4px; padding: 2px 7px; font-size: 10px; cursor: pointer;">⇅ Tauschen</button>
+            <!-- Wegpunkt-Aktionen: Zwischenstopp hinzufügen & Route umkehren -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 0 2px;">
+                <button type="button" id="routeAddViaBtn" onclick="addRouteViaStop()" style="background: rgba(0, 229, 255, 0.12); border: 1px solid rgba(0, 229, 255, 0.35); color: #00e5ff; border-radius: 6px; padding: 4px 8px; font-size: 10.5px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.15s ease;">
+                    <span>➕ Zwischenstopp</span>
+                </button>
+                <button type="button" id="routeReverseBtn" onclick="reverseRouteWaypoints()" title="Reihenfolge der Route komplett umkehren" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #aaa; border-radius: 6px; padding: 4px 8px; font-size: 10.5px; cursor: pointer; display: flex; align-items: center; gap: 3px; transition: all 0.15s ease;">
+                    <span>⇅ Route umkehren</span>
+                </button>
             </div>
-
-            <!-- Zielpunkt-Eingabe -->
-            <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 9px;">
-                <span style="font-size: 13px; color: #ff3366; width: 16px; text-align: center;">🔴</span>
-                <div class="route-input-box" style="flex: 1; margin-bottom: 0;">
-                    <input type="text" id="routeEndInput" placeholder="Zielort (Stadt, Adresse oder Klick)..." autocomplete="off">
-                    <button type="button" id="routePickEndBtn" class="route-pin-btn" title="Zielort per Klick auf die Erdkugel wählen" onclick="toggleRoutePicking('end')">🎯 Karte</button>
-                </div>
-            </div>
-            <div id="routeEndSuggestions" style="display: none; background: #1a1a24; border: 1px solid rgba(0,229,255,0.3); border-radius: 6px; margin: -5px 0 6px 20px; max-height: 120px; overflow-y: auto; font-size: 10.5px; z-index: 50;"></div>
 
             <!-- Aktionsleiste -->
-            <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+            <div style="display: flex; gap: 6px; margin-bottom: 8px;">
                 <button type="button" id="routeCalcBtn" onclick="calculateCurrentRoute()" style="flex: 2; background: linear-gradient(135deg, #00e5ff, #00a0ff); color: #000; font-weight: 700; border: none; border-radius: 7px; padding: 7px 10px; font-size: 11.5px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px; box-shadow: 0 4px 12px rgba(0,229,255,0.3);">
                     <span>⚡ Route berechnen</span>
                 </button>
@@ -1982,11 +2043,8 @@
                     </div>
                 </div>
 
-                <!-- Wetter auf der Route -->
-                <div id="routeWeatherSummary" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 6px 8px; font-size: 9.5px; display: flex; justify-content: space-between; align-items: center;">
-                    <div style="color: #aaa;">🌡️ Wetter Start: <strong id="routeWeatherStart" style="color:#fff;">--</strong></div>
-                    <div style="color: #aaa;">🌡️ Wetter Ziel: <strong id="routeWeatherEnd" style="color:#fff;">--</strong></div>
-                </div>
+                <!-- Wetter auf der Route (Start, Zwischenstopps & Ziel) -->
+                <div id="routeWeatherSummary" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 6px 8px; font-size: 9px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: space-between; align-items: center;"></div>
             </div>
         </div>
     </div>
@@ -10783,17 +10841,34 @@
         }
 
         // =========================================================================
-        // 🧭 3D ROUTENPLANER & TOPOGRAPHIE-HÖHENPROFIL (100% FREE & OPEN-DATA)
+        // 🧭 3D ROUTENPLANER & TOPOGRAPHIE-HÖHENPROFIL (MULTI-STOPP & 100% FREE)
         // =========================================================================
         const routePlannerState = {
-            start: null,        // { lat, lng, name }
-            end: null,          // { lat, lng, name }
+            waypoints: [
+                { id: 'wp_start', type: 'start', lat: null, lng: null, name: '' },
+                { id: 'wp_end', type: 'end', lat: null, lng: null, name: '' }
+            ],
             mode: 'driving',    // 'driving' | 'bike' | 'foot'
-            isPicking: null,    // null | 'start' | 'end'
-            routeData: null,    // { coordinates, distanceKm, durationText, elevationProfile, ascent, descent, minElev, maxElev, maxSlope }
+            isPicking: null,    // waypoint id or null
+            routeData: null,    // { coordinates, distanceKm, durationText, elevationProfile, ascent, descent, minElev, maxElev, maxSlope, viaWpPoints }
             routeGroup: null,   // THREE.Group containing 3D line & pins
             hoverPin: null      // THREE.Mesh
         };
+
+        function initRoutePlanner() {
+            const container = document.getElementById('route-container');
+            if (container && typeof makeDraggable === 'function') {
+                makeDraggable(container);
+            }
+            renderRouteWaypointsList();
+
+            // Globaler Klick-Listener zum Schließen offener Vorschlagslisten
+            document.addEventListener('pointerdown', (e) => {
+                if (!e.target.closest('.route-sugg-box') && !e.target.closest('.route-input-box')) {
+                    closeAllRouteSuggestions();
+                }
+            });
+        }
 
         function toggleRoutePlanner(show) {
             const container = document.getElementById('route-container');
@@ -10805,9 +10880,10 @@
                 btn.className = 'layer-toggle-btn' + (willShow ? ' active' : '');
             }
             if (willShow) {
-                initRouteAutocomplete();
+                renderRouteWaypointsList();
             } else {
                 setRoutePicking(null);
+                closeAllRouteSuggestions();
             }
         }
 
@@ -10821,36 +10897,243 @@
             const activeBtn = document.getElementById(activeId);
             if (activeBtn) activeBtn.classList.add('active');
 
-            if (routePlannerState.start && routePlannerState.end) {
+            const validCount = routePlannerState.waypoints.filter(w => w.lat !== null && w.lng !== null).length;
+            if (validCount >= 2) {
                 calculateCurrentRoute();
             }
         }
 
-        function toggleRoutePicking(type) {
-            if (routePlannerState.isPicking === type) {
-                setRoutePicking(null);
-            } else {
-                setRoutePicking(type);
+        function closeAllRouteSuggestions() {
+            document.querySelectorAll('.route-sugg-box').forEach(el => {
+                el.style.display = 'none';
+                el.innerHTML = '';
+            });
+        }
+
+        let routeSearchTimeout = null;
+        function renderRouteWaypointsList() {
+            const listContainer = document.getElementById('routeWaypointsList');
+            if (!listContainer) return;
+
+            const wps = routePlannerState.waypoints;
+            let viaCounter = 1;
+
+            let html = '';
+            wps.forEach((wp, index) => {
+                let icon = '🟢';
+                let label = 'Start';
+                let placeholder = 'Startpunkt (Stadt, Adresse oder Klick)...';
+                let isVia = (wp.type === 'via');
+                let isStart = (wp.type === 'start');
+                let isEnd = (wp.type === 'end');
+
+                if (isVia) {
+                    icon = '🔵';
+                    label = `Stopp ${viaCounter++}`;
+                    placeholder = `Zwischenstopp ${viaCounter - 1} (Stadt, Klick)...`;
+                } else if (isEnd) {
+                    icon = '🔴';
+                    label = 'Ziel';
+                    placeholder = 'Zielort (Stadt, Adresse oder Klick)...';
+                }
+
+                const isPickingThis = (routePlannerState.isPicking === wp.id);
+
+                html += `
+                    <div class="route-wp-row" id="wpRow_${wp.id}">
+                        <div class="route-wp-header">
+                            <span class="route-wp-icon" title="${label}">${icon}</span>
+                            <div class="route-input-box" style="flex: 1;">
+                                <input type="text" id="routeInput_${wp.id}" class="route-wp-input" placeholder="${placeholder}" value="${wp.name || ''}" autocomplete="off" spellcheck="false">
+                                <button type="button" class="route-pin-btn ${isPickingThis ? 'picking' : ''}" id="pickBtn_${wp.id}" title="${isEnd ? 'Zielort' : (isStart ? 'Startpunkt' : 'Zwischenstopp')} auf Globus per Klick wählen" onclick="toggleRoutePicking('${wp.id}')">
+                                    ${isEnd ? '🎯 Karte' : '📍 Karte'}
+                                </button>
+                                ${isVia ? `
+                                    <button type="button" class="route-wp-btn" title="Nach oben verschieben" onclick="moveRouteWaypoint('${wp.id}', -1)">▲</button>
+                                    <button type="button" class="route-wp-btn" title="Nach unten verschieben" onclick="moveRouteWaypoint('${wp.id}', 1)">▼</button>
+                                    <button type="button" class="route-remove-btn" title="Diesen Zwischenstopp entfernen" onclick="removeRouteWaypoint('${wp.id}')">✕</button>
+                                ` : ''}
+                            </div>
+                        </div>
+                        <div id="routeSugg_${wp.id}" class="route-sugg-box" style="display: none;"></div>
+                    </div>
+                `;
+            });
+
+            listContainer.innerHTML = html;
+
+            // Event-Listener für Eingaben binden
+            wps.forEach(wp => {
+                const input = document.getElementById(`routeInput_${wp.id}`);
+                const sugg = document.getElementById(`routeSugg_${wp.id}`);
+                if (!input || !sugg) return;
+
+                input.addEventListener('input', () => {
+                    const q = input.value.trim();
+                    clearTimeout(routeSearchTimeout);
+                    if (q.length < 2) {
+                        sugg.style.display = 'none';
+                        sugg.innerHTML = '';
+                        return;
+                    }
+                    routeSearchTimeout = setTimeout(() => {
+                        fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`, {
+                            headers: { 'Accept-Language': 'de,en' }
+                        })
+                        .then(r => r.json())
+                        .then(data => {
+                            if (!Array.isArray(data) || !data.length) {
+                                sugg.style.display = 'none';
+                                sugg.innerHTML = '';
+                                return;
+                            }
+                            sugg.innerHTML = data.map(item => {
+                                const lat = parseFloat(item.lat);
+                                const lng = parseFloat(item.lon);
+                                const displayName = item.display_name;
+                                const safeName = displayName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                                return `<div class="route-sugg-item" onclick="selectRouteSuggestion('${wp.id}', ${lat}, ${lng}, '${safeName}')">${displayName}</div>`;
+                            }).join('');
+                            sugg.style.display = 'block';
+                        })
+                        .catch(() => {
+                            sugg.style.display = 'none';
+                        });
+                    }, 260);
+                });
+
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') {
+                        sugg.style.display = 'none';
+                    }
+                });
+            });
+        }
+
+        function selectRouteSuggestion(wpId, lat, lng, displayName) {
+            const wp = routePlannerState.waypoints.find(w => w.id === wpId);
+            if (!wp) return;
+            const shortName = displayName.split(',').slice(0, 2).join(',').trim();
+            wp.lat = lat;
+            wp.lng = lng;
+            wp.name = shortName;
+
+            closeAllRouteSuggestions();
+
+            const input = document.getElementById(`routeInput_${wpId}`);
+            if (input) input.value = shortName;
+
+            const validCount = routePlannerState.waypoints.filter(w => w.lat !== null && w.lng !== null).length;
+            if (validCount >= 2) {
+                calculateCurrentRoute();
             }
         }
 
-        function setRoutePicking(type) {
-            routePlannerState.isPicking = type;
-            const startBtn = document.getElementById('routePickStartBtn');
-            const endBtn = document.getElementById('routePickEndBtn');
+        function addRouteViaStop() {
+            closeAllRouteSuggestions();
+            const wps = routePlannerState.waypoints;
+            if (wps.length >= 10) {
+                alert('Maximal 8 Zwischenstopps möglich.');
+                return;
+            }
+            const newId = 'wp_via_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+            const newWp = { id: newId, type: 'via', lat: null, lng: null, name: '' };
+            // Vor dem Ziel einfügen
+            wps.splice(wps.length - 1, 0, newWp);
+            renderRouteWaypointsList();
+
+            setTimeout(() => {
+                const input = document.getElementById(`routeInput_${newId}`);
+                if (input) input.focus();
+            }, 50);
+        }
+
+        function removeRouteWaypoint(wpId) {
+            closeAllRouteSuggestions();
+            if (routePlannerState.isPicking === wpId) {
+                setRoutePicking(null);
+            }
+            routePlannerState.waypoints = routePlannerState.waypoints.filter(w => w.id !== wpId);
+            renderRouteWaypointsList();
+
+            const validCount = routePlannerState.waypoints.filter(w => w.lat !== null && w.lng !== null).length;
+            if (validCount >= 2) {
+                calculateCurrentRoute();
+            } else {
+                clear3DRoute();
+                const statsBox = document.getElementById('routeStatsBox');
+                if (statsBox) statsBox.style.display = 'none';
+            }
+        }
+
+        function moveRouteWaypoint(wpId, delta) {
+            closeAllRouteSuggestions();
+            const wps = routePlannerState.waypoints;
+            const idx = wps.findIndex(w => w.id === wpId);
+            if (idx === -1) return;
+            const targetIdx = idx + delta;
+            // Nur zwischen Index 1 und wps.length - 2 verschieben (nicht Start oder Ziel überschreiben)
+            if (targetIdx < 1 || targetIdx >= wps.length - 1) return;
+
+            const temp = wps[idx];
+            wps[idx] = wps[targetIdx];
+            wps[targetIdx] = temp;
+
+            renderRouteWaypointsList();
+            const validCount = wps.filter(w => w.lat !== null && w.lng !== null).length;
+            if (validCount >= 2) {
+                calculateCurrentRoute();
+            }
+        }
+
+        function reverseRouteWaypoints() {
+            closeAllRouteSuggestions();
+            const wps = routePlannerState.waypoints;
+            wps.reverse();
+            // Typen korrigieren: Index 0 ist Start, letzter ist Ziel, Rest ist via
+            wps.forEach((w, i) => {
+                if (i === 0) w.type = 'start';
+                else if (i === wps.length - 1) w.type = 'end';
+                else w.type = 'via';
+            });
+            renderRouteWaypointsList();
+
+            const validCount = wps.filter(w => w.lat !== null && w.lng !== null).length;
+            if (validCount >= 2) {
+                calculateCurrentRoute();
+            }
+        }
+
+        function toggleRoutePicking(wpId) {
+            if (routePlannerState.isPicking === wpId) {
+                setRoutePicking(null);
+            } else {
+                setRoutePicking(wpId);
+            }
+        }
+
+        function setRoutePicking(wpId) {
+            routePlannerState.isPicking = wpId;
+            closeAllRouteSuggestions();
+
+            routePlannerState.waypoints.forEach(w => {
+                const btn = document.getElementById(`pickBtn_${w.id}`);
+                if (btn) btn.classList.toggle('picking', w.id === wpId);
+            });
+
             const statusMsg = document.getElementById('routeStatusMsg');
-
-            if (startBtn) startBtn.classList.toggle('picking', type === 'start');
-            if (endBtn) endBtn.classList.toggle('picking', type === 'end');
-
             const canvas = (typeof renderer !== 'undefined' && renderer) ? renderer.domElement : null;
-            if (type) {
+
+            if (wpId) {
+                const targetWp = routePlannerState.waypoints.find(w => w.id === wpId);
+                let label = 'Wegpunkt';
+                if (targetWp) {
+                    label = targetWp.type === 'start' ? 'STARTPUNKT' : (targetWp.type === 'end' ? 'ZIELORT' : 'ZWISCHENSTOPP');
+                }
                 if (canvas) canvas.style.cursor = 'crosshair';
                 if (statusMsg) {
                     statusMsg.style.display = 'block';
-                    statusMsg.innerText = type === 'start' 
-                        ? '📍 Klicken Sie auf den 3D-Globus, um den STARTPUNKT zu setzen...'
-                        : '🎯 Klicken Sie auf den 3D-Globus, um das ZIEL zu setzen...';
+                    statusMsg.innerText = `📍 Klicken Sie auf den 3D-Globus, um den ${label} zu setzen...`;
                 }
             } else {
                 if (canvas) canvas.style.cursor = '';
@@ -10862,63 +11145,43 @@
 
         function handleRouteMapPick(lat, lng) {
             if (!routePlannerState.isPicking) return false;
-            const pickType = routePlannerState.isPicking;
+            const wpId = routePlannerState.isPicking;
             setRoutePicking(null);
 
-            const coordName = `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`;
-            if (pickType === 'start') {
-                routePlannerState.start = { lat, lng, name: coordName };
-                const input = document.getElementById('routeStartInput');
-                if (input) input.value = coordName;
-                reverseGeocode(lat, lng, (name) => {
-                    if (name && routePlannerState.start && Math.abs(routePlannerState.start.lat - lat) < 0.001) {
-                        routePlannerState.start.name = name;
-                        if (input) input.value = name;
-                    }
-                });
-            } else {
-                routePlannerState.end = { lat, lng, name: coordName };
-                const input = document.getElementById('routeEndInput');
-                if (input) input.value = coordName;
-                reverseGeocode(lat, lng, (name) => {
-                    if (name && routePlannerState.end && Math.abs(routePlannerState.end.lat - lat) < 0.001) {
-                        routePlannerState.end.name = name;
-                        if (input) input.value = name;
-                    }
-                });
-            }
+            const wp = routePlannerState.waypoints.find(w => w.id === wpId);
+            if (!wp) return false;
 
-            if (routePlannerState.start && routePlannerState.end) {
+            const coordName = `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`;
+            wp.lat = lat;
+            wp.lng = lng;
+            wp.name = coordName;
+
+            const input = document.getElementById(`routeInput_${wpId}`);
+            if (input) input.value = coordName;
+
+            reverseGeocode(lat, lng, (name) => {
+                if (name && wp && Math.abs(wp.lat - lat) < 0.001) {
+                    wp.name = name;
+                    if (input) input.value = name;
+                }
+            });
+
+            const validCount = routePlannerState.waypoints.filter(w => w.lat !== null && w.lng !== null).length;
+            if (validCount >= 2) {
                 calculateCurrentRoute();
             }
             return true;
         }
 
-        function swapRoutePoints() {
-            const tmp = routePlannerState.start;
-            routePlannerState.start = routePlannerState.end;
-            routePlannerState.end = tmp;
-
-            const startInput = document.getElementById('routeStartInput');
-            const endInput = document.getElementById('routeEndInput');
-            if (startInput) startInput.value = routePlannerState.start ? routePlannerState.start.name : '';
-            if (endInput) endInput.value = routePlannerState.end ? routePlannerState.end.name : '';
-
-            if (routePlannerState.start && routePlannerState.end) {
-                calculateCurrentRoute();
-            }
-        }
-
         function clearCurrentRoute() {
-            routePlannerState.start = null;
-            routePlannerState.end = null;
-            routePlannerState.routeData = null;
+            closeAllRouteSuggestions();
             setRoutePicking(null);
-
-            const startInput = document.getElementById('routeStartInput');
-            const endInput = document.getElementById('routeEndInput');
-            if (startInput) startInput.value = '';
-            if (endInput) endInput.value = '';
+            routePlannerState.waypoints = [
+                { id: 'wp_start', type: 'start', lat: null, lng: null, name: '' },
+                { id: 'wp_end', type: 'end', lat: null, lng: null, name: '' }
+            ];
+            routePlannerState.routeData = null;
+            renderRouteWaypointsList();
 
             const statsBox = document.getElementById('routeStatsBox');
             if (statsBox) statsBox.style.display = 'none';
@@ -10944,70 +11207,6 @@
             routePlannerState.hoverPin = null;
         }
 
-        // OSM NOMINATIM AUTOCOMPLETE & REVERSE GEOCODING
-        let routeSearchTimeout = null;
-        function initRouteAutocomplete() {
-            const setupInput = (inputId, suggId, type) => {
-                const input = document.getElementById(inputId);
-                const sugg = document.getElementById(suggId);
-                if (!input || !sugg || input._routeInit) return;
-                input._routeInit = true;
-
-                input.addEventListener('input', () => {
-                    const q = input.value.trim();
-                    clearTimeout(routeSearchTimeout);
-                    if (q.length < 2) {
-                        sugg.style.display = 'none';
-                        return;
-                    }
-                    routeSearchTimeout = setTimeout(() => {
-                        fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`, {
-                            headers: { 'Accept-Language': 'de,en' }
-                        })
-                        .then(r => r.json())
-                        .then(data => {
-                            if (!Array.isArray(data) || !data.length) {
-                                sugg.style.display = 'none';
-                                return;
-                            }
-                            sugg.innerHTML = data.map(item => {
-                                const lat = parseFloat(item.lat);
-                                const lng = parseFloat(item.lon);
-                                const displayName = item.display_name;
-                                return `<div class="route-sugg-item" style="padding: 5px 8px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ddd;" onmouseover="this.style.background='rgba(0,229,255,0.15)'" onmouseout="this.style.background='transparent'" onclick="selectRouteSuggestion('${type}', ${lat}, ${lng}, '${displayName.replace(/'/g, "\\'")}')">${displayName}</div>`;
-                            }).join('');
-                            sugg.style.display = 'block';
-                        })
-                        .catch(() => { sugg.style.display = 'none'; });
-                    }, 280);
-                });
-            };
-
-            setupInput('routeStartInput', 'routeStartSuggestions', 'start');
-            setupInput('routeEndInput', 'routeEndSuggestions', 'end');
-        }
-
-        function selectRouteSuggestion(type, lat, lng, displayName) {
-            const shortName = displayName.split(',').slice(0, 2).join(',').trim();
-            if (type === 'start') {
-                routePlannerState.start = { lat, lng, name: shortName };
-                const input = document.getElementById('routeStartInput');
-                if (input) input.value = shortName;
-                const sugg = document.getElementById('routeStartSuggestions');
-                if (sugg) sugg.style.display = 'none';
-            } else {
-                routePlannerState.end = { lat, lng, name: shortName };
-                const input = document.getElementById('routeEndInput');
-                if (input) input.value = shortName;
-                const sugg = document.getElementById('routeEndSuggestions');
-                if (sugg) sugg.style.display = 'none';
-            }
-
-            if (routePlannerState.start && routePlannerState.end) {
-                calculateCurrentRoute();
-            }
-        }
-
         function reverseGeocode(lat, lng, callback) {
             fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14`, {
                 headers: { 'Accept-Language': 'de,en' }
@@ -11024,27 +11223,31 @@
             .catch(() => callback(null));
         }
 
-        // BERECHNUNG DER ROUTE (OSRM) + TOPOGRAPHIE (OPEN-METEO COPERNICUS DEM)
+        // BERECHNUNG DER ROUTE (OSRM MULTI-STOP) + BATCHED TOPOGRAPHIE (COPERNICUS DEM)
         async function calculateCurrentRoute() {
-            if (!routePlannerState.start || !routePlannerState.end) return;
+            closeAllRouteSuggestions();
+            const validWps = routePlannerState.waypoints.filter(w => w.lat !== null && w.lng !== null);
+            if (validWps.length < 2) {
+                alert('Bitte geben Sie mindestens Startpunkt und Zielort an.');
+                return;
+            }
+
             const statusMsg = document.getElementById('routeStatusMsg');
             const statsBox = document.getElementById('routeStatsBox');
 
             if (statusMsg) {
                 statusMsg.style.display = 'block';
-                statusMsg.innerText = '⚡ Berechne optimale Route & Topographie...';
+                statusMsg.innerText = `⚡ Berechne optimale Multi-Stopp Route (${validWps.length} Wegpunkte)...`;
             }
 
-            const s = routePlannerState.start;
-            const e = routePlannerState.end;
             const mode = routePlannerState.mode;
+            const coordsStr = validWps.map(w => `${w.lng},${w.lat}`).join(';');
 
-            // OSRM Endpoints
-            let osrmUrl = `https://router.project-osrm.org/route/v1/driving/${s.lng},${s.lat};${e.lng},${e.lat}?overview=full&geometries=geojson`;
+            let osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
             if (mode === 'bike') {
-                osrmUrl = `https://routing.openstreetmap.de/routed-bike/route/v1/driving/${s.lng},${s.lat};${e.lng},${e.lat}?overview=full&geometries=geojson`;
+                osrmUrl = `https://routing.openstreetmap.de/routed-bike/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
             } else if (mode === 'foot') {
-                osrmUrl = `https://routing.openstreetmap.de/routed-foot/route/v1/driving/${s.lng},${s.lat};${e.lng},${e.lat}?overview=full&geometries=geojson`;
+                osrmUrl = `https://routing.openstreetmap.de/routed-foot/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
             }
 
             try {
@@ -11058,13 +11261,13 @@
 
                 if (!osrmRes || !osrmRes.routes || !osrmRes.routes.length) {
                     // Fallback zu Standard OSRM
-                    const fallbackUrl = `https://router.project-osrm.org/route/v1/driving/${s.lng},${s.lat};${e.lng},${e.lat}?overview=full&geometries=geojson`;
+                    const fallbackUrl = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
                     const r2 = await fetch(fallbackUrl);
                     if (r2.ok) osrmRes = await r2.json();
                 }
 
                 if (!osrmRes || !osrmRes.routes || !osrmRes.routes.length) {
-                    throw new Error('Keine Route zwischen Start und Ziel gefunden.');
+                    throw new Error('Keine Route zwischen den angegebenen Wegpunkten gefunden.');
                 }
 
                 const route = osrmRes.routes[0];
@@ -11077,8 +11280,8 @@
                 const mins = Math.round((durSec % 3600) / 60);
                 const durationText = hours > 0 ? `${hours}h ${mins}m` : `${mins} min`;
 
-                // Topographie: Sampling von ca. 120 Stützpunkten entlang der Strecke
-                const sampleCount = Math.min(140, Math.max(25, Math.ceil(distKm / 2.5)));
+                // Topographie: Sampling von 30 bis 240 Stützpunkten entlang der gesamten Strecke
+                const sampleCount = Math.min(240, Math.max(30, Math.ceil(distKm / 1.8)));
                 const sampledPoints = [];
                 const step = (rawCoords.length - 1) / (sampleCount - 1);
 
@@ -11090,7 +11293,7 @@
                     });
                 }
 
-                // Kumulierte Distanz (km) für jeden Punkt berechnen
+                // Kumulierte Distanz (km) berechnen
                 let accDistKm = 0;
                 sampledPoints[0].distKm = 0;
                 for (let i = 1; i < sampledPoints.length; i++) {
@@ -11104,17 +11307,42 @@
                     sampledPoints[i].distKm = accDistKm;
                 }
 
-                // Höhenprofil via Open-Meteo Elevation API (Copernicus Global DEM 90m/30m)
-                const latsParam = sampledPoints.map(p => p.lat.toFixed(4)).join(',');
-                const lngsParam = sampledPoints.map(p => p.lng.toFixed(4)).join(',');
-                const elevUrl = `https://api.open-meteo.com/v1/elevation?latitude=${latsParam}&longitude=${lngsParam}`;
+                // Höhenprofil via Open-Meteo Elevation API (Copernicus DEM) mit 80er Batching
+                // (Wichtig: Open-Meteo erlaubt maximal 100 Koordinaten pro Abruf!)
+                const chunkSize = 80;
+                const chunkPromises = [];
+                for (let i = 0; i < sampledPoints.length; i += chunkSize) {
+                    const slice = sampledPoints.slice(i, i + chunkSize);
+                    const latsParam = slice.map(p => p.lat.toFixed(4)).join(',');
+                    const lngsParam = slice.map(p => p.lng.toFixed(4)).join(',');
+                    const elevUrl = `https://api.open-meteo.com/v1/elevation?latitude=${latsParam}&longitude=${lngsParam}`;
+                    chunkPromises.push(
+                        fetch(elevUrl)
+                            .then(r => r.ok ? r.json() : null)
+                            .then(d => (d && Array.isArray(d.elevation)) ? d.elevation : new Array(slice.length).fill(null))
+                            .catch(() => new Array(slice.length).fill(null))
+                    );
+                }
 
-                const elevRes = await fetch(elevUrl);
-                const elevData = await elevRes.json();
+                const chunks = await Promise.all(chunkPromises);
+                const elevations = chunks.flat();
 
-                let elevations = (elevData && Array.isArray(elevData.elevation)) ? elevData.elevation : [];
-                if (elevations.length < sampledPoints.length) {
-                    elevations = new Array(sampledPoints.length).fill(150);
+                // Fehlende Werte interpolieren
+                for (let i = 0; i < elevations.length; i++) {
+                    if (elevations[i] === null || elevations[i] === undefined) {
+                        let prev = (i > 0 && typeof elevations[i - 1] === 'number') ? elevations[i - 1] : null;
+                        let next = null;
+                        for (let j = i + 1; j < elevations.length; j++) {
+                            if (typeof elevations[j] === 'number') {
+                                next = elevations[j];
+                                break;
+                            }
+                        }
+                        if (prev !== null && next !== null) elevations[i] = (prev + next) / 2;
+                        else if (prev !== null) elevations[i] = prev;
+                        else if (next !== null) elevations[i] = next;
+                        else elevations[i] = 100;
+                    }
                 }
 
                 // Topographie-Kennzahlen ermitteln
@@ -11125,7 +11353,7 @@
                 let maxSlope = 0;
 
                 for (let i = 0; i < sampledPoints.length; i++) {
-                    const ele = (elevations[i] !== null && elevations[i] !== undefined) ? Math.round(elevations[i]) : 0;
+                    const ele = Math.round(elevations[i]);
                     sampledPoints[i].ele = ele;
                     if (ele < minElev) minElev = ele;
                     if (ele > maxElev) maxElev = ele;
@@ -11136,7 +11364,7 @@
                         if (dEle > 0) ascent += dEle;
                         else descent += Math.abs(dEle);
 
-                        if (dDistM > 20) {
+                        if (dDistM > 25) {
                             const slope = Math.abs(dEle / dDistM) * 100;
                             if (slope > maxSlope) maxSlope = Math.round(slope * 10) / 10;
                         }
@@ -11145,6 +11373,29 @@
 
                 if (minElev === Infinity) minElev = 0;
                 if (maxElev === -Infinity) maxElev = 0;
+
+                // Nächstgelegene Distanz (km) für jeden Zwischenstopp auf dem Höhenprofil bestimmen
+                const viaWpPoints = validWps.map((wp, wIdx) => {
+                    let closestSample = sampledPoints[0];
+                    let minD = Infinity;
+                    sampledPoints.forEach(sp => {
+                        const d = Math.hypot(sp.lat - wp.lat, sp.lng - wp.lng);
+                        if (d < minD) {
+                            minD = d;
+                            closestSample = sp;
+                        }
+                    });
+                    return {
+                        id: wp.id,
+                        type: wp.type,
+                        name: wp.name,
+                        index: wIdx,
+                        distKm: closestSample.distKm,
+                        ele: closestSample.ele,
+                        lat: wp.lat,
+                        lng: wp.lng
+                    };
+                });
 
                 routePlannerState.routeData = {
                     rawCoords,
@@ -11155,7 +11406,8 @@
                     descent,
                     minElev,
                     maxElev,
-                    maxSlope
+                    maxSlope,
+                    viaWpPoints
                 };
 
                 // UI aktualisieren
@@ -11181,15 +11433,15 @@
                 const endKmEl = document.getElementById('routeProfileEndKm');
                 if (endKmEl) endKmEl.innerText = `${distKm.toFixed(1)} km (Ziel)`;
 
-                // Wetter an Start & Ziel abfragen
-                updateRouteWeather(s.lat, s.lng, e.lat, e.lng);
+                // Wetter für alle Wegpunkte aktualisieren
+                updateRouteWeather(validWps);
 
                 // 3D Visualisierung auf dem Globus & SVG Höhenprofil rendern
-                render3DRoute(rawCoords, sampledPoints);
-                renderRouteElevationSvg(sampledPoints, distKm, minElev, maxElev);
+                render3DRoute(rawCoords, validWps, sampledPoints);
+                renderRouteElevationSvg(sampledPoints, distKm, minElev, maxElev, viaWpPoints);
 
-                // Kamera auf die Route ausrichten
-                flyCameraToRoute(s.lat, s.lng, e.lat, e.lng);
+                // Kamera auf die gesamte Route ausrichten
+                flyCameraToRoute(validWps);
 
             } catch (err) {
                 console.error('Fehler bei Routenberechnung:', err);
@@ -11200,8 +11452,8 @@
             }
         }
 
-        // 3D RENDERING AUF THREE.JS GLOBUS
-        function render3DRoute(rawCoords, sampledPoints) {
+        // 3D RENDERING AUF THREE.JS GLOBUS (MULTI-STOPP)
+        function render3DRoute(rawCoords, validWps, sampledPoints) {
             clear3DRoute();
             if (!earthMesh || !rawCoords || rawCoords.length < 2) return;
 
@@ -11240,16 +11492,24 @@
                 return mesh;
             }
 
-            const startCoord = rawCoords[0];
-            const endCoord = rawCoords[rawCoords.length - 1];
+            // Pins für alle Wegpunkte (Start = Grün, Zwischenstopps = Blau/Cyan, Ziel = Rot)
+            validWps.forEach((wp, idx) => {
+                let col = 0x00e5ff; // Zwischenstopp (Cyan/Blau)
+                let sz = 0.48;
+                if (wp.type === 'start') {
+                    col = 0x00ff88; // Grün
+                    sz = 0.55;
+                } else if (wp.type === 'end') {
+                    col = 0xff3366; // Rot
+                    sz = 0.55;
+                }
+                const pin = createPinMarker(wp.lat, wp.lng, col, sz);
+                routePlannerState.routeGroup.add(pin);
+            });
 
-            const startPin = createPinMarker(startCoord[1], startCoord[0], 0x00ff88, 0.55); // Grün
-            const endPin = createPinMarker(endCoord[1], endCoord[0], 0xff3366, 0.55);     // Rot
-            routePlannerState.routeGroup.add(startPin);
-            routePlannerState.routeGroup.add(endPin);
-
-            // Dynamischer Scrubber-Hover-Pin
-            const hoverPin = createPinMarker(startCoord[1], startCoord[0], 0xffdb00, 0.7); // Gelb
+            // Dynamischer Scrubber-Hover-Pin (Gelb)
+            const firstCoord = rawCoords[0];
+            const hoverPin = createPinMarker(firstCoord[1], firstCoord[0], 0xffdb00, 0.65);
             hoverPin.visible = false;
             routePlannerState.routeGroup.add(hoverPin);
             routePlannerState.hoverPin = hoverPin;
@@ -11257,8 +11517,8 @@
             earthMesh.add(routePlannerState.routeGroup);
         }
 
-        // INTERAKTIVES SVG HÖHENPROFIL (TOPOGRAPHIE)
-        function renderRouteElevationSvg(sampledPoints, totalDistKm, minElev, maxElev) {
+        // INTERAKTIVES SVG HÖHENPROFIL (TOPOGRAPHIE & MULTI-STOPP)
+        function renderRouteElevationSvg(sampledPoints, totalDistKm, minElev, maxElev, viaWpPoints = []) {
             const svg = document.getElementById('routeElevationSvg');
             const hoverInfo = document.getElementById('routeElevationHoverInfo');
             if (!svg || !sampledPoints || sampledPoints.length < 2) return;
@@ -11273,7 +11533,7 @@
             const plotW = w - padL - padR;
             const plotH = h - padT - padB;
 
-            const elevRange = Math.max(50, (maxElev - minElev) * 1.15);
+            const elevRange = Math.max(50, (maxElev - minElev) * 1.18);
             const plotMinY = Math.max(0, minElev - 10);
             const plotMaxY = plotMinY + elevRange;
 
@@ -11298,7 +11558,7 @@
             const areaD = `${pathD} L ${pts[pts.length - 1].x} ${padT + plotH} L ${pts[0].x} ${padT + plotH} Z`;
 
             // Gridlines & Y-Axis Labels
-            const stepElev = elevRange > 1000 ? 500 : (elevRange > 400 ? 200 : (elevRange > 150 ? 100 : 50));
+            const stepElev = elevRange > 1200 ? 500 : (elevRange > 500 ? 250 : (elevRange > 200 ? 100 : 50));
             const firstGrid = Math.ceil(plotMinY / stepElev) * stepElev;
             let gridHtml = '';
 
@@ -11312,6 +11572,23 @@
                 }
             }
 
+            // Zwischenstopp-Marker im Profil (Vertikale Hilfslinien)
+            let viaMarkersHtml = '';
+            let viaCount = 1;
+            viaWpPoints.forEach(wp => {
+                if (wp.type === 'via') {
+                    const vx = scaleX(wp.distKm);
+                    const vy = scaleY(wp.ele);
+                    const label = `S${viaCount++}`;
+                    viaMarkersHtml += `
+                        <line x1="${vx.toFixed(1)}" y1="${padT}" x2="${vx.toFixed(1)}" y2="${padT + plotH}" stroke="rgba(0,229,255,0.45)" stroke-width="1" stroke-dasharray="2,2"/>
+                        <circle cx="${vx.toFixed(1)}" cy="${vy.toFixed(1)}" r="3" fill="#00e5ff" stroke="#000" stroke-width="1"/>
+                        <rect x="${(vx - 7).toFixed(1)}" y="${padT}" width="14" height="10" rx="2" fill="rgba(0,229,255,0.2)" stroke="rgba(0,229,255,0.5)"/>
+                        <text x="${vx.toFixed(1)}" y="${padT + 7.5}" fill="#00e5ff" font-size="7" font-weight="700" text-anchor="middle">${label}</text>
+                    `;
+                }
+            });
+
             svg.innerHTML = `
                 <defs>
                     <linearGradient id="elevationGrad" x1="0" y1="0" x2="0" y2="1">
@@ -11323,6 +11600,7 @@
                 ${gridHtml}
                 <path d="${areaD}" fill="url(#elevationGrad)"/>
                 <path d="${pathD}" fill="none" stroke="#00e5ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                ${viaMarkersHtml}
                 <line id="routeSvgScrubber" x1="0" y1="${padT}" x2="0" y2="${padT + plotH}" stroke="#ffdb00" stroke-width="1.5" stroke-dasharray="2,2" style="display:none;"/>
                 <circle id="routeSvgDot" cx="0" cy="0" r="3.5" fill="#ffdb00" stroke="#111" stroke-width="1" style="display:none;"/>
             `;
@@ -11363,7 +11641,7 @@
                     hoverInfo.innerText = `📍 ${closest.distKm.toFixed(1)} km | ⛰️ ${closest.ele} m ü. NHN`;
                 }
 
-                // 3D Pin auf Globus aktualisieren
+                // 3D Pin auf Globus synchronisieren
                 if (routePlannerState.hoverPin && earthMesh) {
                     const vert = latLngToSphereVertex(closest.lat, closest.lng, vectorLineRadius + 0.1);
                     routePlannerState.hoverPin.position.copy(vert);
@@ -11384,11 +11662,10 @@
             svg.ontouchend = handleLeave;
         }
 
-        // WETTER AN START & ZIEL
-        function updateRouteWeather(lat1, lng1, lat2, lng2) {
-            const startEl = document.getElementById('routeWeatherStart');
-            const endEl = document.getElementById('routeWeatherEnd');
-            if (!startEl || !endEl) return;
+        // WETTER ENTLANG DER ROUTE (MULTI-STOPP)
+        function updateRouteWeather(validWps) {
+            const container = document.getElementById('routeWeatherSummary');
+            if (!container || !validWps || !validWps.length) return;
 
             const getTemp = (lat, lng) => {
                 if (typeof getInterpolatedTemp === 'function' && activeTemp) {
@@ -11398,17 +11675,44 @@
                 return '--';
             };
 
-            startEl.innerText = getTemp(lat1, lng1);
-            endEl.innerText = getTemp(lat2, lng2);
+            let viaCounter = 1;
+            let html = '';
+
+            validWps.forEach(wp => {
+                let badge = '🟢 Start:';
+                if (wp.type === 'via') {
+                    badge = `🔵 Stopp ${viaCounter++}:`;
+                } else if (wp.type === 'end') {
+                    badge = '🔴 Ziel:';
+                }
+                const tempStr = getTemp(wp.lat, wp.lng);
+                const label = wp.name ? wp.name.split(',')[0] : '';
+                html += `
+                    <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 3px 6px; display: flex; align-items: center; gap: 4px;">
+                        <span style="color: #aaa;">${badge}</span>
+                        <span style="color: #ddd; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${label}</span>
+                        <strong style="color: #ffdb00;">${tempStr}</strong>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
         }
 
-        // KAMERAFAHRT ZUR ROUTE
-        function flyCameraToRoute(lat1, lng1, lat2, lng2) {
-            const centerLat = (lat1 + lat2) / 2;
-            let centerLng = (lng1 + lng2) / 2;
-            if (Math.abs(lng1 - lng2) > 180) {
-                centerLng = (centerLng + 180) % 360 - 180;
-            }
+        // KAMERAFAHRT ZUR GESAMTEN ROUTE (BOUNDING BOX)
+        function flyCameraToRoute(validWps) {
+            if (!validWps || !validWps.length) return;
+            let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+            validWps.forEach(w => {
+                if (w.lat < minLat) minLat = w.lat;
+                if (w.lat > maxLat) maxLat = w.lat;
+                if (w.lng < minLng) minLng = w.lng;
+                if (w.lng > maxLng) maxLng = w.lng;
+            });
+
+            const centerLat = (minLat + maxLat) / 2;
+            let centerLng = (minLng + maxLng) / 2;
+
             if (typeof zoomInDirectToLocation === 'function') {
                 zoomInDirectToLocation(centerLat, centerLng);
             }
@@ -11455,6 +11759,7 @@
         }
         initPvHistoryChartInteraction();
         initPvEuroToggle();
+        initRoutePlanner();
 
         // INIT
         if (typeof tempMetadata !== 'undefined' && tempMetadata.nx < 1440) {
