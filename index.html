@@ -1265,6 +1265,7 @@
                                 <tr style="color:#888; text-align:right;">
                                     <th style="text-align:left; font-weight:500; padding-bottom:4px;">Zeitraum</th>
                                     <th id="pvEuroColKwh" style="font-weight:500; padding-bottom:4px;">Einspeisung</th>
+                                    <th style="font-weight:500; padding-bottom:4px; color:#ff9100;" title="Täglicher Netzbezug (kWh)">Bezug</th>
                                     <th style="font-weight:500; padding-bottom:4px;">Ø ct/kWh</th>
                                     <th style="font-weight:500; padding-bottom:4px;">Erlös</th>
                                 </tr>
@@ -5807,6 +5808,7 @@
                     dateKey,
                     kwh: basisKwh,
                     rawKwh: dayData.genKwh,
+                    gridKwh: (typeof dayData.gridKwh === 'number') ? dayData.gridKwh : 0,
                     eur: dayData.totalEur,
                     isForecast: isToday && dayData.isTodayHybrid
                 });
@@ -5822,6 +5824,7 @@
                         dateKey: todayKey,
                         kwh: basisKwh,
                         rawKwh: todayData.genKwh,
+                        gridKwh: (typeof todayData.gridKwh === 'number') ? todayData.gridKwh : 0,
                         eur: todayData.totalEur,
                         isForecast: !!todayData.isTodayHybrid
                     });
@@ -5836,7 +5839,28 @@
                 let kwh = rawKwh * basisFactor;
                 let eur = (cp.eur !== undefined && cp.eur !== null) ? cp.eur : (cp.points ? estimateRevenueEur(cp.points, cp.fromT, cp.toT) : null);
                 if (eur !== null && isScenarioActive) eur = eur * sFactor;
-                rows.push({ label: cp.label, kwh, rawKwh, eur, isForecast: true });
+
+                // Anlagespezifische Netzbezugs-Prognose (reales Haushaltslastprofil minus Solarertrag)
+                let forecastGridKwh = 0;
+                if (typeof getTypicalHourlyLoadProfile === 'function') {
+                    const typLoads = getTypicalHourlyLoadProfile(null, currentActivePvPlant);
+                    for (let h = 0; h < 24; h++) {
+                        const hStart = cp.fromT + h * 3600 * 1000;
+                        const hEnd = hStart + 3600 * 1000;
+                        const hGen = integrateKwh(cp.points, hStart, hEnd) * (isScenarioActive ? sFactor : 1.0);
+                        const hLoad = typLoads[h % 24] || 0.25;
+                        forecastGridKwh += Math.max(0, hLoad - hGen);
+                    }
+                }
+
+                rows.push({
+                    label: cp.label,
+                    kwh,
+                    rawKwh,
+                    gridKwh: forecastGridKwh,
+                    eur,
+                    isForecast: true
+                });
             });
 
             return rows;
@@ -5878,7 +5902,7 @@
 
             const rows = buildEuroRows();
             if (!rows.length) {
-                tbody.innerHTML = '<tr><td colspan="4" style="color:#666; padding: 6px 0;">Noch keine Daten.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" style="color:#666; padding: 6px 0;">Noch keine Daten.</td></tr>';
                 if (tfoot) tfoot.innerHTML = '';
                 return;
             }
@@ -5886,17 +5910,20 @@
             tbody.innerHTML = rows.map(r => {
                 const avgCt = (r.eur !== null && r.kwh > 0.001) ? (r.eur / r.kwh * 100) : null;
                 const valColor = r.isForecast ? '#ffdb00' : '#fff';
+                const gridColor = r.isForecast ? 'rgba(255, 145, 0, 0.75)' : '#ff9100';
                 const labelColor = (r.label === 'Heute') ? '#00e5ff' : (r.isForecast ? '#ffdb00' : '#aaa');
                 const fontStyle = r.isForecast ? 'font-style:italic;' : (r.label === 'Heute' ? 'font-weight:600;' : '');
                 const clickAttr = (!r.isForecast && r.dateKey) ? `onclick="showPvHistory('${r.dateKey}')" style="cursor:pointer;" title="24h-Detailanalyse für ${r.label} anzeigen"` : '';
+                const gridVal = (typeof r.gridKwh === 'number') ? r.gridKwh.toFixed(1) : '--';
                 return `
                     <tr style="border-top: 1px solid rgba(255,255,255,0.06);" ${clickAttr}>
-                        <td style="padding: 4px 4px 4px 0; color:${labelColor}; ${fontStyle}">
+                        <td style="padding: 4px 2px 4px 0; color:${labelColor}; ${fontStyle}; white-space:nowrap;">
                             ${r.label}${!r.isForecast ? ' <span style="font-size:9px; opacity:0.6;">📊</span>' : ''}
                         </td>
-                        <td style="padding: 4px; text-align:right; color:${valColor};">${r.kwh.toFixed(1)}</td>
-                        <td style="padding: 4px; text-align:right; color:#aaa;">${avgCt !== null ? avgCt.toFixed(1) : '--'}</td>
-                        <td style="padding: 4px 0 4px 4px; text-align:right; font-weight:700; color:${valColor};">${r.eur !== null ? r.eur.toFixed(2) + ' €' : '--'}</td>
+                        <td style="padding: 4px 2px; text-align:right; color:${valColor};">${r.kwh.toFixed(1)}</td>
+                        <td style="padding: 4px 2px; text-align:right; color:${gridColor}; font-weight:600;">${gridVal}</td>
+                        <td style="padding: 4px 2px; text-align:right; color:#aaa;">${avgCt !== null ? avgCt.toFixed(1) : '--'}</td>
+                        <td style="padding: 4px 0 4px 2px; text-align:right; font-weight:700; color:${valColor}; white-space:nowrap;">${r.eur !== null ? r.eur.toFixed(2) + ' €' : '--'}</td>
                     </tr>
                 `;
             }).join('');
@@ -5904,9 +5931,12 @@
             // Gesamtzeile für bisherige Ist-Tage
             if (tfoot) {
                 const histRows = rows.filter(r => !r.isForecast);
-                let totalHistKwh = 0, totalHistEur = 0, hasValidEur = false;
+                let totalHistKwh = 0, totalHistGridKwh = 0, totalHistEur = 0, hasValidEur = false;
                 for (const r of histRows) {
                     totalHistKwh += r.kwh;
+                    if (typeof r.gridKwh === 'number') {
+                        totalHistGridKwh += r.gridKwh;
+                    }
                     if (r.eur !== null) {
                         totalHistEur += r.eur;
                         hasValidEur = true;
@@ -5915,10 +5945,11 @@
                 const histAvgCt = (hasValidEur && totalHistKwh > 0.001) ? (totalHistEur / totalHistKwh * 100) : null;
                 tfoot.innerHTML = `
                     <tr style="border-top: 2px solid rgba(255,255,255,0.15); font-weight:700;">
-                        <td style="padding: 5px 4px 4px 0; color:#bbb;">Ist gesamt</td>
-                        <td style="padding: 5px 4px; text-align:right; color:#fff;">${totalHistKwh.toFixed(1)}</td>
-                        <td style="padding: 5px 4px; text-align:right; color:#aaa;">${histAvgCt !== null ? histAvgCt.toFixed(1) : '--'}</td>
-                        <td style="padding: 5px 0 5px 4px; text-align:right; color:#00e5ff;">${hasValidEur ? totalHistEur.toFixed(2) + ' €' : '--'}</td>
+                        <td style="padding: 5px 2px 4px 0; color:#bbb; white-space:nowrap;">Ist gesamt</td>
+                        <td style="padding: 5px 2px; text-align:right; color:#fff;">${totalHistKwh.toFixed(1)}</td>
+                        <td style="padding: 5px 2px; text-align:right; color:#ff9100;">${totalHistGridKwh.toFixed(1)}</td>
+                        <td style="padding: 5px 2px; text-align:right; color:#aaa;">${histAvgCt !== null ? histAvgCt.toFixed(1) : '--'}</td>
+                        <td style="padding: 5px 0 5px 2px; text-align:right; color:#00e5ff; white-space:nowrap;">${hasValidEur ? totalHistEur.toFixed(2) + ' €' : '--'}</td>
                     </tr>
                 `;
             }
@@ -7911,7 +7942,7 @@
                     if (!wasExpanded) {
                         const tbody = document.getElementById('pvEuroTableBody');
                         if (tbody && !tbody.hasChildNodes()) {
-                            tbody.innerHTML = '<tr><td colspan="4" style="color:#ffdb00; padding:6px 0; text-align:center; font-size:10px;">⚡ Berechne Erlöse &amp; Strompreise...</td></tr>';
+                            tbody.innerHTML = '<tr><td colspan="5" style="color:#ffdb00; padding:6px 0; text-align:center; font-size:10px;">⚡ Berechne Erlöse &amp; Strompreise...</td></tr>';
                         }
                         setTimeout(() => {
                             try {
