@@ -41,6 +41,7 @@ jobs:
           kv_get pv_forecast_log pv_forecast_log.json '[]'
           kv_get pv_calibration_history pv_calibration_history.json '[]'
           kv_get pv_data pv_data.json '{}'
+          kv_get pv_own_forecast_log pv_own_forecast_log.json '[]'
 
       - name: Run calibration review
         run: node pv_calibration_review.js

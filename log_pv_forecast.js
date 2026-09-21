@@ -22,8 +22,13 @@ const BUCKET_MS = 60 * 60 * 1000; // ein Eintrag pro Stunde reicht für die Kali
 function loadSolarData(path) {
     if (!fs.existsSync(path)) return null;
     const text = fs.readFileSync(path, 'utf8');
-    const metaMatch = text.match(/const solarMetadata = (\{[\s\S]*?\});/);
-    const b64Match = text.match(/const solarB64 = "([^"]+)";/);
+    // "var" statt "const": fetch_solar_timeline.js deklariert seit dem 2026-09-16-Fix
+    // ("SyntaxError during live weather reload") beide als var, weil solarB64 danach auf null
+    // gesetzt wird - eine const-only Regex hier lief seitdem 5 Tage lang lautlos ins Leere
+    // (loadSolarData() gab still null zurück, run() brach früh ab, kein Fehler sichtbar), bis der
+    // dadurch eingefrorene pv_forecast_log.json am 2026-09-21 auffiel.
+    const metaMatch = text.match(/(?:const|var) solarMetadata = (\{[\s\S]*?\});/);
+    const b64Match = text.match(/(?:const|var) solarB64 = "([^"]+)";/);
     if (!metaMatch || !b64Match) return null;
     const metadata = JSON.parse(metaMatch[1]);
     const buffer = Buffer.from(b64Match[1], 'base64');

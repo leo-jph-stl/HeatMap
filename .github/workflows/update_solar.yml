@@ -73,6 +73,49 @@ jobs:
             --data-binary @forecast_solar_log.json \
             "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/storage/kv/namespaces/$CF_KV_NAMESPACE_ID/values/forecast_solar_log"
 
+      - name: Restore state for own day-ahead PV forecast log
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_KV_NAMESPACE_ID: ${{ secrets.CF_KV_NAMESPACE_ID }}
+        run: |
+          kv_get() {
+            local key="$1" outfile="$2" fallback="$3"
+            code=$(curl -s -o "$outfile" -w "%{http_code}" \
+              -H "Authorization: Bearer $CF_API_TOKEN" \
+              "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/storage/kv/namespaces/$CF_KV_NAMESPACE_ID/values/$key")
+            if [ "$code" != "200" ]; then
+              echo "$fallback" > "$outfile"
+              echo "KV-Key '$key' noch nicht vorhanden (HTTP $code) - starte mit Fallback."
+            fi
+          }
+          kv_get pv_own_forecast_log pv_own_forecast_log.json '[]'
+          kv_get pv_calibration_history pv_calibration_history.json '[]'
+          kv_get pv_forecast_log pv_forecast_log.json '[]'
+
+      - name: Log own day-ahead PV forecast (echter Vorhersage-Ledger für die eigene Kalibrierung)
+        run: node log_pv_own_forecast.js
+
+      - name: Save own day-ahead PV forecast log to Cloudflare KV
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_KV_NAMESPACE_ID: ${{ secrets.CF_KV_NAMESPACE_ID }}
+        run: |
+          curl -s -o /dev/null -w "KV-Put 'pv_own_forecast_log': HTTP %{http_code}\n" \
+            -X PUT \
+            -H "Authorization: Bearer $CF_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data-binary @pv_own_forecast_log.json \
+            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/storage/kv/namespaces/$CF_KV_NAMESPACE_ID/values/pv_own_forecast_log"
+
+      - name: Remove private files pulled in for this run before they can be published
+        # pv_calibration_history.json/pv_forecast_log.json sind nur read-only Inputs für
+        # log_pv_own_forecast.js und werden von KEINEM Schritt hier committet - ohne diesen
+        # Aufräumschritt würden sie trotzdem über "Upload Pages Artifact" (path: .) unten öffentlich
+        # landen, weil der Artifact-Upload nicht zwischen Git-getrackt und nur-lokal unterscheidet.
+        run: rm -f pv_calibration_history.json pv_forecast_log.json pv_own_forecast_log.json
+
       - name: Commit and push if changed
         run: |
           git config --global user.name 'github-actions[bot]'
