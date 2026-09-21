@@ -17,6 +17,7 @@ const PRIVATE_KEYS = new Set([
     'zun_daily_history',
     'pv_calibration_history',
     'pv_calibration_report',
+    'pv_own_forecast_log',
     'forecast_solar_log',
 ]);
 
