@@ -12,7 +12,26 @@ const fs = require('fs');
 const LOG_FILE = 'pv_forecast_log.json';
 const HISTORY_FILE = 'pv_calibration_history.json';
 const FORECAST_SOLAR_LOG_FILE = 'forecast_solar_log.json';
+const PV_DATA_FILE = 'pv_data.json';
 const TZ_OFFSET_MS = 2 * 3600 * 1000; // Europe/Berlin, September = CEST (UTC+2)
+const MIN_HOURLY_COVERAGE = 20; // von 24 - weniger heißt Tag unvollständig geloggt, siehe loadDailyReports()
+
+// Echte, vom Wechselrichter gemessene Tagessumme (FoxESS "generation") statt sie aus den
+// stündlichen Log-Einträgen zu rekonstruieren. Gefunden am 2026-09-21: für den 2026-09-11 lagen im
+// Log nur 4 Einträge (20-23 Uhr, alle nachts nahe 0) vor, weil das Log an diesem Tag erst abends zu
+// laufen begann (Neustart nach der Login/KV-Migration) - reduce(pv) über diese 4 Einträge ergab
+// 0.04 kWh "Ist", während FoxESS für den kompletten Tag echte 36.5 kWh auswies. Ein aus lückenhaften
+// Log-Einträgen aufsummierter Wert ist per Definition nur so vollständig wie das Log selbst; die
+// echte Tagessumme aus daily_reports ist dagegen unabhängig davon immer korrekt.
+function loadDailyReports() {
+    if (!fs.existsSync(PV_DATA_FILE)) return {};
+    try {
+        const pvData = JSON.parse(fs.readFileSync(PV_DATA_FILE, 'utf8'));
+        return pvData.daily_reports || {};
+    } catch (e) {
+        return {};
+    }
+}
 
 function median(arr) {
     const s = [...arr].sort((a, b) => a - b);
@@ -65,7 +84,7 @@ function localDateStr(tMs) {
     return new Date(tMs + TZ_OFFSET_MS).toISOString().slice(0, 10);
 }
 
-function weeklyFitCheck(rows, medianRatio, capKw) {
+function weeklyFitCheck(rows, medianRatio, capKw, dailyReports) {
     const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
     const recent = rows.filter(r => r.t >= cutoff);
     const byDay = new Map();
@@ -77,10 +96,26 @@ function weeklyFitCheck(rows, medianRatio, capKw) {
 
     const days = [];
     for (const [day, entries] of [...byDay.entries()].sort()) {
-        const actualKwh = entries.reduce((s, r) => s + r.pv, 0);
+        const hoursLogged = entries.length;
+        const incomplete = hoursLogged < MIN_HOURLY_COVERAGE;
+        const realGeneration = dailyReports[day] && dailyReports[day].totals ? dailyReports[day].totals.generation : undefined;
+        // Echte gemessene Tagessumme bevorzugt (siehe loadDailyReports()); nur wenn die für diesen
+        // Tag fehlt, auf die aus dem Log rekonstruierte Summe zurückfallen - dann aber explizit als
+        // "unvollständig" markiert, statt sie unkommentiert wie eine echte Tagessumme zu zeigen.
+        const actualKwh = typeof realGeneration === 'number' ? realGeneration : entries.reduce((s, r) => s + r.pv, 0);
+        const actualIsReconstructed = typeof realGeneration !== 'number';
         const modeledKwh = entries.reduce((s, r) => s + Math.min(capKw, r.ghi * medianRatio), 0);
-        const pctError = actualKwh > 0.01 ? ((modeledKwh - actualKwh) / actualKwh) * 100 : null;
-        days.push({ date: day, actualKwh: round2(actualKwh), modeledKwh: round2(modeledKwh), pctError: pctError !== null ? round2(pctError) : null });
+        const comparable = !incomplete || !actualIsReconstructed; // echte Tagessumme macht den Vergleich auch bei Log-Lücken sinnvoll
+        const pctError = comparable && actualKwh > 0.01 ? ((modeledKwh - actualKwh) / actualKwh) * 100 : null;
+        days.push({
+            date: day,
+            actualKwh: round2(actualKwh),
+            actualSource: actualIsReconstructed ? 'log_reconstructed' : 'daily_report',
+            modeledKwh: round2(modeledKwh),
+            hoursLogged,
+            incompleteLog: incomplete,
+            pctError: pctError !== null ? round2(pctError) : null
+        });
     }
 
     const withError = days.filter(d => d.pctError !== null);
@@ -129,7 +164,8 @@ function run() {
     const calib = computeCalibration(rows);
     const flags = findDataQualityFlags(rows);
     const capKw = Math.max(...rows.map(r => r.pv)) * 1.05;
-    const fit = calib ? weeklyFitCheck(rows, calib.medianRatio, capKw) : null;
+    const dailyReports = loadDailyReports();
+    const fit = calib ? weeklyFitCheck(rows, calib.medianRatio, capKw, dailyReports) : null;
     if (fit) fit.days = attachForecastSolarComparison(fit.days);
 
     let history = [];
@@ -181,13 +217,17 @@ function run() {
         lines.push('**Wochen-Fit-Check:**');
         lines.push('- "Modell (unser)" ist ein **In-Sample-Fit**: misst, wie gut unsere Kalibrierung zu den Daten passt, aus denen sie selbst berechnet wurde - KEIN Test echter Vorhersagegüte, da wir keine im Voraus gespeicherten eigenen Prognosen archivieren.');
         lines.push('- "forecast.solar" ist dagegen eine ECHTE, vor dem jeweiligen Tag abgerufene Vergleichsprognose (10 kWp/35°/Süd-Referenzsystem, siehe fetch_forecast_solar.js) - nicht zwingend identisch mit der echten Anlage, aber ein unabhängiger externer Anhaltspunkt.');
+        lines.push('- "Ist" ist die echte, vom Wechselrichter gemessene Tagessumme (daily_reports); nur falls die für einen Tag fehlt, wird ersatzweise aus den stündlichen Log-Einträgen rekonstruiert - das ist dann explizit als "(Log, lückenhaft)" markiert und nicht mit den anderen Tagen vergleichbar.');
         lines.push('');
         lines.push('| Tag | Ist (kWh) | Modell (unser, kWh) | Abw. unser | forecast.solar (kWh) | Abw. forecast.solar |');
         lines.push('|---|---|---|---|---|---|');
         fit.days.forEach(d => {
             const fsKwh = d.forecastSolarKwh !== undefined && d.forecastSolarKwh !== null ? d.forecastSolarKwh.toFixed(1) : '–';
             const fsErr = d.forecastSolarPctError !== undefined && d.forecastSolarPctError !== null ? d.forecastSolarPctError.toFixed(1) + '%' : '–';
-            lines.push(`| ${d.date} | ${d.actualKwh.toFixed(1)} | ${d.modeledKwh.toFixed(1)} | ${d.pctError !== null ? d.pctError.toFixed(1) + '%' : '–'} | ${fsKwh} | ${fsErr} |`);
+            const istLabel = d.actualSource === 'log_reconstructed'
+                ? `${d.actualKwh.toFixed(1)} (Log, lückenhaft: ${d.hoursLogged}/24h)`
+                : d.actualKwh.toFixed(1);
+            lines.push(`| ${d.date} | ${istLabel} | ${d.modeledKwh.toFixed(1)} | ${d.pctError !== null ? d.pctError.toFixed(1) + '%' : '– (nicht vergleichbar)'} | ${fsKwh} | ${fsErr} |`);
         });
         lines.push('');
         lines.push(`Mittlerer absoluter Fehler diese Woche (unser Modell, In-Sample): ${fit.meanAbsPctError !== null ? fit.meanAbsPctError.toFixed(1) + '%' : 'n/a'}`);
