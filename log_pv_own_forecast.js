@@ -78,7 +78,14 @@ function localDateStr(tMs) {
 function run() {
     const solarData = loadSolarData(SOLAR_DATA_FILE);
     if (!solarData) {
-        console.log('solar_data.js nicht gefunden/lesbar - überspringe Day-Ahead-Prognose.');
+        if (!fs.existsSync(SOLAR_DATA_FILE)) {
+            console.log('solar_data.js noch nicht vorhanden - überspringe Day-Ahead-Prognose.');
+            return;
+        }
+        // Siehe log_pv_forecast.js für den Hintergrund: Datei da, aber nicht parsebar ist ein
+        // echter Bug (Format geändert), kein normaler Zwischenzustand - Workflow-Lauf soll fehlschlagen.
+        console.error('FEHLER: solar_data.js existiert, konnte aber nicht geparst werden (Format geändert?). Day-Ahead-Prognose NICHT aktualisiert.');
+        process.exitCode = 1;
         return;
     }
 
