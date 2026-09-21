@@ -103,7 +103,18 @@ function run() {
     }
     const solarData = loadSolarData(SOLAR_DATA_FILE);
     if (!solarData) {
-        console.log('solar_data.js nicht gefunden/lesbar, überspringe Forecast-Log (noch keine Einstrahlungsprognose zum Vergleichen).');
+        if (!fs.existsSync(SOLAR_DATA_FILE)) {
+            // Legitimer Bootstrap-Fall: update_solar.yml lief noch nie erfolgreich durch.
+            console.log('solar_data.js noch nicht vorhanden, überspringe Forecast-Log (noch keine Einstrahlungsprognose zum Vergleichen).');
+            return;
+        }
+        // Datei ist da, aber nicht parsebar - GENAU das Fehlerbild, das am 2026-09-16 durch die
+        // const->var-Umstellung in fetch_solar_timeline.js 5 Tage lang UNBEMERKT blieb, weil dieser
+        // Fall bisher wie der harmlose Bootstrap-Fall behandelt wurde (exit 0, nur ein Log-Eintrag).
+        // Ein Format-/Parse-Fehler bei einer eigentlich vorhandenen Datei ist ein echter Bug, kein
+        // normaler Zwischenzustand - der Workflow-Lauf soll das jetzt sichtbar als "failed" melden.
+        console.error('FEHLER: solar_data.js existiert, konnte aber nicht geparst werden (Format geändert?). Forecast-Log NICHT aktualisiert.');
+        process.exitCode = 1;
         return;
     }
 
