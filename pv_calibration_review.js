@@ -105,7 +105,12 @@ function weeklyFitCheck(rows, medianRatio, capKw, dailyReports) {
         const actualKwh = typeof realGeneration === 'number' ? realGeneration : entries.reduce((s, r) => s + r.pv, 0);
         const actualIsReconstructed = typeof realGeneration !== 'number';
         const modeledKwh = entries.reduce((s, r) => s + Math.min(capKw, r.ghi * medianRatio), 0);
-        const comparable = !incomplete || !actualIsReconstructed; // echte Tagessumme macht den Vergleich auch bei Log-Lücken sinnvoll
+        // modeledKwh wird IMMER aus den Log-Einträgen berechnet - unabhängig davon, ob actualKwh aus
+        // einer echten Tagessumme oder rekonstruiert kommt, ist der Vergleich nur sinnvoll, wenn das
+        // Log für diesen Tag genug Stunden abdeckt. Gefunden am 2026-09-21: 2026-09-16 hatte nur
+        // 8/24h geloggt (0-7 Uhr, reine Nachtstunden) -> modeledKwh=0, obwohl die echte Tagessumme
+        // vorlag - "-99.9% Abweichung" war ein Artefakt der Log-Lücke, nicht der Anlage/Prognose.
+        const comparable = !incomplete;
         const pctError = comparable && actualKwh > 0.01 ? ((modeledKwh - actualKwh) / actualKwh) * 100 : null;
         days.push({
             date: day,
@@ -217,7 +222,8 @@ function run() {
         lines.push('**Wochen-Fit-Check:**');
         lines.push('- "Modell (unser)" ist ein **In-Sample-Fit**: misst, wie gut unsere Kalibrierung zu den Daten passt, aus denen sie selbst berechnet wurde - KEIN Test echter Vorhersagegüte, da wir keine im Voraus gespeicherten eigenen Prognosen archivieren.');
         lines.push('- "forecast.solar" ist dagegen eine ECHTE, vor dem jeweiligen Tag abgerufene Vergleichsprognose (10 kWp/35°/Süd-Referenzsystem, siehe fetch_forecast_solar.js) - nicht zwingend identisch mit der echten Anlage, aber ein unabhängiger externer Anhaltspunkt.');
-        lines.push('- "Ist" ist die echte, vom Wechselrichter gemessene Tagessumme (daily_reports); nur falls die für einen Tag fehlt, wird ersatzweise aus den stündlichen Log-Einträgen rekonstruiert - das ist dann explizit als "(Log, lückenhaft)" markiert und nicht mit den anderen Tagen vergleichbar.');
+        lines.push('- "Ist" ist die echte, vom Wechselrichter gemessene Tagessumme (daily_reports); nur falls die für einen Tag fehlt, wird ersatzweise aus den stündlichen Log-Einträgen rekonstruiert - das ist dann explizit als "(Log, lückenhaft)" markiert.');
+        lines.push('- "Modell" wird immer aus den stündlichen Log-Einträgen berechnet - deckt das Log einen Tag nicht ausreichend ab (< ' + MIN_HOURLY_COVERAGE + '/24h), ist der Vergleich für diesen Tag nicht aussagekräftig und wird als "nicht vergleichbar" markiert, egal wie plausibel der Ist-Wert selbst ist.');
         lines.push('');
         lines.push('| Tag | Ist (kWh) | Modell (unser, kWh) | Abw. unser | forecast.solar (kWh) | Abw. forecast.solar |');
         lines.push('|---|---|---|---|---|---|');
@@ -227,7 +233,10 @@ function run() {
             const istLabel = d.actualSource === 'log_reconstructed'
                 ? `${d.actualKwh.toFixed(1)} (Log, lückenhaft: ${d.hoursLogged}/24h)`
                 : d.actualKwh.toFixed(1);
-            lines.push(`| ${d.date} | ${istLabel} | ${d.modeledKwh.toFixed(1)} | ${d.pctError !== null ? d.pctError.toFixed(1) + '%' : '– (nicht vergleichbar)'} | ${fsKwh} | ${fsErr} |`);
+            const modeledLabel = d.incompleteLog
+                ? `${d.modeledKwh.toFixed(1)} (Log lückenhaft: ${d.hoursLogged}/24h)`
+                : d.modeledKwh.toFixed(1);
+            lines.push(`| ${d.date} | ${istLabel} | ${modeledLabel} | ${d.pctError !== null ? d.pctError.toFixed(1) + '%' : '– (nicht vergleichbar)'} | ${fsKwh} | ${fsErr} |`);
         });
         lines.push('');
         lines.push(`Mittlerer absoluter Fehler diese Woche (unser Modell, In-Sample): ${fit.meanAbsPctError !== null ? fit.meanAbsPctError.toFixed(1) + '%' : 'n/a'}`);
