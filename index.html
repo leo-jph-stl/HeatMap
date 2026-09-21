@@ -597,8 +597,8 @@
             overflow-y: auto;
             overflow-x: hidden;
             overscroll-behavior: contain;
-            scrollbar-width: thin;
-            scrollbar-color: rgba(255, 219, 0, 0.25) transparent;
+            scrollbar-width: auto;
+            scrollbar-color: rgba(255, 219, 0, 0.45) rgba(255, 255, 255, 0.04);
             z-index: 46;
             background: rgba(18, 18, 24, 0.94);
             backdrop-filter: blur(16px);
@@ -613,9 +613,10 @@
             display: none;
             transition: opacity 0.25s ease;
         }
-        /* Dezente, moderne Scrollleiste ohne Scrolltasten/Pfeile */
+        /* Moderne Scrollleiste ohne Scrolltasten/Pfeile - bewusst gut sichtbar, damit klar wird,
+           dass hier noch mehr Inhalt folgt (z.B. Prognose-Kalibrierung, Erlös-Tabelle weiter unten). */
         #pv-container::-webkit-scrollbar {
-            width: 4px;
+            width: 8px;
         }
         #pv-container::-webkit-scrollbar-button {
             display: none;
@@ -623,14 +624,14 @@
             height: 0;
         }
         #pv-container::-webkit-scrollbar-track {
-            background: transparent;
+            background: rgba(255, 255, 255, 0.04);
         }
         #pv-container::-webkit-scrollbar-thumb {
-            background: rgba(255, 219, 0, 0.22);
+            background: rgba(255, 219, 0, 0.45);
             border-radius: 4px;
         }
         #pv-container::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 219, 0, 0.45);
+            background: rgba(255, 219, 0, 0.7);
         }
         #pv-container .forecast-header {
             position: sticky;
