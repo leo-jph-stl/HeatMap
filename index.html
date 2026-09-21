@@ -1364,6 +1364,16 @@
             </div>
 
             <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; margin-bottom: 7px; overflow: hidden;">
+                <button id="pvCalibrationToggle" style="width:100%; display:flex; justify-content:space-between; align-items:center; background:none; border:none; padding: 8px 9px; cursor:pointer; color:#fff; font-size: 11px; font-weight:600; text-align:left;">
+                    <span>📊 Prognose-Kalibrierung (wöchentlich)</span>
+                    <span id="pvCalibrationChevron" style="color:#888; font-size:10px;">▸</span>
+                </button>
+                <div id="pvCalibrationBody" style="display:none; padding: 0 9px 9px 9px;">
+                    <pre id="pvCalibrationReportText" style="white-space: pre-wrap; word-break: break-word; font-size: 9.5px; line-height: 1.5; color: #ccc; font-family: inherit; margin: 0; max-height: 280px; overflow-y: auto;">Lädt...</pre>
+                </div>
+            </div>
+
+            <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; margin-bottom: 7px; overflow: hidden;">
                 <button id="pvEuroToggle" style="width:100%; display:flex; justify-content:space-between; align-items:center; background:none; border:none; padding: 8px 9px; cursor:pointer; color:#fff; font-size: 11px; font-weight:600; text-align:left;">
                     <span>€ Erlös &amp; Strompreis</span>
                     <span id="pvEuroChevron" style="color:#888; font-size:10px;">▸</span>
@@ -4044,7 +4054,12 @@
                     return null;
                 }
                 if (!res.ok) return null;
-                return await res.json();
+                const raw = await res.text();
+                try {
+                    return JSON.parse(raw);
+                } catch (e) {
+                    return raw; // z.B. pv_calibration_report ist reiner Markdown-Text, kein JSON
+                }
             } catch (e) {
                 return null;
             }
@@ -7980,6 +7995,42 @@
             }
         }
 
+        // Wöchentlicher Kalibrierungsbericht (Ist vs. Modell vs. forecast.solar) - lief früher als
+        // öffentliches GitHub Issue, wurde beim Login-Umbau bewusst entfernt (war ein zweiter,
+        // unabhängiger Leak-Kanal für Anlagendaten). Der Job selbst läuft weiter wöchentlich und
+        // schreibt nach KV (siehe pv_calibration_review.yml) - hier wird er nur wieder sichtbar,
+        // jetzt aber ausschließlich hinter Login.
+        let pvCalibrationReportLoaded = false;
+        async function loadPvCalibrationReport() {
+            const el = document.getElementById('pvCalibrationReportText');
+            if (!el || !isPvAuthenticated) return;
+            el.textContent = 'Lädt...';
+            const res = await pvAuthedFetch('/api/private/pv_calibration_report');
+            if (typeof res === 'string' && res) {
+                el.textContent = res;
+            } else if (res && typeof res === 'object') {
+                el.textContent = JSON.stringify(res, null, 2);
+            } else {
+                el.textContent = 'Noch kein Bericht vorhanden (der Job läuft wöchentlich montags 08:00 Uhr).';
+            }
+            pvCalibrationReportLoaded = true;
+        }
+
+        function initPvCalibrationToggle() {
+            const btn = document.getElementById('pvCalibrationToggle');
+            const body = document.getElementById('pvCalibrationBody');
+            const chevron = document.getElementById('pvCalibrationChevron');
+            if (!btn || !body) return;
+            btn.addEventListener('click', () => {
+                const wasExpanded = body.style.display !== 'none';
+                body.style.display = wasExpanded ? 'none' : 'block';
+                if (chevron) chevron.textContent = wasExpanded ? '▸' : '▾';
+                if (!wasExpanded && !pvCalibrationReportLoaded) {
+                    loadPvCalibrationReport();
+                }
+            });
+        }
+
         function initPvEuroToggle() {
             loadRevenueConfig();
             loadScenarioConfig();
@@ -11759,6 +11810,7 @@
         }
         initPvHistoryChartInteraction();
         initPvEuroToggle();
+        initPvCalibrationToggle();
         initRoutePlanner();
 
         // INIT
