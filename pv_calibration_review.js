@@ -170,10 +170,21 @@ function attachOwnForecastComparison(days) {
     return days.map(d => {
         const dayStartMs = Date.parse(d.date + 'T00:00:00+02:00');
         const candidates = ownLog.filter(e => e.targetDate === d.date && e.fetchedAt < dayStartMs);
-        if (!candidates.length) return { ...d, ownDayAheadKwh: null, ownDayAheadPctError: null };
+        if (!candidates.length) {
+            return { ...d, ownDayAheadKwh: null, ownDayAheadPctError: null, ownDayAheadOpenMeteoKwh: null, ownDayAheadOpenMeteoPctError: null };
+        }
         const best = candidates.reduce((a, b) => (b.fetchedAt > a.fetchedAt ? b : a));
-        const pctError = d.actualKwh > 0.01 ? round2(((best.predictedKwh - d.actualKwh) / d.actualKwh) * 100) : null;
-        return { ...d, ownDayAheadKwh: best.predictedKwh, ownDayAheadPctError: pctError };
+        const pctError = (d.actualKwh > 0.01 && typeof best.predictedKwh === 'number')
+            ? round2(((best.predictedKwh - d.actualKwh) / d.actualKwh) * 100) : null;
+        const pctErrorOm = (d.actualKwh > 0.01 && typeof best.predictedKwhOpenMeteo === 'number')
+            ? round2(((best.predictedKwhOpenMeteo - d.actualKwh) / d.actualKwh) * 100) : null;
+        return {
+            ...d,
+            ownDayAheadKwh: typeof best.predictedKwh === 'number' ? best.predictedKwh : null,
+            ownDayAheadPctError: pctError,
+            ownDayAheadOpenMeteoKwh: typeof best.predictedKwhOpenMeteo === 'number' ? best.predictedKwhOpenMeteo : null,
+            ownDayAheadOpenMeteoPctError: pctErrorOm
+        };
     });
 }
 
@@ -247,31 +258,40 @@ function run() {
         lines.push('- "forecast.solar" ist dagegen eine ECHTE, vor dem jeweiligen Tag abgerufene Vergleichsprognose (10 kWp/35°/Süd-Referenzsystem, siehe fetch_forecast_solar.js) - nicht zwingend identisch mit der echten Anlage, aber ein unabhängiger externer Anhaltspunkt.');
         lines.push('- "Ist" ist die echte, vom Wechselrichter gemessene Tagessumme (daily_reports); nur falls die für einen Tag fehlt, wird ersatzweise aus den stündlichen Log-Einträgen rekonstruiert - das ist dann explizit als "(Log, lückenhaft)" markiert.');
         lines.push('- "Modell" wird immer aus den stündlichen Log-Einträgen berechnet - deckt das Log einen Tag nicht ausreichend ab (< ' + MIN_HOURLY_COVERAGE + '/24h), ist der Vergleich für diesen Tag nicht aussagekräftig und wird als "nicht vergleichbar" markiert, egal wie plausibel der Ist-Wert selbst ist.');
-        lines.push('- "Unser Day-Ahead" ist dagegen eine ECHTE, vor dem jeweiligen Tag mit log_pv_own_forecast.js archivierte eigene Vorhersage (letzte Kalibrierung × GFS-Prognose für den Zieltag) - das ist die tatsächliche Vorhersagegüte unseres Modells, nicht nur seine Anpassung im Nachhinein.');
+        lines.push('- "GFS Day-Ahead" und "Open-Meteo Day-Ahead" sind beides ECHTE, vor dem jeweiligen Tag mit log_pv_own_forecast.js archivierte eigene Vorhersagen (letzte Kalibrierung × jeweilige Einstrahlungsprognose für den Zieltag) - unabhängig voneinander abgerufen (GFS/THREDDS bzw. Open-Meteo/ICON), damit wir über mehrere Wochen sehen, welche Quelle für unsere Anlage näher an der Realität liegt, statt das zu raten oder beide unreflektiert zu mitteln.');
         lines.push('');
-        lines.push('| Tag | Ist (kWh) | Modell (In-Sample, kWh) | Abw. In-Sample | Unser Day-Ahead (kWh) | Abw. Day-Ahead | forecast.solar (kWh) | Abw. forecast.solar |');
-        lines.push('|---|---|---|---|---|---|---|---|');
+        lines.push('| Tag | Ist (kWh) | Modell (In-Sample, kWh) | Abw. In-Sample | GFS Day-Ahead (kWh) | Abw. GFS | Open-Meteo Day-Ahead (kWh) | Abw. Open-Meteo | forecast.solar (kWh) | Abw. forecast.solar |');
+        lines.push('|---|---|---|---|---|---|---|---|---|---|');
         fit.days.forEach(d => {
             const fsKwh = d.forecastSolarKwh !== undefined && d.forecastSolarKwh !== null ? d.forecastSolarKwh.toFixed(1) : '–';
             const fsErr = d.forecastSolarPctError !== undefined && d.forecastSolarPctError !== null ? d.forecastSolarPctError.toFixed(1) + '%' : '–';
             const ownKwh = d.ownDayAheadKwh !== undefined && d.ownDayAheadKwh !== null ? d.ownDayAheadKwh.toFixed(1) : '–';
             const ownErr = d.ownDayAheadPctError !== undefined && d.ownDayAheadPctError !== null ? d.ownDayAheadPctError.toFixed(1) + '%' : '–';
+            const omKwh = d.ownDayAheadOpenMeteoKwh !== undefined && d.ownDayAheadOpenMeteoKwh !== null ? d.ownDayAheadOpenMeteoKwh.toFixed(1) : '–';
+            const omErr = d.ownDayAheadOpenMeteoPctError !== undefined && d.ownDayAheadOpenMeteoPctError !== null ? d.ownDayAheadOpenMeteoPctError.toFixed(1) + '%' : '–';
             const istLabel = d.actualSource === 'log_reconstructed'
                 ? `${d.actualKwh.toFixed(1)} (Log, lückenhaft: ${d.hoursLogged}/24h)`
                 : d.actualKwh.toFixed(1);
             const modeledLabel = d.incompleteLog
                 ? `${d.modeledKwh.toFixed(1)} (Log lückenhaft: ${d.hoursLogged}/24h)`
                 : d.modeledKwh.toFixed(1);
-            lines.push(`| ${d.date} | ${istLabel} | ${modeledLabel} | ${d.pctError !== null ? d.pctError.toFixed(1) + '%' : '– (nicht vergleichbar)'} | ${ownKwh} | ${ownErr} | ${fsKwh} | ${fsErr} |`);
+            lines.push(`| ${d.date} | ${istLabel} | ${modeledLabel} | ${d.pctError !== null ? d.pctError.toFixed(1) + '%' : '– (nicht vergleichbar)'} | ${ownKwh} | ${ownErr} | ${omKwh} | ${omErr} | ${fsKwh} | ${fsErr} |`);
         });
         lines.push('');
         lines.push(`Mittlerer absoluter Fehler diese Woche (unser Modell, In-Sample): ${fit.meanAbsPctError !== null ? fit.meanAbsPctError.toFixed(1) + '%' : 'n/a'}`);
         const ownErrors = fit.days.filter(d => d.ownDayAheadPctError !== null && d.ownDayAheadPctError !== undefined);
         if (ownErrors.length) {
             const ownMeanAbs = round2(ownErrors.reduce((s, d) => s + Math.abs(d.ownDayAheadPctError), 0) / ownErrors.length);
-            lines.push(`Mittlerer absoluter Fehler diese Woche (unser Modell, echtes Day-Ahead): ${ownMeanAbs.toFixed(1)}%`);
+            lines.push(`Mittlerer absoluter Fehler diese Woche (GFS Day-Ahead): ${ownMeanAbs.toFixed(1)}%`);
         } else {
-            lines.push('Unser Day-Ahead: noch keine Vergleichswerte für diese Woche vorhanden (Ledger wächst erst seit Einführung von log_pv_own_forecast.js).');
+            lines.push('GFS Day-Ahead: noch keine Vergleichswerte für diese Woche vorhanden (Ledger wächst erst seit Einführung von log_pv_own_forecast.js).');
+        }
+        const omErrors = fit.days.filter(d => d.ownDayAheadOpenMeteoPctError !== null && d.ownDayAheadOpenMeteoPctError !== undefined);
+        if (omErrors.length) {
+            const omMeanAbs = round2(omErrors.reduce((s, d) => s + Math.abs(d.ownDayAheadOpenMeteoPctError), 0) / omErrors.length);
+            lines.push(`Mittlerer absoluter Fehler diese Woche (Open-Meteo Day-Ahead): ${omMeanAbs.toFixed(1)}%`);
+        } else {
+            lines.push('Open-Meteo Day-Ahead: noch keine Vergleichswerte für diese Woche vorhanden (Ledger wächst erst seit Einführung dieser Quelle).');
         }
         const fsErrors = fit.days.filter(d => d.forecastSolarPctError !== null && d.forecastSolarPctError !== undefined);
         if (fsErrors.length) {

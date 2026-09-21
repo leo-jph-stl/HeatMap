@@ -14,6 +14,38 @@ const PV_LAT = 50.008, PV_LNG = 8.350; // Hochheim am Main (Südstadt), siehe fe
 const MAX_AGE_DAYS = 120;
 const BUCKET_MS = 60 * 60 * 1000; // ein Eintrag pro Stunde reicht für die Kalibrierung
 
+// Zweite, unabhängige Einstrahlungsquelle zum Vergleich (siehe pv_calibration_review.js):
+// Open-Meteo bündelt u.a. das für Deutschland deutlich feiner aufgelöste DWD-ICON-Modell
+// (~2km statt GFS' ~28km), liefert stündlich statt 3-stündlich, und braucht keinen API-Key
+// und kein GRIB/DODS-Parsing wie die GFS/THREDDS-Anbindung (siehe fetch_solar_timeline.js -
+// deren Fragilität hat uns diese Woche mehrere Bugs eingebracht). Absichtlich NICHT als Ersatz
+// für die globale Karte (Open-Meteo ist eine Punkt-API, kein globales Raster), sondern nur für
+// die punktgenaue PV-Kalibrierung, wo genau das kein Nachteil ist.
+async function fetchOpenMeteoGhi() {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${PV_LAT}&longitude=${PV_LNG}&hourly=shortwave_radiation&past_days=3&forecast_days=1&models=icon_seamless&timezone=UTC`;
+    try {
+        const res = await fetch(url);
+        if (!res.ok) {
+            console.log(`Open-Meteo-Abruf fehlgeschlagen (HTTP ${res.status}) - überspringe ghiOpenMeteo für diesen Lauf.`);
+            return new Map();
+        }
+        const json = await res.json();
+        const times = json.hourly && json.hourly.time;
+        const values = json.hourly && json.hourly.shortwave_radiation;
+        if (!Array.isArray(times) || !Array.isArray(values)) return new Map();
+        const map = new Map();
+        times.forEach((t, i) => {
+            const tMs = Date.parse(t + 'Z'); // timezone=UTC liefert "YYYY-MM-DDTHH:mm" ohne Zonensuffix
+            if (isNaN(tMs) || typeof values[i] !== 'number') return;
+            map.set(tMs, values[i]);
+        });
+        return map;
+    } catch (e) {
+        console.log(`Open-Meteo-Abruf fehlgeschlagen (${e.message}) - überspringe ghiOpenMeteo für diesen Lauf.`);
+        return new Map();
+    }
+}
+
 // solar_data.js absichtlich nicht per require()/vm ausführen (die darin verwendeten "const"
 // würden bei einer Ausführung im vm-Kontext ohnehin nicht am globalen Objekt landen) - stattdessen
 // werden Metadata (gültiges JSON, da per JSON.stringify eingebettet) und Base64-Block direkt
@@ -96,7 +128,7 @@ function parseTimestamp(t) {
     return isNaN(d.getTime()) ? NaN : d.getTime();
 }
 
-function run() {
+async function run() {
     if (!fs.existsSync('pv_data.json')) {
         console.log('pv_data.json nicht gefunden, überspringe Forecast-Log.');
         return;
@@ -120,6 +152,7 @@ function run() {
 
     const pvData = JSON.parse(fs.readFileSync('pv_data.json', 'utf8'));
     const history = Array.isArray(pvData.history_3d) ? pvData.history_3d : [];
+    const openMeteoGhi = await fetchOpenMeteoGhi();
 
     let log = [];
     if (fs.existsSync(LOG_FILE)) {
@@ -135,8 +168,19 @@ function run() {
         if (byBucket.has(bucket)) continue; // diese Stunde ist schon geloggt
         const ghi = interpSolarAtTime(solarData, bucket);
         if (ghi === null) continue;
-        byBucket.set(bucket, { t: bucket, pv: Math.round(p.pv * 1000) / 1000, ghi: Math.round(ghi * 10) / 10 });
+        const entry = { t: bucket, pv: Math.round(p.pv * 1000) / 1000, ghi: Math.round(ghi * 10) / 10 };
+        if (openMeteoGhi.has(bucket)) entry.ghiOpenMeteo = Math.round(openMeteoGhi.get(bucket) * 10) / 10;
+        byBucket.set(bucket, entry);
         added++;
+    }
+    // ghiOpenMeteo nachträglich für bereits geloggte Stunden ergänzen, die beim ersten Mal (z.B.
+    // vor Einführung dieser Quelle, oder bei einem fehlgeschlagenen Open-Meteo-Abruf) noch fehlt.
+    if (openMeteoGhi.size) {
+        for (const entry of byBucket.values()) {
+            if (entry.ghiOpenMeteo === undefined && openMeteoGhi.has(entry.t)) {
+                entry.ghiOpenMeteo = Math.round(openMeteoGhi.get(entry.t) * 10) / 10;
+            }
+        }
     }
 
     const cutoff = Date.now() - MAX_AGE_DAYS * 24 * 3600 * 1000;
@@ -146,4 +190,7 @@ function run() {
     console.log(`Forecast-Log: ${added} neue Einträge, ${log.length} gesamt (Fenster: ${MAX_AGE_DAYS} Tage).`);
 }
 
-run();
+run().catch(e => {
+    console.error('FEHLER:', e);
+    process.exitCode = 1;
+});

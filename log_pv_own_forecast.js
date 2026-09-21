@@ -75,7 +75,34 @@ function localDateStr(tMs) {
     return new Date(tMs + TZ_OFFSET_MS).toISOString().slice(0, 10);
 }
 
-function run() {
+// Zweite, unabhängige Day-Ahead-Prognose auf Basis von Open-Meteo/ICON statt GFS/THREDDS - siehe
+// log_pv_forecast.js für den Hintergrund. Liefert einen Lookup targetDate -> {hour: ghi}.
+async function fetchOpenMeteoHourlyByDay() {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${PV_LAT}&longitude=${PV_LNG}&hourly=shortwave_radiation&forecast_days=4&models=icon_seamless&timezone=UTC`;
+    try {
+        const res = await fetch(url);
+        if (!res.ok) {
+            console.log(`Open-Meteo-Abruf fehlgeschlagen (HTTP ${res.status}) - überspringe Open-Meteo-Day-Ahead für diesen Lauf.`);
+            return new Map();
+        }
+        const json = await res.json();
+        const times = json.hourly && json.hourly.time;
+        const values = json.hourly && json.hourly.shortwave_radiation;
+        if (!Array.isArray(times) || !Array.isArray(values)) return new Map();
+        const byHour = new Map(); // tMs -> ghi
+        times.forEach((t, i) => {
+            const tMs = Date.parse(t + 'Z');
+            if (isNaN(tMs) || typeof values[i] !== 'number') return;
+            byHour.set(tMs, values[i]);
+        });
+        return byHour;
+    } catch (e) {
+        console.log(`Open-Meteo-Abruf fehlgeschlagen (${e.message}) - überspringe Open-Meteo-Day-Ahead für diesen Lauf.`);
+        return new Map();
+    }
+}
+
+async function run() {
     const solarData = loadSolarData(SOLAR_DATA_FILE);
     if (!solarData) {
         if (!fs.existsSync(SOLAR_DATA_FILE)) {
@@ -122,21 +149,33 @@ function run() {
         if (!byTargetDay.has(day)) byTargetDay.set(day, []);
     }
 
+    const openMeteoHourly = await fetchOpenMeteoHourlyByDay();
+
     const newEntries = [];
     for (const targetDate of byTargetDay.keys()) {
         // Stündlich über den Zieltag integrieren (lineare Interpolation zwischen den 3h-GFS-Stützstellen).
         const dayStartMs = Date.parse(targetDate + 'T00:00:00+02:00');
         let sumKwh = 0;
         let hoursWithData = 0;
+        let sumKwhOpenMeteo = 0;
+        let hoursWithDataOpenMeteo = 0;
         for (let h = 0; h < 24; h++) {
             const tMs = dayStartMs + h * 3600 * 1000;
             const ghi = interpGhiAtTime(solarData, tMs);
-            if (ghi === null) continue;
-            hoursWithData++;
-            sumKwh += Math.min(capKw, Math.max(0, ghi) * medianRatio);
+            if (ghi !== null) {
+                hoursWithData++;
+                sumKwh += Math.min(capKw, Math.max(0, ghi) * medianRatio);
+            }
+            if (openMeteoHourly.has(tMs)) {
+                hoursWithDataOpenMeteo++;
+                sumKwhOpenMeteo += Math.min(capKw, Math.max(0, openMeteoHourly.get(tMs)) * medianRatio);
+            }
         }
-        if (hoursWithData < 20) continue; // Zieltag liegt zu nah am Rand der Prognose-Reichweite
-        newEntries.push({ fetchedAt, targetDate, predictedKwh: Math.round(sumKwh * 100) / 100, medianRatioUsed: medianRatio });
+        if (hoursWithData < 20 && hoursWithDataOpenMeteo < 20) continue; // Zieltag liegt zu nah am Rand beider Prognosen
+        const entry = { fetchedAt, targetDate, medianRatioUsed: medianRatio };
+        if (hoursWithData >= 20) entry.predictedKwh = Math.round(sumKwh * 100) / 100;
+        if (hoursWithDataOpenMeteo >= 20) entry.predictedKwhOpenMeteo = Math.round(sumKwhOpenMeteo * 100) / 100;
+        newEntries.push(entry);
     }
 
     if (!newEntries.length) {
@@ -153,7 +192,11 @@ function run() {
     log = log.filter(e => e.fetchedAt >= cutoff);
 
     fs.writeFileSync(LOG_FILE, JSON.stringify(log));
-    console.log(`Day-Ahead-Prognose: ${newEntries.length} neue Einträge (${newEntries.map(e => `${e.targetDate}=${e.predictedKwh}kWh`).join(', ')}). Log gesamt: ${log.length}.`);
+    const summary = newEntries.map(e => `${e.targetDate}=${e.predictedKwh ?? '–'}kWh(GFS)/${e.predictedKwhOpenMeteo ?? '–'}kWh(OM)`).join(', ');
+    console.log(`Day-Ahead-Prognose: ${newEntries.length} neue Einträge (${summary}). Log gesamt: ${log.length}.`);
 }
 
-run();
+run().catch(e => {
+    console.error('FEHLER:', e);
+    process.exitCode = 1;
+});
