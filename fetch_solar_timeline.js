@@ -115,6 +115,36 @@ async function fetchSingleStep(threddsIdx, stepNumber, totalSteps) {
     return int16Array;
 }
 
+// Absicherung gegen einen Vorfall vom 2026-09-16: solar_data.js wurde einmal mit einem
+// physikalisch unmöglichen Tag/Nacht-Muster geschrieben (nachts hohe Werte, mittags nahe null).
+// Direkte Nachprüfung der GFS-Rohdaten am selben Gitterpunkt zeigte einwandfreie Werte, und ein
+// erneuter Test der THREDDS-"Best"-Zeitachse über 8 Minuten zeigte keine Verschiebung - die genaue
+// Ursache blieb ungeklärt, vermutlich ein einmaliger, transienter Aussetzer auf THREDDS-Seite.
+// Diese Prüfung schützt gegen ein Wiederauftreten: Mittags MUSS im Mittel heller sein als nachts
+// an einem festen Referenzpunkt - ist das nicht der Fall, wird die neue Datei verworfen und die
+// bisherige, funktionierende solar_data.js bleibt bestehen, statt kaputte Daten zu übernehmen.
+const REF_LAT = 50.008, REF_LNG = 8.350; // Hochheim am Main - selber Punkt wie in log_pv_forecast.js
+function checkPlausibility(masterInt16, steps) {
+    const lon360 = REF_LNG < 0 ? REF_LNG + 360 : REF_LNG;
+    const yIdx = Math.round((90 - REF_LAT) / (0.25 * STRIDE));
+    const xIdx = Math.round(lon360 / (0.25 * STRIDE));
+    if (yIdx < 0 || yIdx >= NY || xIdx < 0 || xIdx >= NX) return { ok: true }; // Referenzpunkt außerhalb des Gitters (z.B. bei einem stark eingeschränkten Testlauf)
+
+    let middaySum = 0, middayN = 0, nightSum = 0, nightN = 0;
+    steps.forEach((s, idx) => {
+        const utcHour = new Date(s.timeMs).getUTCHours();
+        const val = masterInt16[idx * PTS_PER_STEP + yIdx * NX + xIdx] * 0.1;
+        // 09-15 UTC / 21-03 UTC deckt für Hochheim (8.35°O, CET/CEST) ganzjährig sicher Mittag bzw.
+        // tiefe Nacht ab, unabhängig von der genauen Jahreszeit.
+        if (utcHour >= 9 && utcHour <= 15) { middaySum += val; middayN++; }
+        if (utcHour >= 21 || utcHour <= 3) { nightSum += val; nightN++; }
+    });
+    if (middayN < 3 || nightN < 3) return { ok: true }; // zu wenige Datenpunkte für eine verlässliche Aussage
+
+    const middayAvg = middaySum / middayN, nightAvg = nightSum / nightN;
+    return { ok: middayAvg > nightAvg, middayAvg, nightAvg };
+}
+
 async function run() {
     try {
         const steps = await fetchTimeIndices();
@@ -139,6 +169,13 @@ async function run() {
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`Alle ${steps.length} Zeitschritte erfolgreich in ${elapsed}s heruntergeladen!`);
+
+        const plausibility = checkPlausibility(masterInt16, steps);
+        if (!plausibility.ok) {
+            console.error(`FEHLER: Plausibilitätsprüfung fehlgeschlagen - Referenzpunkt Hochheim zeigt nachts (Ø ${plausibility.nightAvg.toFixed(1)} W/m²) heller als mittags (Ø ${plausibility.middayAvg.toFixed(1)} W/m²). Das deutet auf fehlerhafte/vertauschte Zeitschritte hin (siehe 2026-09-16-Vorfall) - solar_data.js wird NICHT überschrieben, die bisherige Version bleibt bestehen.`);
+            process.exitCode = 1;
+            return;
+        }
 
         const buffer = Buffer.from(masterInt16.buffer);
         const base64Str = buffer.toString('base64');
