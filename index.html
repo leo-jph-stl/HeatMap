@@ -9972,7 +9972,7 @@
                     return;
                 }
 
-                const liveIdx = getLiveStepIndex();
+                const liveIdx = getLiveSolarStepIndex();
                 const futureSteps = [];
                 let minS = Infinity, maxS = -Infinity;
                 const maxSteps = Math.min(solarData.length, liveIdx + 17);
@@ -10453,6 +10453,44 @@
             return idx !== -1 ? idx : Math.min(8, tempData.length - 1);
         }
 
+        function getLiveSolarStepIndex() {
+            if (typeof solarData === 'undefined' || solarData.length === 0) return 0;
+            const now = Date.now();
+            if (solarData[0].timeMs) {
+                let bestIdx = 0;
+                let minDiff = Infinity;
+                for (let i = 0; i < solarData.length; i++) {
+                    const diff = Math.abs(solarData[i].timeMs - now);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        bestIdx = i;
+                    }
+                }
+                return bestIdx;
+            }
+            const idx = solarData.findIndex(t => t.hour === 0);
+            return idx !== -1 ? idx : Math.min(8, solarData.length - 1);
+        }
+
+        function getLiveCloudStepIndex() {
+            if (typeof cloudData === 'undefined' || cloudData.length === 0) return 0;
+            const now = Date.now();
+            if (cloudData[0].timeMs) {
+                let bestIdx = 0;
+                let minDiff = Infinity;
+                for (let i = 0; i < cloudData.length; i++) {
+                    const diff = Math.abs(cloudData[i].timeMs - now);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        bestIdx = i;
+                    }
+                }
+                return bestIdx;
+            }
+            const idx = cloudData.findIndex(t => t.hour === 0);
+            return idx !== -1 ? idx : Math.min(8, cloudData.length - 1);
+        }
+
         function formatDisplayTime(step, hourOffset) {
             const now = new Date();
             const nowStr = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
@@ -10512,18 +10550,22 @@
             }
             let solarIdx0 = 0, solarIdx1 = 0, solarBlend = 0;
             if (typeof solarData !== 'undefined' && solarData.length > 0) {
+                const solarLiveIdx = getLiveSolarStepIndex();
                 const maxI = solarData.length - 1;
-                const clamped = Math.max(0, Math.min(maxI, rawIdx));
+                const rawSolarIdx = solarLiveIdx + currentHourOffset / 3;
+                const clamped = Math.max(0, Math.min(maxI, rawSolarIdx));
                 solarIdx0 = Math.floor(clamped);
                 solarIdx1 = Math.min(maxI, solarIdx0 + 1);
                 solarBlend = clamped - solarIdx0;
-                const solarIdx = Math.max(0, Math.min(maxI, liveIdx + stepOffset));
+                const solarIdx = Math.max(0, Math.min(maxI, solarLiveIdx + stepOffset));
                 activeSolar = solarData[solarIdx];
             }
             let cloudIdx0 = 0, cloudIdx1 = 0, cloudBlend = 0;
             if (typeof cloudData !== 'undefined' && cloudData.length > 0) {
+                const cloudLiveIdx = getLiveCloudStepIndex();
                 const maxI = cloudData.length - 1;
-                const clamped = Math.max(0, Math.min(maxI, rawIdx));
+                const rawCloudIdx = cloudLiveIdx + currentHourOffset / 3;
+                const clamped = Math.max(0, Math.min(maxI, rawCloudIdx));
                 cloudIdx0 = Math.floor(clamped);
                 cloudIdx1 = Math.min(maxI, cloudIdx0 + 1);
                 cloudBlend = clamped - cloudIdx0;
