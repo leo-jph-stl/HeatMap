@@ -2,12 +2,13 @@
 // Nutzt denselben THREDDS-Server wie fetch_gfs_0p25.js, Variable
 // "Downward_Short-Wave_Radiation_Flux_surface_Mixed_intervals_Average" (W/m^2).
 //
-// Wichtig: Diese Radiations-Variable liegt auf einer eigenen Zeitachse ("time3") mit
-// eigenem Referenzdatum, das sich unabhängig von der "time"-Achse der Temperatur
-// verschiebt (rollierendes THREDDS-"Best"-Aggregat). Das Referenzdatum wird deshalb
-// bei jedem Lauf dynamisch aus den .das-Attributen gelesen statt hartkodiert
-// (im Gegensatz zu fetch_gfs_0p25.js, das das Datum für "time" fest im Code stehen hat
-// und deshalb gelegentlich manuell nachgezogen werden muss).
+// Wichtig: Diese Radiations-Variable liegt auf der "time3"-Achse.
+// Im GFS GRIB2-Modell sind Strahlungsflüsse Intervall-Mittelwerte bezüglich des
+// jeweiligen 6-stündigen Zyklus (00Z, 06Z, 12Z, 18Z):
+// - Gerader Index 2k: Intervall [6k, 6k+3] -> direkter 3h-Mittelwert A_0-3
+// - Ungerader Index 2k+1: Intervall [6k, 6k+6] -> 6h-Mittelwert A_0-6
+// Um ein lückenloses 3h-Raster zu erhalten, wird der zweite 3h-Schritt [6k+3, 6k+6]
+// per Dekonvolution berechnet: A_3-6 = max(0, 2 * A_0-6 - A_0-3).
 //
 // CLI-Override für schnelle Tests: `node fetch_solar_timeline.js --steps=3 --stride=4`
 const fs = require('fs');
@@ -22,10 +23,7 @@ const argv = Object.fromEntries(process.argv.slice(2).map(a => {
 }));
 
 const STRIDE = parseInt(argv.stride || '1', 10);      // 1 = volle 0.25°-Auflösung, 2 = 0.5°, 4 = 1.0° ...
-// 36 statt 33 Schritte: -24h bis +81h. Die 9h Extra-Puffer über die im UI beworbenen +72h hinaus
-// gleichen aus, dass der Abruf nur alle 6h läuft - kurz vor dem nächsten Pull wäre das Array sonst
-// nur noch "+66h ab jetzt" statt "+72h ab jetzt" (das Fenster ist am Abrufzeitpunkt verankert, nicht
-// am Anzeigezeitpunkt). Siehe auch timeSlider-Anpassung in index.html (dynamisches max).
+// 36 Schritte: -24h bis +81h (9h Puffer über +72h hinaus für 6h-Pull-Staleness)
 const NUM_STEPS = parseInt(argv.steps || '36', 10);
 const BACK_STEPS = parseInt(argv.back || '8', 10);     // 8*3h = 24h zurück
 
@@ -60,27 +58,50 @@ async function fetchTimeIndices() {
     const times = lines.join(',').split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
 
     const nowHours = (Date.now() - baseDate) / 3600000;
-    let bestIdx = 0, minDiff = Infinity;
-    for (let i = 0; i < times.length; i++) {
-        const diff = Math.abs(times[i] - nowHours);
-        if (diff < minDiff) { minDiff = diff; bestIdx = i; }
-    }
+    const now3h = Math.round(nowHours / 3) * 3;
+    const startHour = now3h - BACK_STEPS * 3;
 
-    const startIdx = Math.max(0, bestIdx - BACK_STEPS);
-    const steps = [];
-    for (let i = 0; i < NUM_STEPS; i++) {
-        const targetIdx = startIdx + i;
-        if (targetIdx >= times.length) break;
-        const stepDate = new Date(baseDate + times[targetIdx] * 3600000);
-        steps.push({
-            threddsIdx: targetIdx,
-            hour: (i - BACK_STEPS) * 3,
-            timestamp: stepDate.toISOString(),
-            timeMs: stepDate.getTime()
+    // Ein GFS-6h-Zyklus k deckt [6k, 6k+6] ab.
+    const startCycle = Math.floor(startHour / 6);
+    const numCycles = Math.ceil(NUM_STEPS / 2) + 2;
+
+    const rawSteps = [];
+    for (let c = 0; c < numCycles; c++) {
+        const cycle = startCycle + c;
+        const cycleStartHour = cycle * 6;
+        const idxA = cycle * 2;
+        const idxB = cycle * 2 + 1;
+        if (idxB >= times.length) break;
+
+        rawSteps.push({
+            cycle,
+            substep: 0,
+            threddsIdxA: idxA,
+            forecastHour: cycleStartHour,
+            timestamp: new Date(baseDate + cycleStartHour * 3600000).toISOString(),
+            timeMs: baseDate + cycleStartHour * 3600000
+        });
+        rawSteps.push({
+            cycle,
+            substep: 1,
+            threddsIdxA: idxA,
+            threddsIdxB: idxB,
+            forecastHour: cycleStartHour + 3,
+            timestamp: new Date(baseDate + (cycleStartHour + 3) * 3600000).toISOString(),
+            timeMs: baseDate + (cycleStartHour + 3) * 3600000
         });
     }
-    console.log(`Live-Index: ${bestIdx} von ${times.length}. Zeitfenster: ${steps[0].timestamp} bis ${steps[steps.length - 1].timestamp} (${steps.length} Schritte)`);
-    return steps;
+
+    const startIdx = rawSteps.findIndex(s => s.forecastHour === startHour);
+    if (startIdx === -1) throw new Error(`Konnte Start-Schritt für forecastHour=${startHour} nicht finden`);
+    const selectedSteps = rawSteps.slice(startIdx, startIdx + NUM_STEPS);
+
+    selectedSteps.forEach((s, idx) => {
+        s.hour = (idx - BACK_STEPS) * 3;
+    });
+
+    console.log(`Zeitfenster: ${selectedSteps[0].timestamp} bis ${selectedSteps[selectedSteps.length - 1].timestamp} (${selectedSteps.length} Schritte à 3h)`);
+    return { selectedSteps, baseDate };
 }
 
 async function fetchSingleStep(threddsIdx, stepNumber, totalSteps) {
@@ -98,37 +119,29 @@ async function fetchSingleStep(threddsIdx, stepNumber, totalSteps) {
     // Jede Zeile ist "[i][j], val1, val2, ..." - das erste Feld ist der Zeilenindex, kein Messwert.
     const lines = dataBlock.split('\n').filter(l => l.includes(','));
     for (const line of lines) {
-        const parts2 = line.split(',').slice(1); // erstes Feld ist der Zeilen-Index "[0][x]"
+        const parts2 = line.split(',').slice(1);
         for (const p of parts2) {
             const v = parseFloat(p.trim());
             if (isNaN(v) || count >= PTS_PER_STEP) continue;
-            const clamped = Math.max(0, v); // negative Werte (Rundungsrauschen nachts) auf 0 klemmen
+            const clamped = Math.max(0, v); // negative Werte auf 0 klemmen
             int16Array[count++] = Math.round(clamped * 10); // 0.1 W/m^2 Genauigkeit
         }
     }
 
     const duration = ((Date.now() - t0) / 1000).toFixed(1);
-    console.log(`[${stepNumber}/${totalSteps}] Schritt ${threddsIdx} geladen in ${duration}s (${count.toLocaleString()} Messpunkte)`);
+    console.log(`[${stepNumber}/${totalSteps}] THREDDS-Index ${threddsIdx} geladen in ${duration}s (${count.toLocaleString()} Messpunkte)`);
     if (count !== PTS_PER_STEP) {
         console.warn(`  WARNUNG: erwartet ${PTS_PER_STEP} Punkte, erhalten ${count}`);
     }
     return int16Array;
 }
 
-// Absicherung gegen einen Vorfall vom 2026-09-16: solar_data.js wurde einmal mit einem
-// physikalisch unmöglichen Tag/Nacht-Muster geschrieben (nachts hohe Werte, mittags nahe null).
-// Direkte Nachprüfung der GFS-Rohdaten am selben Gitterpunkt zeigte einwandfreie Werte, und ein
-// erneuter Test der THREDDS-"Best"-Zeitachse über 8 Minuten zeigte keine Verschiebung - die genaue
-// Ursache blieb ungeklärt, vermutlich ein einmaliger, transienter Aussetzer auf THREDDS-Seite.
-// Diese Prüfung schützt gegen ein Wiederauftreten: Mittags MUSS im Mittel heller sein als nachts
-// an einem festen Referenzpunkt - ist das nicht der Fall, wird die neue Datei verworfen und die
-// bisherige, funktionierende solar_data.js bleibt bestehen, statt kaputte Daten zu übernehmen.
 const REF_LAT = 50.008, REF_LNG = 8.350; // Hochheim am Main - selber Punkt wie in log_pv_forecast.js
 function checkPlausibility(masterInt16, steps) {
     const lon360 = REF_LNG < 0 ? REF_LNG + 360 : REF_LNG;
     const yIdx = Math.round((90 - REF_LAT) / (0.25 * STRIDE));
     const xIdx = Math.round(lon360 / (0.25 * STRIDE));
-    if (yIdx < 0 || yIdx >= NY || xIdx < 0 || xIdx >= NX) return { ok: true }; // Referenzpunkt außerhalb des Gitters (z.B. bei einem stark eingeschränkten Testlauf)
+    if (yIdx < 0 || yIdx >= NY || xIdx < 0 || xIdx >= NX) return { ok: true };
 
     let middaySum = 0, middayN = 0, nightSum = 0, nightN = 0;
     steps.forEach((s, idx) => {
@@ -139,7 +152,7 @@ function checkPlausibility(masterInt16, steps) {
         if (utcHour >= 9 && utcHour <= 15) { middaySum += val; middayN++; }
         if (utcHour >= 21 || utcHour <= 3) { nightSum += val; nightN++; }
     });
-    if (middayN < 3 || nightN < 3) return { ok: true }; // zu wenige Datenpunkte für eine verlässliche Aussage
+    if (middayN < 3 || nightN < 3) return { ok: true };
 
     const middayAvg = middaySum / middayN, nightAvg = nightSum / nightN;
     return { ok: middayAvg > nightAvg, middayAvg, nightAvg };
@@ -147,20 +160,28 @@ function checkPlausibility(masterInt16, steps) {
 
 async function run() {
     try {
-        const steps = await fetchTimeIndices();
-        const totalPoints = steps.length * PTS_PER_STEP;
-        const masterInt16 = new Int16Array(totalPoints);
+        const { selectedSteps } = await fetchTimeIndices();
 
-        console.log(`Starte Download von ${steps.length} Zeitschritten (Grid ${NX}x${NY}, Stride ${STRIDE}), insgesamt ${totalPoints.toLocaleString()} Messpunkte...`);
+        // Ermittle alle eindeutigen THREDDS-Indizes, die heruntergeladen werden müssen
+        const neededIndices = new Set();
+        selectedSteps.forEach(s => {
+            neededIndices.add(s.threddsIdxA);
+            if (s.threddsIdxB !== undefined) neededIndices.add(s.threddsIdxB);
+        });
+        const sortedIndices = Array.from(neededIndices).sort((a, b) => a - b);
+
+        console.log(`Benötige ${sortedIndices.length} THREDDS-Indizes für ${selectedSteps.length} 3h-Zeitschritte (Grid ${NX}x${NY}, Stride ${STRIDE})...`);
         const startTime = Date.now();
 
+        const gridCache = new Map();
         const CONCURRENCY = 3;
-        for (let i = 0; i < steps.length; i += CONCURRENCY) {
+        for (let i = 0; i < sortedIndices.length; i += CONCURRENCY) {
             const batch = [];
-            for (let j = 0; j < CONCURRENCY && (i + j) < steps.length; j++) {
-                const stepIdx = i + j;
-                const p = fetchSingleStep(steps[stepIdx].threddsIdx, stepIdx + 1, steps.length).then(arr => {
-                    masterInt16.set(arr, stepIdx * PTS_PER_STEP);
+            for (let j = 0; j < CONCURRENCY && (i + j) < sortedIndices.length; j++) {
+                const idxNum = i + j;
+                const threddsIdx = sortedIndices[idxNum];
+                const p = fetchSingleStep(threddsIdx, idxNum + 1, sortedIndices.length).then(arr => {
+                    gridCache.set(threddsIdx, arr);
                 });
                 batch.push(p);
             }
@@ -168,13 +189,37 @@ async function run() {
         }
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`Alle ${steps.length} Zeitschritte erfolgreich in ${elapsed}s heruntergeladen!`);
+        console.log(`Alle ${sortedIndices.length} THREDDS-Indizes erfolgreich in ${elapsed}s heruntergeladen!`);
 
-        const plausibility = checkPlausibility(masterInt16, steps);
+        // Dekonvolution der 3h-Schritte
+        const totalPoints = selectedSteps.length * PTS_PER_STEP;
+        const masterInt16 = new Int16Array(totalPoints);
+
+        selectedSteps.forEach((s, stepIdx) => {
+            const arrA = gridCache.get(s.threddsIdxA);
+            const destOffset = stepIdx * PTS_PER_STEP;
+            if (s.substep === 0) {
+                // Direkter 3h-Mittelwert [6k, 6k+3]
+                masterInt16.set(arrA, destOffset);
+            } else {
+                // Dekonvolution von [6k+3, 6k+6]: A_3-6 = max(0, 2 * A_0-6 - A_0-3)
+                const arrB = gridCache.get(s.threddsIdxB);
+                for (let p = 0; p < PTS_PER_STEP; p++) {
+                    const v = 2 * arrB[p] - arrA[p];
+                    masterInt16[destOffset + p] = v > 0 ? (v > 32767 ? 32767 : v) : 0;
+                }
+            }
+        });
+
+        const plausibility = checkPlausibility(masterInt16, selectedSteps);
         if (!plausibility.ok) {
-            console.error(`FEHLER: Plausibilitätsprüfung fehlgeschlagen - Referenzpunkt Hochheim zeigt nachts (Ø ${plausibility.nightAvg.toFixed(1)} W/m²) heller als mittags (Ø ${plausibility.middayAvg.toFixed(1)} W/m²). Das deutet auf fehlerhafte/vertauschte Zeitschritte hin (siehe 2026-09-16-Vorfall) - solar_data.js wird NICHT überschrieben, die bisherige Version bleibt bestehen.`);
+            console.error(`FEHLER: Plausibilitätsprüfung fehlgeschlagen - Referenzpunkt Hochheim zeigt nachts (Ø ${plausibility.nightAvg.toFixed(1)} W/m²) heller als mittags (Ø ${plausibility.middayAvg.toFixed(1)} W/m²). solar_data.js wird NICHT überschrieben.`);
             process.exitCode = 1;
             return;
+        } else if (plausibility.middayAvg !== undefined) {
+            console.log(`Plausibilitätsprüfung bestanden: Mittag Ø ${plausibility.middayAvg.toFixed(1)} W/m² vs. Nacht Ø ${plausibility.nightAvg.toFixed(1)} W/m².`);
+        } else {
+            console.log('Plausibilitätsprüfung: Zu wenige Schritte für statistische Mittelwertprüfung (Kurzlauf).');
         }
 
         const buffer = Buffer.from(masterInt16.buffer);
@@ -187,7 +232,7 @@ async function run() {
             la1: 90, lo1: 0,
             scale: 0.1,
             unit: 'W/m^2',
-            steps: steps.map(s => ({ hour: s.hour, timestamp: s.timestamp, timeMs: s.timeMs }))
+            steps: selectedSteps.map(s => ({ hour: s.hour, timestamp: s.timestamp, timeMs: s.timeMs }))
         };
 
         const fileContent = `// Globale Sonneneinstrahlung (GHI, Downward Shortwave Radiation) aus GFS 0.25°.
