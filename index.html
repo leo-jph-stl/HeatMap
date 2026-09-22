@@ -10456,22 +10456,28 @@
         function formatDisplayTime(step, hourOffset) {
             const now = new Date();
             const nowStr = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-            
+            const roundedOffset = Math.round(hourOffset);
+
             if (step && (step.timeMs || step.timestamp)) {
-                const d = new Date(step.timeMs || step.timestamp);
+                // Kontinuierlich aus hourOffset berechnet statt aus step.timeMs (dem nächstgelegenen
+                // 3h-Wetterdaten-Schritt) - sonst springt die angezeigte Uhrzeit beim Abspielen nur
+                // alle 3 simulierten Stunden, obwohl currentHourOffset selbst längst gleichmäßig
+                // läuft (siehe Play-Geschwindigkeits-Fix). Dadurch wirkte die Anzeige bei jeder
+                // Geschwindigkeit "viel langsamer" als sie eigentlich war.
+                const d = new Date(now.getTime() + hourOffset * 3600000);
                 const dayStr = d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: 'short' });
                 const timeStr = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr';
-                
-                if (hourOffset === 0) {
+
+                if (roundedOffset === 0) {
                     return `Live (${nowStr} Uhr | Modell: ${timeStr})`;
-                } else if (hourOffset < 0) {
-                    return `${dayStr}, ${timeStr} (vor ${Math.abs(hourOffset)}h)`;
+                } else if (roundedOffset < 0) {
+                    return `${dayStr}, ${timeStr} (vor ${Math.abs(roundedOffset)}h)`;
                 } else {
-                    return `${dayStr}, ${timeStr} (+${hourOffset}h)`;
+                    return `${dayStr}, ${timeStr} (+${roundedOffset}h)`;
                 }
             } else {
-                if (hourOffset === 0) return `Live (${nowStr} Uhr)`;
-                return hourOffset < 0 ? `Vor ${Math.abs(hourOffset)} Stunden` : `In ${hourOffset} Stunden`;
+                if (roundedOffset === 0) return `Live (${nowStr} Uhr)`;
+                return roundedOffset < 0 ? `Vor ${Math.abs(roundedOffset)} Stunden` : `In ${roundedOffset} Stunden`;
             }
         }
 
@@ -10525,7 +10531,7 @@
 
             const titleEl = document.getElementById('timeDisplayTitle');
             if (titleEl) {
-                titleEl.innerText = formatDisplayTime(activeTemp, Math.round(currentHourOffset));
+                titleEl.innerText = formatDisplayTime(activeTemp, currentHourOffset);
             }
 
             let texA = null, texB = null, blend = 0;
