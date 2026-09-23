@@ -2928,71 +2928,7 @@
         // DYNAMISCHE 3D TOPOGRAPHISCHE KARTE (OpenTopoMap & ArcGIS Topo & Hypsometrisches Farbrelief)
         // Permanente, Z-Fighting-freie Basissphäre (Radius 100.20): Liegt 0.15 Einheiten unter den Detailkacheln (100.35)
         // und garantiert, dass der Globus im Topographie-Modus zu jeder Zeit lückenlos und NIEMALS schwarz dargestellt wird.
-        function createTopoBaseGeometry(radius = 100.20, segsX = 64, segsY = 64) {
-            const positions = [];
-            const uvs = [];
-            const indices = [];
-
-            // Nordpol-Spitze (Index 0)
-            positions.push(0, radius, 0);
-            uvs.push(0.5, 1.0);
-
-            // Gitterpunkte für Web-Mercator Breitenbereich (-85.05° bis +85.05°)
-            for (let iy = 0; iy <= segsY; iy++) {
-                const vTile = iy / segsY;
-                const n = Math.PI - (2 * Math.PI * vTile);
-                const lat = (180 / Math.PI) * Math.atan(Math.sinh(n));
-                const vNorm = (90 - lat) / 180;
-
-                for (let ix = 0; ix <= segsX; ix++) {
-                    const uNorm = ix / segsX;
-                    const px = - radius * Math.cos(uNorm * Math.PI * 2) * Math.sin(vNorm * Math.PI);
-                    const py = radius * Math.cos(vNorm * Math.PI);
-                    const pz = radius * Math.sin(uNorm * Math.PI * 2) * Math.sin(vNorm * Math.PI);
-
-                    positions.push(px, py, pz);
-                    uvs.push(uNorm, 1.0 - vTile);
-                }
-            }
-
-            // Südpol-Spitze
-            const southPoleIdx = positions.length / 3;
-            positions.push(0, -radius, 0);
-            uvs.push(0.5, 0.0);
-
-            // Nordpol-Kappe
-            for (let ix = 0; ix < segsX; ix++) {
-                indices.push(0, 1 + ix, 1 + ix + 1);
-            }
-
-            // Mittleres Kugelnetz
-            for (let iy = 0; iy < segsY; iy++) {
-                const rowStart = 1 + iy * (segsX + 1);
-                const nextRowStart = 1 + (iy + 1) * (segsX + 1);
-                for (let ix = 0; ix < segsX; ix++) {
-                    const a = rowStart + ix;
-                    const b = a + 1;
-                    const c = nextRowStart + ix;
-                    const d = c + 1;
-                    indices.push(a, b, d, a, d, c);
-                }
-            }
-
-            // Südpol-Kappe
-            const lastRowStart = 1 + segsY * (segsX + 1);
-            for (let ix = 0; ix < segsX; ix++) {
-                indices.push(southPoleIdx, lastRowStart + ix + 1, lastRowStart + ix);
-            }
-
-            const geom = new THREE.BufferGeometry();
-            geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-            geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-            geom.setIndex(indices);
-            geom.computeVertexNormals();
-            return geom;
-        }
-
-        const topoBaseGeometry = createTopoBaseGeometry(100.20, 64, 64);
+        const topoBaseGeometry = new THREE.SphereGeometry(100.20, 128, 128);
         const topoBaseMaterial = new THREE.MeshBasicMaterial({
             map: topoBaseTexture,
             side: THREE.FrontSide,
@@ -3675,6 +3611,7 @@
                     const anim = cameraAnimation;
                     cameraAnimation = null;
                     controls.enabled = true;
+                    if (currentMode === 'topo') updateTopoTiles(true);
                     
                     if (anim && anim.targetName && !anim.targetName.includes('PV-Anlage')) {
                         // Temperatur-Popup am Zielort aktivieren & anzeigen
@@ -10361,6 +10298,7 @@
             if (cameraAnimation) {
                 cameraAnimation = null;
                 controls.enabled = true;
+                if (currentMode === 'topo') updateTopoTiles(true);
             }
             userNavigatedManually = true;
         }
