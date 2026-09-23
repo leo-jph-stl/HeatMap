@@ -5,6 +5,7 @@ earth_repo/
 *.zip
 *.txt
 *.png
+!topo_base.png
 *.geojson
 fetch_live_temp.js
 fetch_opendap_temp.js

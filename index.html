@@ -2395,7 +2395,7 @@
 
         const colorRampTopoTex = createColorRampTexture(colorScaleTopo, 0.0, 1.0, 2048);
         const topoGradientCss = `linear-gradient(to right, ${topoColorStops.map(s => `${s.c} ${(s.p * 100).toFixed(1)}%`).join(', ')})`;
-        const topoBaseTexture = textureLoader.load('earth-topology.png');
+        const topoBaseTexture = textureLoader.load('topo_base.png');
         topoBaseTexture.wrapS = THREE.ClampToEdgeWrapping;
         topoBaseTexture.wrapT = THREE.ClampToEdgeWrapping;
         topoBaseTexture.minFilter = THREE.LinearFilter;
@@ -2925,7 +2925,86 @@
         controls.addEventListener('change', updateHillshadeTiles);
         updateHillshadeTiles();
 
-        // DYNAMISCHE 3D TOPOGRAPHISCHE KARTE (OpenTopoMap & ArcGIS Topo)
+        // DYNAMISCHE 3D TOPOGRAPHISCHE KARTE (OpenTopoMap & ArcGIS Topo & Hypsometrisches Farbrelief)
+        // Permanente, Z-Fighting-freie Basissphäre (Radius 100.20): Liegt 0.15 Einheiten unter den Detailkacheln (100.35)
+        // und garantiert, dass der Globus im Topographie-Modus zu jeder Zeit lückenlos und NIEMALS schwarz dargestellt wird.
+        function createTopoBaseGeometry(radius = 100.20, segsX = 64, segsY = 64) {
+            const positions = [];
+            const uvs = [];
+            const indices = [];
+
+            // Nordpol-Spitze (Index 0)
+            positions.push(0, radius, 0);
+            uvs.push(0.5, 1.0);
+
+            // Gitterpunkte für Web-Mercator Breitenbereich (-85.05° bis +85.05°)
+            for (let iy = 0; iy <= segsY; iy++) {
+                const vTile = iy / segsY;
+                const n = Math.PI - (2 * Math.PI * vTile);
+                const lat = (180 / Math.PI) * Math.atan(Math.sinh(n));
+                const vNorm = (90 - lat) / 180;
+
+                for (let ix = 0; ix <= segsX; ix++) {
+                    const uNorm = ix / segsX;
+                    const px = - radius * Math.cos(uNorm * Math.PI * 2) * Math.sin(vNorm * Math.PI);
+                    const py = radius * Math.cos(vNorm * Math.PI);
+                    const pz = radius * Math.sin(uNorm * Math.PI * 2) * Math.sin(vNorm * Math.PI);
+
+                    positions.push(px, py, pz);
+                    uvs.push(uNorm, 1.0 - vTile);
+                }
+            }
+
+            // Südpol-Spitze
+            const southPoleIdx = positions.length / 3;
+            positions.push(0, -radius, 0);
+            uvs.push(0.5, 0.0);
+
+            // Nordpol-Kappe
+            for (let ix = 0; ix < segsX; ix++) {
+                indices.push(0, 1 + ix, 1 + ix + 1);
+            }
+
+            // Mittleres Kugelnetz
+            for (let iy = 0; iy < segsY; iy++) {
+                const rowStart = 1 + iy * (segsX + 1);
+                const nextRowStart = 1 + (iy + 1) * (segsX + 1);
+                for (let ix = 0; ix < segsX; ix++) {
+                    const a = rowStart + ix;
+                    const b = a + 1;
+                    const c = nextRowStart + ix;
+                    const d = c + 1;
+                    indices.push(a, b, d, a, d, c);
+                }
+            }
+
+            // Südpol-Kappe
+            const lastRowStart = 1 + segsY * (segsX + 1);
+            for (let ix = 0; ix < segsX; ix++) {
+                indices.push(southPoleIdx, lastRowStart + ix + 1, lastRowStart + ix);
+            }
+
+            const geom = new THREE.BufferGeometry();
+            geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            geom.setIndex(indices);
+            geom.computeVertexNormals();
+            return geom;
+        }
+
+        const topoBaseGeometry = createTopoBaseGeometry(100.20, 64, 64);
+        const topoBaseMaterial = new THREE.MeshBasicMaterial({
+            map: topoBaseTexture,
+            side: THREE.FrontSide,
+            depthWrite: true,
+            depthTest: true
+        });
+        const topoBaseMesh = new THREE.Mesh(topoBaseGeometry, topoBaseMaterial);
+        topoBaseMesh.rotation.y = -Math.PI / 2;
+        topoBaseMesh.renderOrder = 0;
+        topoBaseMesh.visible = false;
+        scene.add(topoBaseMesh);
+
         const topoTileGroup = new THREE.Group();
         topoTileGroup.rotation.y = -Math.PI / 2;
         topoTileGroup.visible = false;
@@ -3228,8 +3307,8 @@
             const horizonDeg = horizonRad * (180 / Math.PI);
 
             // Blickfeld auf dem Globus (Winkelbereich in Grad vom Zentrum aus)
-            // Großzügige Randabdeckung verhindert jegliche Lücken an den Rändern bei Schrägsicht und Breitbildschirmen
-            const fovGroundDeg = (tanFovHalf * (h * 1.5) / earthRadius) * (180 / Math.PI);
+            // Großzügige Randabdeckung verhindert jegliche Lücken an den Rändern bei Schrägsicht und Wischbewegungen
+            const fovGroundDeg = (tanFovHalf * (h * 2.2) / earthRadius) * (180 / Math.PI);
             const groundSpanDeg = Math.max(0.5, Math.min(horizonDeg * 0.95, fovGroundDeg));
 
             const cosLat = Math.max(0.18, Math.cos(centerLat * Math.PI / 180));
@@ -9603,8 +9682,13 @@
             zoomRaycaster.setFromCamera({ x: mouseX, y: mouseY }, camera);
 
             let hits = [];
-            if (currentMode === 'topo' && topoTileGroup && topoTileGroup.children.length > 0) {
-                hits = zoomRaycaster.intersectObjects(topoTileGroup.children, false);
+            if (currentMode === 'topo') {
+                if (topoTileGroup && topoTileGroup.children.length > 0) {
+                    hits = zoomRaycaster.intersectObjects(topoTileGroup.children, false);
+                }
+                if (hits.length === 0 && typeof topoBaseMesh !== 'undefined' && topoBaseMesh) {
+                    hits = zoomRaycaster.intersectObject(topoBaseMesh);
+                }
             }
             if (hits.length === 0 && hillshadeGroup && hillshadeGroup.children.length > 0) {
                 hits = zoomRaycaster.intersectObjects(hillshadeGroup.children, false);
@@ -10420,6 +10504,13 @@
                     }
                 }
             }
+            if (currentMode === 'topo' && !pt && typeof topoBaseMesh !== 'undefined' && topoBaseMesh) {
+                const baseHits = raycaster.intersectObject(topoBaseMesh);
+                if (baseHits.length > 0) {
+                    pt = baseHits[0].point.clone();
+                    pt.applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
+                }
+            }
 
             if (!pt && hillshadeGroup && hillshadeGroup.children.length > 0) {
                 const hillHits = raycaster.intersectObjects(hillshadeGroup.children, false);
@@ -10822,9 +10913,10 @@
 
                 // Im Topographie-Modus die darunterliegende Wetter-Raster-Sphäre und den Hillshade-Layer
                 // ausblenden, um jegliches Z-Fighting (Flackern / Durchscheinen blauer Pixel) vollständig
-                // zu eliminieren. Das echte Geländerelief wird nahtlos über topoTileGroup gerendert.
+                // zu eliminieren. Das echte Geländerelief wird nahtlos über topoBaseMesh und topoTileGroup gerendert.
                 dataMesh.visible = false;
                 hillshadeGroup.visible = false;
+                if (typeof topoBaseMesh !== 'undefined' && topoBaseMesh) topoBaseMesh.visible = true;
                 topoTileGroup.visible = true;
 
                 const legendBar = document.getElementById('legend-bar');
@@ -10847,6 +10939,7 @@
                 if (topoTicks) topoTicks.style.display = 'none';
 
                 topoTileGroup.visible = false;
+                if (typeof topoBaseMesh !== 'undefined' && topoBaseMesh) topoBaseMesh.visible = false;
                 dataMesh.visible = true;
                 hillshadeGroup.visible = true;
 
