@@ -3115,7 +3115,8 @@
                 tex.minFilter = THREE.LinearFilter;
                 tex.magFilter = THREE.LinearFilter;
 
-                const geom = getTileGeometry(x, y, z, 8, surfaceRadius);
+                const segs = (z <= 4) ? 16 : 8;
+                const geom = getTileGeometry(x, y, z, segs, surfaceRadius);
                 let mat;
 
                 let tileMinElev = 0;
@@ -3179,14 +3180,20 @@
                             u_maxElev: { value: currentVisibleMaxElev },
                             u_texelSize: { value: new THREE.Vector2(1.0 / 256.0, 1.0 / 256.0) }
                         },
-                        side: THREE.DoubleSide,
+                        polygonOffset: true,
+                        polygonOffsetFactor: -1.0,
+                        polygonOffsetUnits: -4.0,
+                        side: THREE.FrontSide,
                         transparent: false,
                         depthWrite: true
                     });
                 } else {
                     mat = new THREE.MeshBasicMaterial({
                         map: tex,
-                        side: THREE.DoubleSide,
+                        polygonOffset: true,
+                        polygonOffsetFactor: -1.0,
+                        polygonOffsetUnits: -4.0,
+                        side: THREE.FrontSide,
                         transparent: false,
                         depthWrite: true
                     });
@@ -3220,14 +3227,17 @@
             const dist = camera.position.length();
             const h = Math.max(1, dist - earthRadius);
 
-            let z = 5;
-            if (h < 1.0) z = 12;
-            else if (h < 2.5) z = 11;
-            else if (h < 5.5) z = 10;
-            else if (h < 12.0) z = 9;
-            else if (h < 25.0) z = 8;
-            else if (h < 50.0) z = 7;
-            else if (h < 100.0) z = 6;
+            let z = 3;
+            if (h < 0.6) z = 12;
+            else if (h < 1.5) z = 11;
+            else if (h < 3.5) z = 10;
+            else if (h < 8.0) z = 9;
+            else if (h < 18.0) z = 8;
+            else if (h < 38.0) z = 7;
+            else if (h < 75.0) z = 6;
+            else if (h < 120.0) z = 5;
+            else if (h < 180.0) z = 4;
+            else z = 3;
 
             const Px = camera.position.z;
             const Py = camera.position.y;
@@ -10829,16 +10839,11 @@
                 if (timeLabels) timeLabels.style.display = 'none';
                 if (timeDisplayTitle) timeDisplayTitle.innerText = '⛰️ Topographisches Farbrelief';
 
-                // Basis-Globus bleibt IMMER sichtbar und zeigt lückenloses Höhenrelief (Bild 1)
-                dataMesh.visible = true;
-                dataMaterial.uniforms.u_dataA.value = topoBaseTexture;
-                dataMaterial.uniforms.u_dataB.value = topoBaseTexture;
-                dataMaterial.uniforms.u_blend.value = 0.0;
-                dataMaterial.uniforms.u_colorRamp.value = colorRampTopoTex;
-                dataMaterial.uniforms.u_minVal.value = 0.0;
-                dataMaterial.uniforms.u_maxVal.value = 1.0;
-                dataMaterial.uniforms.u_showNightClouds.value = 0.0;
-
+                // Im Topographie-Modus die darunterliegende Wetter-Raster-Sphäre und den Hillshade-Layer
+                // ausblenden, um jegliches Z-Fighting (Flackern / Durchscheinen blauer Pixel) vollständig
+                // zu eliminieren. Das echte Geländerelief wird nahtlos über topoTileGroup gerendert.
+                dataMesh.visible = false;
+                hillshadeGroup.visible = false;
                 topoTileGroup.visible = true;
 
                 const legendBar = document.getElementById('legend-bar');
@@ -10862,6 +10867,7 @@
 
                 topoTileGroup.visible = false;
                 dataMesh.visible = true;
+                hillshadeGroup.visible = true;
 
                 if (mode === 'temp') {
                     document.getElementById('legend-min').innerText = '-30°C';
