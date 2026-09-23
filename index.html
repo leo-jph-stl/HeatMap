@@ -2136,6 +2136,9 @@
         let activeTemp = null;
         let activeWind = null;
         let activeSolar = null;
+        let activeTempIdx0 = 0, activeTempIdx1 = 0, activeTempBlend = 0;
+        let activeSolarIdx0 = 0, activeSolarIdx1 = 0, activeSolarBlend = 0;
+        let currentSolarFetchId = 0;
         let solarClimSelection = 'live'; // 'live' | 'JAN'..'DEC' | 'ANN'
         
         // INTERPOLATION DATA
@@ -2167,6 +2170,29 @@
             ])
             .clamp(true);
 
+        function sampleGridScalar(step, lat, lon0360, isSolar, fallback) {
+            if (!step || !step.data) return fallback;
+            const h = step.header;
+            let y = (h.la1 - lat) / h.dy;
+            let x = lon0360 / h.dx;
+            let y0 = Math.floor(y); let x0 = Math.floor(x);
+            let y1 = y0 + 1; let x1 = x0 + 1;
+            if (y0 < 0) y0 = 0; if (y0 >= h.ny) y0 = h.ny - 1;
+            if (y1 < 0) y1 = 0; if (y1 >= h.ny) y1 = h.ny - 1;
+            if (x0 < 0) x0 = 0; if (x0 >= h.nx) x0 = h.nx - 1;
+            if (x1 < 0) x1 = 0; if (x1 >= h.nx) x1 = h.nx - 1;
+            let dy = y - y0; let dx = x - x0;
+            const i00 = y0 * h.nx + x0; const i10 = y0 * h.nx + x1;
+            const i01 = y1 * h.nx + x0; const i11 = y1 * h.nx + x1;
+            const scale = step.scale || 1.0;
+            const d = step.data;
+            const v00 = d[i00] !== undefined ? (isSolar ? Math.max(0, d[i00] * scale) : d[i00] * scale) : fallback;
+            const v10 = d[i10] !== undefined ? (isSolar ? Math.max(0, d[i10] * scale) : d[i10] * scale) : fallback;
+            const v01 = d[i01] !== undefined ? (isSolar ? Math.max(0, d[i01] * scale) : d[i01] * scale) : fallback;
+            const v11 = d[i11] !== undefined ? (isSolar ? Math.max(0, d[i11] * scale) : d[i11] * scale) : fallback;
+            return v00*(1-dx)*(1-dy) + v10*dx*(1-dy) + v01*(1-dx)*dy + v11*dx*dy;
+        }
+
         function getInterpolatedData(lat, lng) {
             let u=0, v=0, t=15, solar=0;
             let lon0360 = lng < 0 ? lng + 360 : lng;
@@ -2192,63 +2218,39 @@
                 v = (activeWind.v.data[i00]||0)*(1-dx)*(1-dy) + (activeWind.v.data[i10]||0)*dx*(1-dy) + (activeWind.v.data[i01]||0)*(1-dx)*dy + (activeWind.v.data[i11]||0)*dx*dy;
             }
 
-            if (activeTemp) {
-                const th = activeTemp.header;
-                let y = (th.la1 - lat) / th.dy;
-                let x = lon0360 / th.dx;
-                
-                let y0 = Math.floor(y); let x0 = Math.floor(x);
-                let y1 = y0 + 1; let x1 = x0 + 1;
-
-                if (y0 < 0) y0 = 0; if (y0 >= th.ny) y0 = th.ny - 1;
-                if (y1 < 0) y1 = 0; if (y1 >= th.ny) y1 = th.ny - 1;
-                if (x0 < 0) x0 = 0; if (x0 >= th.nx) x0 = th.nx - 1;
-                if (x1 < 0) x1 = 0; if (x1 >= th.nx) x1 = th.nx - 1;
-
-                let dy = y - y0; let dx = x - x0;
-                const i00 = y0 * th.nx + x0; const i10 = y0 * th.nx + x1;
-                const i01 = y1 * th.nx + x0; const i11 = y1 * th.nx + x1;
-
-                const scale = activeTemp.scale || 1.0;
-                const d = activeTemp.data;
-                const t00 = (d[i00] !== undefined ? d[i00] * scale : 15);
-                const t10 = (d[i10] !== undefined ? d[i10] * scale : 15);
-                const t01 = (d[i01] !== undefined ? d[i01] * scale : 15);
-                const t11 = (d[i11] !== undefined ? d[i11] * scale : 15);
-
-                t = t00*(1-dx)*(1-dy) + t10*dx*(1-dy) + t01*(1-dx)*dy + t11*dx*dy;
+            if (typeof tempData !== 'undefined' && tempData.length > 0) {
+                const s0 = tempData[activeTempIdx0] || activeTemp;
+                const s1 = tempData[activeTempIdx1] || activeTemp;
+                const t0 = sampleGridScalar(s0, lat, lon0360, false, 15);
+                if (s0 !== s1 && activeTempBlend > 0) {
+                    const t1 = sampleGridScalar(s1, lat, lon0360, false, 15);
+                    t = t0 * (1 - activeTempBlend) + t1 * activeTempBlend;
+                } else {
+                    t = t0;
+                }
+            } else if (activeTemp) {
+                t = sampleGridScalar(activeTemp, lat, lon0360, false, 15);
             }
 
-            // Sonneneinstrahlung: je nach Dropdown entweder die aktuelle Live-Zeitreihe oder,
-            // wenn eine Klimatologie-Option gewählt ist, das entsprechende Monats-/Jahresmittel-Grid
-            const solarSource = (solarClimSelection !== 'live' && typeof solarClimatologyData !== 'undefined')
-                ? solarClimatologyData.find(l => l.label === solarClimSelection)
-                : activeSolar;
-            if (solarSource) {
-                const sh = solarSource.header;
-                let y = (sh.la1 - lat) / sh.dy;
-                let x = lon0360 / sh.dx;
-
-                let y0 = Math.floor(y); let x0 = Math.floor(x);
-                let y1 = y0 + 1; let x1 = x0 + 1;
-
-                if (y0 < 0) y0 = 0; if (y0 >= sh.ny) y0 = sh.ny - 1;
-                if (y1 < 0) y1 = 0; if (y1 >= sh.ny) y1 = sh.ny - 1;
-                if (x0 < 0) x0 = 0; if (x0 >= sh.nx) x0 = sh.nx - 1;
-                if (x1 < 0) x1 = 0; if (x1 >= sh.nx) x1 = sh.nx - 1;
-
-                let dy2 = y - y0; let dx2 = x - x0;
-                const i00 = y0 * sh.nx + x0; const i10 = y0 * sh.nx + x1;
-                const i01 = y1 * sh.nx + x0; const i11 = y1 * sh.nx + x1;
-
-                const sScale = solarSource.scale || 1.0;
-                const sd = solarSource.data;
-                const s00 = (sd[i00] !== undefined ? Math.max(0, sd[i00] * sScale) : 0);
-                const s10 = (sd[i10] !== undefined ? Math.max(0, sd[i10] * sScale) : 0);
-                const s01 = (sd[i01] !== undefined ? Math.max(0, sd[i01] * sScale) : 0);
-                const s11 = (sd[i11] !== undefined ? Math.max(0, sd[i11] * sScale) : 0);
-
-                solar = s00*(1-dx2)*(1-dy2) + s10*dx2*(1-dy2) + s01*(1-dx2)*dy2 + s11*dx2*dy2;
+            // Sonneneinstrahlung: je nach Dropdown entweder die aktuelle Live-Zeitreihe (mit
+            // minutengenauer Zeitüberblendung zwischen den GFS-Schritten) oder Klimatologie
+            if (solarClimSelection !== 'live' && typeof solarClimatologyData !== 'undefined') {
+                const solarSource = solarClimatologyData.find(l => l.label === solarClimSelection);
+                if (solarSource) {
+                    solar = sampleGridScalar(solarSource, lat, lon0360, true, 0);
+                }
+            } else if (typeof solarData !== 'undefined' && solarData.length > 0) {
+                const s0 = solarData[activeSolarIdx0] || activeSolar;
+                const s1 = solarData[activeSolarIdx1] || activeSolar;
+                const sol0 = sampleGridScalar(s0, lat, lon0360, true, 0);
+                if (s0 !== s1 && activeSolarBlend > 0) {
+                    const sol1 = sampleGridScalar(s1, lat, lon0360, true, 0);
+                    solar = sol0 * (1 - activeSolarBlend) + sol1 * activeSolarBlend;
+                } else {
+                    solar = sol0;
+                }
+            } else if (activeSolar) {
+                solar = sampleGridScalar(activeSolar, lat, lon0360, true, 0);
             }
             return { u, v, t, solar };
         }
@@ -10013,6 +10015,124 @@
                         });
                     });
                 }
+
+                // Hochauflösende 1h-Einstrahlungsdaten von Open-Meteo nachladen
+                const fetchLat = lat;
+                const fetchLng = lng;
+                const reqId = ++currentSolarFetchId;
+                const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&hourly=shortwave_radiation&past_days=1&forecast_days=3&timeformat=unixtime`;
+
+                fetch(omUrl)
+                    .then(res => {
+                        if (!res.ok) throw new Error('HTTP ' + res.status);
+                        return res.json();
+                    })
+                    .then(data => {
+                        if (reqId !== currentSolarFetchId || currentMode !== 'solar' || solarClimSelection !== 'live') return;
+                        if (!data || !data.hourly || !Array.isArray(data.hourly.time) || !Array.isArray(data.hourly.shortwave_radiation)) return;
+
+                        const times = data.hourly.time;
+                        const rads = data.hourly.shortwave_radiation;
+                        const nowSec = Date.now() / 1000;
+
+                        // 1. Minutengenaue lineare Interpolation für den Momentanwert ("Jetzt")
+                        let liveVal = null;
+                        let liveIdx = -1;
+                        for (let i = 0; i < times.length - 1; i++) {
+                            if (nowSec >= times[i] && nowSec < times[i + 1]) {
+                                liveIdx = i;
+                                const frac = (nowSec - times[i]) / (times[i + 1] - times[i]);
+                                const r0 = Math.max(0, rads[i] || 0);
+                                const r1 = Math.max(0, rads[i + 1] || 0);
+                                liveVal = Math.round(r0 + frac * (r1 - r0));
+                                break;
+                            }
+                        }
+                        if (liveVal === null) {
+                            if (nowSec < times[0]) {
+                                liveVal = Math.max(0, Math.round(rads[0] || 0));
+                                liveIdx = 0;
+                            } else {
+                                liveVal = Math.max(0, Math.round(rads[rads.length - 1] || 0));
+                                liveIdx = Math.max(0, rads.length - 48);
+                            }
+                        }
+
+                        // UI-Werte auf minutengenauen Wert aktualisieren
+                        if (iconEl) iconEl.innerText = getSolarIcon(liveVal);
+                        if (valEl) valEl.innerText = liveVal;
+                        if (miniIconEl) miniIconEl.innerText = getSolarIcon(liveVal);
+                        if (miniTempEl) miniTempEl.innerText = liveVal + ' W/m²';
+                        if (timelineTitleEl) timelineTitleEl.innerText = '24h / 48h Einstrahlungstrend (Open-Meteo 1h)';
+
+                        // Floating-Popup bubble aktualisieren
+                        if (popupEl && clickedPopupPoint && Math.abs(clickedPopupPoint.lat - fetchLat) < 0.1 && Math.abs(clickedPopupPoint.lng - fetchLng) < 0.1) {
+                            popupEl.innerText = `${liveVal} W/m²`;
+                        }
+
+                        // 2. Zeitleiste mit 1h-Auflösung rendern (nächste 48 Stunden)
+                        const startIdx = liveIdx >= 0 ? liveIdx : 0;
+                        const maxSteps = Math.min(times.length, startIdx + 48);
+                        let minS = Infinity, maxS = -Infinity;
+                        let html = '';
+
+                        for (let i = startIdx; i < maxSteps; i++) {
+                            const tSec = times[i];
+                            const sVal = Math.max(0, Math.round(rads[i] || 0));
+                            if (sVal < minS) minS = sVal;
+                            if (sVal > maxS) maxS = sVal;
+
+                            const d = new Date(tSec * 1000);
+                            const isFirst = (i === startIdx);
+                            let timeLabel = formatLocationHourCard(d, tz, fetchLat, fetchLng, isFirst);
+                            let locHour = d.getUTCHours();
+                            if (tz) {
+                                try {
+                                    locHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', hour12: false }).format(d));
+                                } catch(e) {}
+                            }
+                            if (!isFirst && locHour === 0) {
+                                try {
+                                    timeLabel = d.toLocaleDateString('de-DE', { weekday: 'short', timeZone: tz || undefined });
+                                } catch(e) {
+                                    timeLabel = d.toLocaleDateString('de-DE', { weekday: 'short' });
+                                }
+                            }
+
+                            const hourOffset = Math.round((tSec - nowSec) / 3600);
+                            const activeClass = (hourOffset === currentHourOffset) ? 'active' : '';
+                            const icon = getSolarIcon(sVal);
+
+                            html += `
+                                <div class="forecast-hour-card ${activeClass}" data-offset="${hourOffset}" title="${d.toLocaleString('de-DE', { timeZone: tz || undefined })}: ${sVal} W/m²">
+                                    <span class="forecast-hour-time">${timeLabel}</span>
+                                    <span class="forecast-hour-icon">${icon}</span>
+                                    <span class="forecast-hour-temp">${sVal}</span>
+                                </div>
+                            `;
+                        }
+
+                        if (minMaxEl && Number.isFinite(minS) && Number.isFinite(maxS)) {
+                            minMaxEl.innerText = `${minS} / ${maxS} W/m²`;
+                        }
+
+                        if (timelineEl) {
+                            timelineEl.innerHTML = html;
+                            timelineEl.querySelectorAll('.forecast-hour-card').forEach(card => {
+                                card.addEventListener('click', (e) => {
+                                    e.stopPropagation();
+                                    const offset = parseInt(card.dataset.offset);
+                                    timeSlider.value = offset;
+                                    timeSlider.dispatchEvent(new Event('input'));
+                                    timelineEl.querySelectorAll('.forecast-hour-card').forEach(c => c.classList.remove('active'));
+                                    card.classList.add('active');
+                                });
+                            });
+                        }
+                    })
+                    .catch(err => {
+                        console.warn('Open-Meteo Solar Abruf fehlgeschlagen, GFS-Fallback bleibt aktiv:', err);
+                    });
             } else {
                 // Klimatologie: Jahresverlauf als 12-Monats-Streifen statt Stunden-Zeitleiste
                 if (label2El) label2El.innerText = 'Jahres-Min / Max';
@@ -10434,6 +10554,28 @@
             }
         });
 
+        function getTimelineFractionalIndex(dataArray, hourOffset) {
+            if (!dataArray || dataArray.length === 0) return 0;
+            const targetMs = Date.now() + hourOffset * 3600000;
+            const lastI = dataArray.length - 1;
+            if (dataArray[0].timeMs) {
+                if (targetMs <= dataArray[0].timeMs) return 0;
+                if (targetMs >= dataArray[lastI].timeMs) return lastI;
+                for (let i = 0; i < lastI; i++) {
+                    const t0 = dataArray[i].timeMs;
+                    const t1 = dataArray[i + 1].timeMs;
+                    if (targetMs >= t0 && targetMs <= t1) {
+                        const span = t1 - t0;
+                        return span > 0 ? i + (targetMs - t0) / span : i;
+                    }
+                }
+                return lastI;
+            }
+            const zeroIdx = dataArray.findIndex(t => t.hour === 0);
+            const baseIdx = zeroIdx !== -1 ? zeroIdx : Math.min(8, lastI);
+            return Math.max(0, Math.min(lastI, baseIdx + hourOffset / 3));
+        }
+
         function getLiveStepIndex() {
             if (typeof tempData === 'undefined' || tempData.length === 0) return 0;
             const now = Date.now();
@@ -10526,45 +10668,51 @@
                 updatePopupContent();
                 return;
             }
-            const liveIdx = getLiveStepIndex();
-            // GFS-Zeitschritte liegen 3h auseinander; currentHourOffset läuft jetzt stündlich
-            // (Play-Button), daher hier als Bruchteil zwischen zwei Schritten behandeln und per
-            // u_blend im Shader weich überblenden, statt hart auf den nächsten 3h-Schritt zu springen.
-            const rawIdx = liveIdx + currentHourOffset / 3;
-            const stepOffset = Math.round(currentHourOffset / 3); // für Popup/Titel: nächstgelegener Schritt
 
+            // GFS-Zeitschritte liegen 3h auseinander; getTimelineFractionalIndex berechnet anhand
+            // der tatsächlichen Zielzeit (Date.now() + currentHourOffset) den exakten stufenlosen
+            // Fließkomma-Index zwischen zwei Zeitschritten. Im Shader und bei der Punkt-Interpolation
+            // wird per u_blend minutengenau weich überblendet, sowohl im Live-Modus als auch beim
+            // Abspielen/Verschieben der Zeitleiste.
             let targetIdx = 0;
             let tempIdx0 = 0, tempIdx1 = 0, tempBlend = 0;
             if (typeof tempData !== 'undefined' && tempData.length > 0) {
                 const maxI = tempData.length - 1;
+                const rawIdx = getTimelineFractionalIndex(tempData, currentHourOffset);
                 const clamped = Math.max(0, Math.min(maxI, rawIdx));
                 tempIdx0 = Math.floor(clamped);
                 tempIdx1 = Math.min(maxI, tempIdx0 + 1);
                 tempBlend = clamped - tempIdx0;
-                targetIdx = Math.max(0, Math.min(maxI, liveIdx + stepOffset));
+                targetIdx = Math.round(clamped);
                 activeTemp = tempData[targetIdx];
+                activeTempIdx0 = tempIdx0;
+                activeTempIdx1 = tempIdx1;
+                activeTempBlend = tempBlend;
             }
             if (typeof windData !== 'undefined' && windData.length > 0) {
+                const liveIdx = getLiveStepIndex();
+                const stepOffset = Math.round(currentHourOffset / 3);
                 const windIdx = Math.max(0, Math.min(windData.length - 1, liveIdx + stepOffset));
                 activeWind = windData[windIdx];
             }
             let solarIdx0 = 0, solarIdx1 = 0, solarBlend = 0;
             if (typeof solarData !== 'undefined' && solarData.length > 0) {
-                const solarLiveIdx = getLiveSolarStepIndex();
                 const maxI = solarData.length - 1;
-                const rawSolarIdx = solarLiveIdx + currentHourOffset / 3;
+                const rawSolarIdx = getTimelineFractionalIndex(solarData, currentHourOffset);
                 const clamped = Math.max(0, Math.min(maxI, rawSolarIdx));
                 solarIdx0 = Math.floor(clamped);
                 solarIdx1 = Math.min(maxI, solarIdx0 + 1);
                 solarBlend = clamped - solarIdx0;
-                const solarIdx = Math.max(0, Math.min(maxI, solarLiveIdx + stepOffset));
+                const solarIdx = Math.round(clamped);
                 activeSolar = solarData[solarIdx];
+                activeSolarIdx0 = solarIdx0;
+                activeSolarIdx1 = solarIdx1;
+                activeSolarBlend = solarBlend;
             }
             let cloudIdx0 = 0, cloudIdx1 = 0, cloudBlend = 0;
             if (typeof cloudData !== 'undefined' && cloudData.length > 0) {
-                const cloudLiveIdx = getLiveCloudStepIndex();
                 const maxI = cloudData.length - 1;
-                const rawCloudIdx = cloudLiveIdx + currentHourOffset / 3;
+                const rawCloudIdx = getTimelineFractionalIndex(cloudData, currentHourOffset);
                 const clamped = Math.max(0, Math.min(maxI, rawCloudIdx));
                 cloudIdx0 = Math.floor(clamped);
                 cloudIdx1 = Math.min(maxI, cloudIdx0 + 1);
