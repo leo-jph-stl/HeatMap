@@ -3008,7 +3008,9 @@
             }
             if (samples.length === 0) return { minElev: 0, maxElev: 500 };
             samples.sort((a, b) => a - b);
-            return { minElev: samples[0], maxElev: samples[samples.length - 1] };
+            const p02 = samples[Math.floor(samples.length * 0.02)] ?? samples[0];
+            const p98 = samples[Math.floor(samples.length * 0.98)] ?? samples[samples.length - 1];
+            return { minElev: p02, maxElev: p98 };
         }
 
         function getExactTileElevation(tileMesh, uv) {
@@ -3036,10 +3038,14 @@
             }
         }
 
-        let currentVisibleMinElev = -500.0;
-        let currentVisibleMaxElev = 4000.0;
-        let activeTopoKeys = new Set();
-        let clickedPopupTileElevation = null;
+        var targetMinElev = -500.0;
+        var targetMaxElev = 4000.0;
+        var currentVisibleMinElev = -500.0;
+        var currentVisibleMaxElev = 4000.0;
+        var lastRenderedLegendMin = -999999;
+        var lastRenderedLegendMax = -999999;
+        var activeTopoKeys = new Set();
+        var clickedPopupTileElevation = null;
 
         function applyDynamicElevationRange(minElev, maxElev) {
             currentVisibleMinElev = minElev;
@@ -3054,31 +3060,71 @@
                 }
             }
 
-            // 2. Legenden-Labels unten rechts aktualisieren
-            const minEl = document.getElementById('legend-min');
-            const maxEl = document.getElementById('legend-max');
-            if (minEl) minEl.innerText = `${Math.round(minElev).toLocaleString('de-DE')} m`;
-            if (maxEl) maxEl.innerText = `${Math.round(maxElev).toLocaleString('de-DE')} m`;
+            // 2. Legenden-Labels unten rechts aktualisieren (nur bei geänderten Rundungswerten für maximale Performance)
+            const rMin = Math.round(minElev);
+            const rMax = Math.round(maxElev);
+            if (rMin !== lastRenderedLegendMin || rMax !== lastRenderedLegendMax) {
+                lastRenderedLegendMin = rMin;
+                lastRenderedLegendMax = rMax;
 
-            // 3. Zwischen-Marken (25%, 50%, 75%) der Skala aktualisieren
-            const ticksEl = document.getElementById('topo-legend-ticks');
-            if (ticksEl) {
-                const span = maxElev - minElev;
-                const v25 = Math.round(minElev + 0.25 * span);
-                const v50 = Math.round(minElev + 0.50 * span);
-                const v75 = Math.round(minElev + 0.75 * span);
-                ticksEl.innerHTML = `
-                    <span style="flex:1; text-align:left;">25% (${v25.toLocaleString('de-DE')} m)</span>
-                    <span style="flex:1; text-align:center;">50% (${v50.toLocaleString('de-DE')} m)</span>
-                    <span style="flex:1; text-align:right;">75% (${v75.toLocaleString('de-DE')} m)</span>
-                `;
+                const minEl = document.getElementById('legend-min');
+                const maxEl = document.getElementById('legend-max');
+                if (minEl) minEl.innerText = `${rMin.toLocaleString('de-DE')} m`;
+                if (maxEl) maxEl.innerText = `${rMax.toLocaleString('de-DE')} m`;
+
+                // 3. Zwischen-Marken (25%, 50%, 75%) der Skala aktualisieren
+                const ticksEl = document.getElementById('topo-legend-ticks');
+                if (ticksEl) {
+                    const span = maxElev - minElev;
+                    const v25 = Math.round(minElev + 0.25 * span);
+                    const v50 = Math.round(minElev + 0.50 * span);
+                    const v75 = Math.round(minElev + 0.75 * span);
+                    ticksEl.innerHTML = `
+                        <span style="flex:1; text-align:left;">25% (${v25.toLocaleString('de-DE')} m)</span>
+                        <span style="flex:1; text-align:center;">50% (${v50.toLocaleString('de-DE')} m)</span>
+                        <span style="flex:1; text-align:right;">75% (${v75.toLocaleString('de-DE')} m)</span>
+                    `;
+                }
             }
         }
 
         function refreshVisibleElevationRange() {
-            // Globale, stabile Farb-Kalibrierung: Verhindert abruptes Flackern/Farbspringen beim Wischen/Verschieben
-            if (currentVisibleMinElev !== -500.0 || currentVisibleMaxElev !== 4000.0) {
-                applyDynamicElevationRange(-500.0, 4000.0);
+            if (currentMode !== 'topo' || currentTopoProvider !== 'hypsometric') return;
+
+            let visMin = Infinity;
+            let visMax = -Infinity;
+            let validCount = 0;
+
+            for (const key of activeTopoKeys) {
+                const tile = loadedTopoTiles.get(key);
+                if (tile && tile.minElev !== undefined && tile.maxElev !== undefined) {
+                    if (tile.minElev < visMin) visMin = tile.minElev;
+                    if (tile.maxElev > visMax) visMax = tile.maxElev;
+                    validCount++;
+                }
+            }
+
+            if (validCount > 0 && visMin !== Infinity && visMax !== -Infinity) {
+                // Mindest-Spannweite von 30m garantieren, damit auch flache Regionen sauber gespreizt werden
+                if (visMax - visMin < 30) {
+                    const mid = (visMin + visMax) / 2;
+                    visMin = mid - 15;
+                    visMax = mid + 15;
+                }
+
+                const span = visMax - visMin;
+                let step = 10;
+                if (span < 100) step = 5;
+                else if (span < 500) step = 20;
+                else if (span < 2000) step = 50;
+                else step = 100;
+
+                const tMin = Math.floor(visMin / step) * step;
+                let tMax = Math.ceil(visMax / step) * step;
+                if (tMax - tMin < 30) tMax = tMin + 30;
+
+                targetMinElev = tMin;
+                targetMaxElev = tMax;
             }
         }
 
@@ -3660,6 +3706,18 @@
             try {
                 if (typeof updateTopoTiles === 'function' && currentMode === 'topo') updateTopoTiles();
             } catch(e) { /* topo render safe */ }
+
+            // Dynamische, seidenweiche hypsometrische Höhenanpassung (LERP - verhindert jegliches Ruckeln/Farbspringen beim Wischen)
+            if (currentMode === 'topo' && currentTopoProvider === 'hypsometric') {
+                const diffMin = targetMinElev - currentVisibleMinElev;
+                const diffMax = targetMaxElev - currentVisibleMaxElev;
+                if (Math.abs(diffMin) > 0.1 || Math.abs(diffMax) > 0.1) {
+                    const alpha = 0.08;
+                    const nextMin = Math.abs(diffMin) < 0.25 ? targetMinElev : (currentVisibleMinElev + diffMin * alpha);
+                    const nextMax = Math.abs(diffMax) < 0.25 ? targetMaxElev : (currentVisibleMaxElev + diffMax * alpha);
+                    applyDynamicElevationRange(nextMin, nextMax);
+                }
+            }
             
             renderer.render(scene, camera);
         }
