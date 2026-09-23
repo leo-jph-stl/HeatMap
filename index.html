@@ -2770,7 +2770,8 @@
                     const b = a + 1;
                     const c = a + (segs + 1);
                     const d = c + 1;
-                    indices.push(a, b, d, a, d, c);
+                    // CCW-Wicklung (gegen den Uhrzeigersinn): Normalen zeigen nach außen zur Kamera
+                    indices.push(a, c, d, a, d, b);
                 }
             }
 
@@ -2778,6 +2779,7 @@
             geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
             geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
             geom.setIndex(indices);
+            geom.computeVertexNormals();
             return geom;
         }
 
@@ -3172,7 +3174,7 @@
                         polygonOffset: true,
                         polygonOffsetFactor: -1.0,
                         polygonOffsetUnits: -4.0,
-                        side: THREE.FrontSide,
+                        side: THREE.DoubleSide,
                         transparent: false,
                         depthWrite: true
                     });
@@ -3182,7 +3184,7 @@
                         polygonOffset: true,
                         polygonOffsetFactor: -1.0,
                         polygonOffsetUnits: -4.0,
-                        side: THREE.FrontSide,
+                        side: THREE.DoubleSide,
                         transparent: false,
                         depthWrite: true
                     });
@@ -3192,6 +3194,7 @@
                 mesh.renderOrder = 1;
                 topoTileGroup.add(mesh);
                 loadedTopoTiles.set(key, { z, x, y, mesh, provider: currentTopoProvider, minElev: tileMinElev, maxElev: tileMaxElev, lastUsed: performance.now() });
+                loadingTopoKeys.delete(key);
 
                 // Falls diese Kachel im aktuellen Viewport liegt, sofort Dynamik-Bereich anpassen
                 if (activeTopoKeys.has(key)) {
