@@ -2780,6 +2780,8 @@
             geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
             geom.setIndex(indices);
             geom.computeVertexNormals();
+            geom.computeBoundingSphere();
+            geom.computeBoundingBox();
             return geom;
         }
 
@@ -3088,19 +3090,78 @@
             }
         }
 
+        const _topoFrustumMatrix = new THREE.Matrix4();
+        const _topoFrustum = new THREE.Frustum();
+        const _tileWorldCenter = new THREE.Vector3();
+        const _tileNormal = new THREE.Vector3();
+        const _toCam = new THREE.Vector3();
+        const _tileNdc = new THREE.Vector3();
+        const _tileWorldSphere = new THREE.Sphere();
+
+        function isTileVisibleOnScreen(tileObj) {
+            if (!tileObj || !tileObj.mesh) return false;
+            const geom = tileObj.mesh.geometry;
+            if (!geom) return false;
+            if (!geom.boundingSphere) geom.computeBoundingSphere();
+            const bs = geom.boundingSphere;
+
+            tileObj.mesh.updateMatrixWorld(true);
+            _tileWorldCenter.copy(bs.center).applyMatrix4(tileObj.mesh.matrixWorld);
+
+            // 1. Horizont-Prüfung: Kachel muss auf der zur Kamera gewandten Erdhälfte liegen
+            _tileNormal.copy(_tileWorldCenter).normalize();
+            _toCam.copy(camera.position).sub(_tileWorldCenter).normalize();
+            if (_tileNormal.dot(_toCam) < -0.05) return false;
+
+            // 2. Frustum-Prüfung: Schneidet der Pyramidenstumpf der Kamera die Kachel?
+            _tileWorldSphere.center.copy(_tileWorldCenter);
+            _tileWorldSphere.radius = bs.radius;
+            if (!_topoFrustum.intersectsSphere(_tileWorldSphere)) return false;
+
+            // 3. NDC-Projektion: Liegt die Kachel tatsächlich innerhalb des sichtbaren Viewports [-1.02, 1.02]?
+            _tileNdc.copy(_tileWorldCenter).project(camera);
+            const dist = camera.position.distanceTo(_tileWorldCenter);
+            const ndcRadius = (bs.radius / Math.max(1, dist)) / Math.tan((camera.fov * Math.PI / 360));
+
+            if (_tileNdc.x + ndcRadius < -1.02 || _tileNdc.x - ndcRadius > 1.02 ||
+                _tileNdc.y + ndcRadius < -1.02 || _tileNdc.y - ndcRadius > 1.02) {
+                return false;
+            }
+
+            return true;
+        }
+
         function refreshVisibleElevationRange() {
             if (currentMode !== 'topo' || currentTopoProvider !== 'hypsometric') return;
+
+            // Frustum aus aktuellem Kamera-Blickfeld aufbauen
+            _topoFrustumMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+            _topoFrustum.setFromProjectionMatrix(_topoFrustumMatrix);
 
             let visMin = Infinity;
             let visMax = -Infinity;
             let validCount = 0;
 
+            // Nur Kacheln berücksichtigen, die tatsächlich im sichtbaren Bildschirmfenster liegen
             for (const key of activeTopoKeys) {
                 const tile = loadedTopoTiles.get(key);
                 if (tile && tile.minElev !== undefined && tile.maxElev !== undefined) {
+                    if (!isTileVisibleOnScreen(tile)) continue;
                     if (tile.minElev < visMin) visMin = tile.minElev;
                     if (tile.maxElev > visMax) visMax = tile.maxElev;
                     validCount++;
+                }
+            }
+
+            // Fallback: Falls am Fensterrand gerade Kacheln nachladen
+            if (validCount === 0) {
+                for (const key of activeTopoKeys) {
+                    const tile = loadedTopoTiles.get(key);
+                    if (tile && tile.minElev !== undefined && tile.maxElev !== undefined) {
+                        if (tile.minElev < visMin) visMin = tile.minElev;
+                        if (tile.maxElev > visMax) visMax = tile.maxElev;
+                        validCount++;
+                    }
                 }
             }
 
