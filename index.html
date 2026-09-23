@@ -2847,6 +2847,7 @@
         let lastCameraPos = new THREE.Vector3();
 
         function updateHillshadeTiles() {
+            if (currentMode === 'topo') return;
             const now = performance.now();
             if (now - lastTileUpdate < 100) return;
             
@@ -3018,13 +3019,12 @@
             }
         }
 
-        let currentVisibleMinElev = 0.0;
-        let currentVisibleMaxElev = 4500.0;
+        let currentVisibleMinElev = -500.0;
+        let currentVisibleMaxElev = 4000.0;
         let activeTopoKeys = new Set();
         let clickedPopupTileElevation = null;
 
         function applyDynamicElevationRange(minElev, maxElev) {
-            if (currentVisibleMinElev === minElev && currentVisibleMaxElev === maxElev) return;
             currentVisibleMinElev = minElev;
             currentVisibleMaxElev = maxElev;
 
@@ -3059,35 +3059,9 @@
         }
 
         function refreshVisibleElevationRange() {
-            if (currentMode !== 'topo' || currentTopoProvider !== 'hypsometric') return;
-
-            let visMin = Infinity;
-            let visMax = -Infinity;
-            let validCount = 0;
-
-            for (const key of activeTopoKeys) {
-                const tile = loadedTopoTiles.get(key);
-                if (tile && tile.minElev !== undefined && tile.maxElev !== undefined) {
-                    if (tile.minElev < visMin) visMin = tile.minElev;
-                    if (tile.maxElev > visMax) visMax = tile.maxElev;
-                    validCount++;
-                }
-            }
-
-            if (validCount > 0 && visMin !== Infinity && visMax !== -Infinity) {
-                if (visMax - visMin < 20) visMax = visMin + 20;
-
-                const span = visMax - visMin;
-                let step = 10;
-                if (span < 100) step = 5;
-                else if (span < 500) step = 20;
-                else if (span < 2000) step = 50;
-                else step = 100;
-
-                const targetMin = Math.floor(visMin / step) * step;
-                const targetMax = Math.ceil(visMax / step) * step;
-
-                applyDynamicElevationRange(targetMin, targetMax);
+            // Globale, stabile Farb-Kalibrierung: Verhindert abruptes Flackern/Farbspringen beim Wischen/Verschieben
+            if (currentVisibleMinElev !== -500.0 || currentVisibleMaxElev !== 4000.0) {
+                applyDynamicElevationRange(-500.0, 4000.0);
             }
         }
 
@@ -3297,10 +3271,17 @@
                 loadTopoTileMesh(t.z, t.x, t.y, t.key);
             });
 
-            // Vorhandene Kacheln des aktuellen Providers mindestens 8s cachen, damit beim Zoomen kein blaues Loch entsteht
+            // Kacheln bereinigen: Kacheln einer anderen Zoomstufe (z) sofort entfernen,
+            // um jegliches Z-Fighting (Flimmern sich überlagernder Dreiecksnetze verschiedener Stufen) auszuschließen!
             for (const [key, tileObj] of loadedTopoTiles.entries()) {
-                if (!activeKeys.has(key)) {
-                    if (tileObj.provider !== currentTopoProvider || (now - tileObj.lastUsed > 8000)) {
+                if (tileObj.z !== z || tileObj.provider !== currentTopoProvider) {
+                    topoTileGroup.remove(tileObj.mesh);
+                    tileObj.mesh.geometry.dispose();
+                    if (tileObj.mesh.material.map) tileObj.mesh.material.map.dispose();
+                    tileObj.mesh.material.dispose();
+                    loadedTopoTiles.delete(key);
+                } else if (!activeKeys.has(key)) {
+                    if (now - tileObj.lastUsed > 4000) {
                         topoTileGroup.remove(tileObj.mesh);
                         tileObj.mesh.geometry.dispose();
                         if (tileObj.mesh.material.map) tileObj.mesh.material.map.dispose();
