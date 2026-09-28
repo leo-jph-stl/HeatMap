@@ -15,7 +15,7 @@ const fs = require('fs');
 const https = require('https');
 
 const BASE_URL = 'https://thredds.ucar.edu/thredds/dodsC/grib/NCEP/GFS/Global_0p25deg/Best';
-const VAR = 'Downward_Short-Wave_Radiation_Flux_surface_Mixed_intervals_Average';
+let VAR = 'Downward_Shortwave_Radiation_Flux_surface_Mixed_intervals_Average';
 
 const argv = Object.fromEntries(process.argv.slice(2).map(a => {
     const m = a.match(/^--([^=]+)=(.*)$/);
@@ -48,6 +48,12 @@ function fetchText(url) {
 async function fetchTimeIndices() {
     console.log('Ermittle Referenzdatum und Zeitachse (time3) für die Strahlungsdaten...');
     const das = await fetchText(`${BASE_URL}.das`);
+    if (das.includes('Downward_Shortwave_Radiation_Flux_surface_Mixed_intervals_Average')) {
+        VAR = 'Downward_Shortwave_Radiation_Flux_surface_Mixed_intervals_Average';
+    } else if (das.includes('Downward_Short-Wave_Radiation_Flux_surface_Mixed_intervals_Average')) {
+        VAR = 'Downward_Short-Wave_Radiation_Flux_surface_Mixed_intervals_Average';
+    }
+    console.log(`Verwende Strahlungsvariable: ${VAR}`);
     const timeBlockMatch = das.match(/time3\s*\{[^}]*units\s+"Hour since ([^"]+)"/);
     if (!timeBlockMatch) throw new Error('Konnte Referenzdatum für time3 nicht aus .das lesen');
     const baseDate = new Date(timeBlockMatch[1]).getTime();
