@@ -8,15 +8,57 @@
     <meta http-equiv="Expires" content="0">
     <title>3D Globale Wetterkarte</title>
     
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            background-color: #050811 !important;
+            color: #ffffff;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            width: 100%;
+            height: 100%;
+        }
+        #initial-loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #050811;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 999999;
+            color: #ffffff;
+            transition: opacity 0.5s ease;
+            pointer-events: none;
+        }
+        .loader-spinner {
+            width: 48px;
+            height: 48px;
+            border: 3px solid rgba(255, 255, 255, 0.15);
+            border-top: 3px solid #3399cc;
+            border-radius: 50%;
+            animation: loader-spin 1s linear infinite;
+            margin-bottom: 18px;
+        }
+        @keyframes loader-spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
     
     <script src="wind_data.js"></script>
     <script id="tempDataScript" src="temp_data.js?_v=20260916_v1"></script>
-    <script src="solar_data.js"></script>
-    <script src="solar_climatology_data.js"></script>
-    <script src="cloud_data.js"></script>
+    <script src="solar_climatology_data.js" defer></script>
+    <script src="solar_data.js" defer></script>
+    <script src="cloud_data.js" defer></script>
     <script src="lakes_data.js"></script>
     <script src="rivers_data.js"></script>
     <script src="roads_data.js"></script>
@@ -1219,6 +1261,13 @@
     </style>
 </head>
 <body>
+    <!-- Initialer Ladebildschirm: Verhindert weißen Blitz / leeren Bildschirm während des Ladens -->
+    <div id="initial-loader">
+        <div class="loader-spinner"></div>
+        <div style="font-size: 15px; font-weight: 600; letter-spacing: 0.5px;">Wetterkarte wird geladen...</div>
+        <div style="font-size: 11px; color: rgba(255,255,255,0.45); margin-top: 6px;">Initialisiere 3D Globus & Wetterdaten</div>
+    </div>
+
     <div id="canvas-container"></div>
     <canvas id="screenWindCanvas"></canvas>
     <canvas id="cityLabelsCanvas"></canvas>
@@ -2283,9 +2332,20 @@
             } catch(e) {}
         }
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        let renderer;
+        try {
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+        } catch (e) {
+            console.error('WebGL initialization error:', e);
+            const errBox = document.createElement('div');
+            errBox.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#151821;border:1px solid #ff4444;color:#fff;padding:24px;border-radius:12px;text-align:center;font-family:sans-serif;z-index:9999999;max-width:380px;box-shadow:0 10px 40px rgba(0,0,0,0.8);';
+            errBox.innerHTML = '<h3 style="margin-top:0;color:#ff6666;">WebGL nicht verfügbar</h3><p style="font-size:13px;line-height:1.5;color:#bbb;">Ihr Browser oder Grafiktreiber konnte WebGL nicht initialisieren. Bitte stellen Sie sicher, dass Hardwarebeschleunigung aktiviert ist.</p>';
+            document.body.appendChild(errBox);
+            throw e;
+        }
+        renderer.setClearColor(0x050811, 1.0);
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
         container.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -2551,6 +2611,15 @@
         let solarTextures = (typeof solarData !== 'undefined') ? solarData.map(step => buildTempDataTexture(step, minSolarRange, maxSolarRange)) : [];
         // Wolkendeckung (%) für die Nachtseite der Einstrahlungs-Karte, siehe nightCloudThreshold.
         let cloudTextures = (typeof cloudData !== 'undefined') ? cloudData.map(step => buildTempDataTexture(step, minCloudRange, maxCloudRange)) : [];
+
+        function ensureSolarTextures() {
+            if (solarTextures.length === 0 && typeof solarData !== 'undefined' && solarData.length > 0) {
+                solarTextures = solarData.map(step => buildTempDataTexture(step, minSolarRange, maxSolarRange));
+            }
+            if (cloudTextures.length === 0 && typeof cloudData !== 'undefined' && cloudData.length > 0) {
+                cloudTextures = cloudData.map(step => buildTempDataTexture(step, minCloudRange, maxCloudRange));
+            }
+        }
         // Klimatologie-Layer (12 Monate + Jahresmittel) werden träge/on-demand gebaut und gecacht,
         // da sie im Normalfall gar nicht angeschaut werden (siehe getSolarClimatologyTexture).
         const solarClimTextureCache = new Map();
@@ -3781,6 +3850,14 @@
             }
             
             renderer.render(scene, camera);
+            if (window._initialLoaderActive !== false) {
+                window._initialLoaderActive = false;
+                const initLoader = document.getElementById('initial-loader');
+                if (initLoader) {
+                    initLoader.style.opacity = '0';
+                    setTimeout(() => { if (initLoader.parentNode) initLoader.parentNode.removeChild(initLoader); }, 500);
+                }
+            }
         }
 
         // MATHEMATISCHE SPHERICAL-TO-VERTEX FORMEL (Exakt wie Three.js SphereGeometry)
@@ -10873,6 +10950,7 @@
             } else if (currentMode === 'wind') {
                 texA = texB = windTextures[targetIdx];
             } else if (currentMode === 'solar') {
+                if (typeof ensureSolarTextures === 'function') ensureSolarTextures();
                 if (solarClimSelection !== 'live') {
                     texA = texB = getSolarClimatologyTexture(solarClimSelection);
                 } else {
@@ -11013,6 +11091,7 @@
                     dataMaterial.uniforms.u_maxVal.value = useFloat ? maxTempRange : 1.0;
                     if (dataMaterial.uniforms.u_texSize) dataMaterial.uniforms.u_texSize.value.set(1441.0, 721.0);
                 } else if (mode === 'solar') {
+                    if (typeof ensureSolarTextures === 'function') ensureSolarTextures();
                     document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #440154 0%, #482878 5.5%, #3e4989 11.1%, #31688e 16.6%, #26828e 22.2%, #1f9e89 27.8%, #35b779 33.4%, #6ece58 38.9%, #b5de2b 44.5%, #fde725 50%, #fab942 58.2%, #f28f3a 65.5%, #dd5f34 72.7%, #b8392f 80%, #d9a76a 87.3%, #ecd9b8 93.6%, #ffffff 100%)';
                     dataMaterial.uniforms.u_colorRamp.value = colorRampSolarTex;
                     applySolarRangeAndLegend();
