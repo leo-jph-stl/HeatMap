@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -114,20 +116,33 @@ jobs:
         # log_pv_own_forecast.js und werden von KEINEM Schritt hier committet - ohne diesen
         # Aufräumschritt würden sie trotzdem über "Upload Pages Artifact" (path: .) unten öffentlich
         # landen, weil der Artifact-Upload nicht zwischen Git-getrackt und nur-lokal unterscheidet.
-        run: rm -f pv_calibration_history.json pv_forecast_log.json pv_own_forecast_log.json
+        run: rm -f pv_calibration_history.json pv_forecast_log.json pv_own_forecast_log.json forecast_solar_log.json
 
       - name: Commit and push if changed
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git config --global http.postBuffer 524288000
+          rm -f forecast_solar_log.json pv_calibration_history.json pv_forecast_log.json pv_own_forecast_log.json
           git add solar_data.js solar_climatology_data.js cloud_data.js
-          git rm -f --ignore-unmatch forecast_solar_log.json
           if git diff --staged --quiet; then
             echo 'No changes in solar data.'
           else
             git commit -m 'chore(data): auto-update solar radiation and cloud cover data [skip ci]'
-            git pull --rebase origin main
-            git push
+            pushed=0
+            for i in 1 2 3 4 5; do
+              git fetch --depth=50 origin main
+              if git rebase origin/main && git push origin HEAD:main; then
+                pushed=1
+                break
+              fi
+              echo "Push attempt $i failed, retrying in 5s..."
+              sleep 5
+            done
+            if [ $pushed -eq 0 ]; then
+              echo "Failed to push solar data after 5 attempts."
+              exit 1
+            fi
           fi
 
       - name: Upload Pages Artifact
