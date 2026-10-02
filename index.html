@@ -367,6 +367,35 @@
             background: rgba(255, 255, 255, 0.3);
             color: #fff;
         }
+        #geolocateBtn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: #ccc;
+            border-radius: 50%;
+            width: 26px;
+            height: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            cursor: pointer;
+            padding: 0;
+            margin-left: 6px;
+            flex-shrink: 0;
+            transition: 0.15s;
+        }
+        #geolocateBtn:hover {
+            background: rgba(0, 204, 255, 0.3);
+            color: #fff;
+        }
+        #geolocateBtn.active {
+            color: #00ccff;
+            animation: geolocatePulse 1s ease-in-out infinite;
+        }
+        @keyframes geolocatePulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
         #searchSuggestions {
             margin-top: 8px;
             background: rgba(20, 20, 24, 0.95);
@@ -1282,6 +1311,7 @@
             </svg>
             <input type="text" id="searchInput" placeholder="Ort oder Stadt suchen..." autocomplete="off" spellcheck="false">
             <button id="searchClearBtn" title="Löschen">✕</button>
+            <button id="geolocateBtn" title="Meinen genauen Standort verwenden (GPS)">📍</button>
         </div>
         <div id="searchSuggestions" style="display: none;"></div>
     </div>
@@ -9772,6 +9802,14 @@
             searchInput.focus();
         });
 
+        const geolocateBtn = document.getElementById('geolocateBtn');
+        if (geolocateBtn) {
+            geolocateBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                requestPreciseGeolocation();
+            });
+        }
+
         // CURSOR-BASIERTES ZOOMEN (Echtes Pin-to-Cursor Zooming auf der Kugeloberfläche)
         const zoomRaycaster = new THREE.Raycaster();
         window.addEventListener('wheel', (event) => {
@@ -10031,6 +10069,10 @@
         }
 
         function showLocationForecast(lat, lng, name, country, customTz) {
+            // Der 24h/48h-Wettertrend zeigt reine Temperaturdaten (getTempAtStep()) - gehört
+            // inhaltlich nur zur Temperatur-Ansicht. Bisher erschien das Popup bei jedem Klick
+            // unabhängig vom aktiven Layer, auch in Einstrahlung/Topographie.
+            if (currentMode !== 'temp') return;
             if (!name) name = "Ausgewählter Ort";
             const tz = customTz || getTimezoneForLocation(lat, lng, country);
             const localTimeStr = formatLocationTime(new Date(), tz, lat, lng);
@@ -11261,6 +11303,64 @@
             } catch(err) {
                 console.log('IP-Standort konnte nicht ermittelt werden:', err);
             }
+        }
+
+        // Echter GPS-Standort per Knopfdruck (navigator.geolocation) - im Gegensatz zu
+        // detectUserLocationAndFly() oben (grobe IP-Ortung, läuft automatisch, kein Prompt) fragt
+        // dies den Browser nach dem genauen Standort und löst dabei die native Berechtigungsabfrage
+        // des Browsers aus. Muss aus einem echten Klick-Handler aufgerufen werden, sonst blockieren
+        // viele Browser den Prompt.
+        function requestPreciseGeolocation() {
+            const btn = document.getElementById('geolocateBtn');
+            if (!navigator.geolocation) {
+                alert('Geolokalisierung wird von diesem Browser nicht unterstützt.');
+                return;
+            }
+            if (btn) btn.classList.add('active');
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    if (btn) btn.classList.remove('active');
+                    const { latitude: lat, longitude: lng } = pos.coords;
+                    userLocationDetected = true;
+                    try {
+                        localStorage.setItem('last_user_lat', lat);
+                        localStorage.setItem('last_user_lng', lng);
+                    } catch (e) {}
+                    // Nächstgelegenen bekannten Ort für eine lesbare Beschriftung suchen (gleiches
+                    // Muster wie beim Klick auf den Globus) - sonst "Mein Standort" als Fallback.
+                    let nearestCity = null, minDistSq = Infinity;
+                    if (typeof citiesData !== 'undefined' && citiesData) {
+                        const cosLat = Math.cos(lat * Math.PI / 180);
+                        for (const c of citiesData) {
+                            const dLat = c.lat - lat;
+                            if (Math.abs(dLat) > 0.6) continue;
+                            const dLng = (c.lng - lng) * cosLat;
+                            const dSq = dLat * dLat + dLng * dLng;
+                            if (dSq < minDistSq) { minDistSq = dSq; nearestCity = c; }
+                        }
+                    }
+                    const name = (nearestCity && minDistSq < 0.25) ? nearestCity.name : 'Mein Standort';
+                    const country = (nearestCity && minDistSq < 0.25) ? nearestCity.country : '';
+                    zoomInDirectToLocation(lat, lng, name, country, null);
+                    // ERST NACH dem Flug setzen: zoomInDirectToLocation() selbst bricht sofort ab,
+                    // wenn userNavigatedManually schon true ist (Schutz gegen Überschreiben einer
+                    // bereits laufenden manuellen Navigation) - das Flag verhindert danach nur noch,
+                    // dass die automatische IP-Ortung (detectUserLocationAndFly) diesen GPS-Standort
+                    // nachträglich überschreibt.
+                    userNavigatedManually = true;
+                },
+                (err) => {
+                    if (btn) btn.classList.remove('active');
+                    let msg = 'Standort konnte nicht ermittelt werden.';
+                    if (err.code === err.PERMISSION_DENIED) {
+                        msg = 'Standortzugriff wurde verweigert. Du kannst das in den Browser-Einstellungen für diese Seite ändern.';
+                    } else if (err.code === err.TIMEOUT) {
+                        msg = 'Standortabfrage hat zu lange gedauert. Bitte erneut versuchen.';
+                    }
+                    alert(msg);
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+            );
         }
 
         // AUTOMATISCHE LIVE-AKTUALISIERUNG DER WETTERDATEN (alle 15 Minuten)
