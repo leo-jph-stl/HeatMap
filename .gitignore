@@ -28,3 +28,9 @@ Thumbs.db
 pv_calibration_report.md
 __pycache__/
 .wrangler/
+
+# Private PV calibration & forecast state files (stored in Cloudflare KV)
+pv_calibration_history.json
+pv_forecast_log.json
+pv_own_forecast_log.json
+forecast_solar_log.json
