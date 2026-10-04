@@ -3053,6 +3053,51 @@
         const loadingTopoKeys = new Set();
         let currentTopoProvider = 'hypsometric'; // 'hypsometric' | 'opentopo' | 'arcgis'
 
+        let topoSampleCanvas = null;
+        let topoSampleCtx = null;
+        let topoClickCanvas = null;
+        let topoClickCtx = null;
+
+        function getElevationFromLoadedTiles(lat, lng) {
+            if (!loadedTopoTiles || loadedTopoTiles.size === 0) return null;
+            const zoomLevels = [8, 7, 6, 5, 4, 3, 2, 1];
+            for (const z of zoomLevels) {
+                const x = lon2tile(lng, z);
+                const y = lat2tile(lat, z);
+                const key = `${z}_${x}_${y}`;
+                const tileObj = loadedTopoTiles.get(key);
+                if (tileObj && tileObj.mesh && tileObj.mesh.material && tileObj.mesh.material.uniforms) {
+                    const uTile = tileObj.mesh.material.uniforms.u_tile;
+                    if (uTile && uTile.value && uTile.value.image) {
+                        const img = uTile.value.image;
+                        if (img.width && img.height) {
+                            if (!topoClickCanvas) {
+                                topoClickCanvas = document.createElement('canvas');
+                                topoClickCanvas.width = 256;
+                                topoClickCanvas.height = 256;
+                                topoClickCtx = topoClickCanvas.getContext('2d', { willReadFrequently: true });
+                            }
+                            topoClickCtx.drawImage(img, 0, 0);
+                            const nTiles = Math.pow(2, z);
+                            const xFloat = (lng + 180) / 360 * nTiles;
+                            const rad = lat * Math.PI / 180;
+                            const yFloat = (1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * nTiles;
+                            const u = Math.min(0.9999, Math.max(0, xFloat - Math.floor(xFloat)));
+                            const v = Math.min(0.9999, Math.max(0, yFloat - Math.floor(yFloat)));
+                            const px = Math.min(255, Math.max(0, Math.floor(u * 256)));
+                            const py = Math.min(255, Math.max(0, Math.floor(v * 256)));
+                            const p = topoClickCtx.getImageData(px, py, 1, 1).data;
+                            const elev = (p[0] * 256.0 + p[1] + p[2] / 256.0) - 32768.0;
+                            if (elev > -500 && elev < 9000) {
+                                return Math.round(elev);
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
         const elevationCache = new Map();
         function fetchElevationForPoint(lat, lng, callback) {
             const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
@@ -3060,14 +3105,82 @@
                 callback(elevationCache.get(key));
                 return;
             }
+            // 1. Lokale Kachel-Texturen im Speicher prüfen
+            const localElev = getElevationFromLoadedTiles(lat, lng);
+            if (localElev !== null) {
+                elevationCache.set(key, localElev);
+                callback(localElev);
+                return;
+            }
+
+            let done = false;
+            const fallbackTimer = setTimeout(() => {
+                if (!done) {
+                    sampleTerrariumRemote();
+                }
+            }, 2500);
+
+            // 2. Open-Meteo Höhen-API
             fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}`)
                 .then(res => res.json())
                 .then(data => {
-                    const elev = (data && data.elevation && data.elevation[0] !== undefined) ? data.elevation[0] : null;
-                    if (elev !== null) elevationCache.set(key, elev);
-                    callback(elev);
+                    if (done) return;
+                    clearTimeout(fallbackTimer);
+                    done = true;
+                    const elev = (data && data.elevation && data.elevation[0] !== undefined) ? Math.round(data.elevation[0]) : null;
+                    if (elev !== null) {
+                        elevationCache.set(key, elev);
+                        callback(elev);
+                    } else {
+                        sampleTerrariumRemote();
+                    }
                 })
-                .catch(() => callback(null));
+                .catch(() => {
+                    if (!done) {
+                        clearTimeout(fallbackTimer);
+                        sampleTerrariumRemote();
+                    }
+                });
+
+            // 3. Fallback: Direktes Terrarium-Tile von AWS laden und auslesen
+            function sampleTerrariumRemote() {
+                done = true;
+                const z = 7;
+                const x = lon2tile(lng, z);
+                const y = lat2tile(lat, z);
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                    try {
+                        if (!topoClickCanvas) {
+                            topoClickCanvas = document.createElement('canvas');
+                            topoClickCanvas.width = 256;
+                            topoClickCanvas.height = 256;
+                            topoClickCtx = topoClickCanvas.getContext('2d', { willReadFrequently: true });
+                        }
+                        topoClickCtx.drawImage(img, 0, 0);
+                        const nTiles = Math.pow(2, z);
+                        const xFloat = (lng + 180) / 360 * nTiles;
+                        const rad = lat * Math.PI / 180;
+                        const yFloat = (1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * nTiles;
+                        const u = Math.min(0.9999, Math.max(0, xFloat - Math.floor(xFloat)));
+                        const v = Math.min(0.9999, Math.max(0, yFloat - Math.floor(yFloat)));
+                        const px = Math.min(255, Math.max(0, Math.floor(u * 256)));
+                        const py = Math.min(255, Math.max(0, Math.floor(v * 256)));
+                        const p = topoClickCtx.getImageData(px, py, 1, 1).data;
+                        const elev = (p[0] * 256.0 + p[1] + p[2] / 256.0) - 32768.0;
+                        if (elev > -500 && elev < 9000) {
+                            const roundElev = Math.round(elev);
+                            elevationCache.set(key, roundElev);
+                            callback(roundElev);
+                            return;
+                        }
+                    } catch (e) {}
+                    callback(null);
+                };
+                img.onerror = () => callback(null);
+                img.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
+            }
         }
 
         function getTopoTileUrl(provider, z, x, y) {
@@ -3077,11 +3190,6 @@
             const sub = ['a', 'b', 'c'][((x + y) % 3 + 3) % 3];
             return `https://${sub}.tile.opentopomap.org/${z}/${x}/${y}.png`;
         }
-
-        let topoSampleCanvas = null;
-        let topoSampleCtx = null;
-        let topoClickCanvas = null;
-        let topoClickCtx = null;
 
         function sampleTileElevationBounds(img) {
             if (!img || !img.width || !img.height) return { minElev: 0, maxElev: 500 };
@@ -3405,6 +3513,15 @@
                 // Falls diese Kachel im aktuellen Viewport liegt, sofort Dynamik-Bereich anpassen
                 if (activeTopoKeys.has(key)) {
                     refreshVisibleElevationRange();
+                }
+
+                // Wenn ein Popup aktiv ist und die Höhe noch unbestimmt ist, sofort mit den neuen Kacheldaten aktualisieren
+                if (clickedPopupPoint && currentMode === 'topo' && (clickedPopupTileElevation === null || lastClickedElevation === null)) {
+                    const localElev = getElevationFromLoadedTiles(clickedPopupPoint.lat, clickedPopupPoint.lng);
+                    if (localElev !== null) {
+                        clickedPopupTileElevation = localElev;
+                        updatePopupContent();
+                    }
                 }
             }, undefined, () => {
                 loadingTopoKeys.delete(key);
@@ -3823,8 +3940,12 @@
                     if (currentMode === 'topo') updateTopoTiles(true);
                     
                     if (anim && anim.targetName && !anim.targetName.includes('PV-Anlage')) {
-                        // Temperatur-Popup am Zielort aktivieren & anzeigen
+                        // Temperatur- & Höhen-Popup am Zielort aktivieren & anzeigen
                         clickedPopupPoint = { lat: anim.targetLat, lng: anim.targetLng };
+                        if (currentMode === 'topo') {
+                            const localElev = getElevationFromLoadedTiles(anim.targetLat, anim.targetLng);
+                            clickedPopupTileElevation = (localElev !== null) ? localElev : null;
+                        }
                         updatePopupContent();
                         
                         const localP = latLngToSphereVertex(anim.targetLat, anim.targetLng, surfaceRadius);
@@ -9547,8 +9668,12 @@
         }
 
         // DIREKTER VERTIKALER HERANZOOM-FLUG (ohne Schwenken um die halbe Welt)
-        function zoomInDirectToLocation(targetLat, targetLng, targetName, country, tz) {
-            if (userNavigatedManually) return;
+        function zoomInDirectToLocation(targetLat, targetLng, targetName, country, tz, force = false) {
+            if (!force && userNavigatedManually) return;
+            if (cameraAnimation) {
+                cameraAnimation = null;
+            }
+            userNavigatedManually = false;
             const localV = latLngToSphereVertex(targetLat, targetLng, 1.0);
             const targetUnit = new THREE.Vector3(-localV.z, localV.y, localV.x).normalize();
             const targetDist = 107.5; // Ideale Detailflughöhe für Relief & Straßen
@@ -10499,14 +10624,25 @@
                 } else if (lastElevationPointKey === ptKey && lastClickedElevation !== null) {
                     renderElevHtml(lastClickedElevation);
                 } else {
-                    popupEl.innerHTML = `<span style="font-size:11px; color:#94a3b8;">Geländehöhe...</span>`;
-                    fetchElevationForPoint(clickedPopupPoint.lat, clickedPopupPoint.lng, (elev) => {
-                        lastClickedElevation = elev;
+                    const localElev = getElevationFromLoadedTiles(clickedPopupPoint.lat, clickedPopupPoint.lng);
+                    if (localElev !== null) {
+                        clickedPopupTileElevation = localElev;
+                        lastClickedElevation = localElev;
                         lastElevationPointKey = ptKey;
-                        if (clickedPopupPoint && currentMode === 'topo') {
-                            renderElevHtml(elev);
-                        }
-                    });
+                        renderElevHtml(localElev);
+                    } else {
+                        popupEl.innerHTML = `<span style="font-size:11px; color:#94a3b8;">Geländehöhe...</span>`;
+                        fetchElevationForPoint(clickedPopupPoint.lat, clickedPopupPoint.lng, (elev) => {
+                            if (elev !== null) {
+                                clickedPopupTileElevation = elev;
+                            }
+                            lastClickedElevation = elev;
+                            lastElevationPointKey = ptKey;
+                            if (clickedPopupPoint && currentMode === 'topo') {
+                                renderElevHtml(elev);
+                            }
+                        });
+                    }
                 }
                 return;
             }
@@ -11254,113 +11390,178 @@
         // IP-BASIERTE STANDORTERMITTLUNG & WILLKOMMENS-FLUG (DSGVO-konform, keine Cookies)
         let userLocationDetected = false;
         let userNavigatedManually = false;
-        async function detectUserLocationAndFly() {
-            if (userLocationDetected || userNavigatedManually) return;
+        async function getIpLocation() {
+            let lat = null, lng = null, city = '', country = '', tz = null;
             try {
-                let lat = null, lng = null, city = '', country = '', tz = null;
+                const res = await fetch('https://get.geojs.io/v1/ip/geo.json');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.latitude && data.longitude) {
+                        lat = parseFloat(data.latitude);
+                        lng = parseFloat(data.longitude);
+                        city = data.city || '';
+                        country = data.country || '';
+                        tz = data.timezone || null;
+                    }
+                }
+            } catch(e) {}
+
+            if (lat === null) {
                 try {
-                    const res = await fetch('https://get.geojs.io/v1/ip/geo.json');
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data && data.latitude && data.longitude) {
-                            lat = parseFloat(data.latitude);
-                            lng = parseFloat(data.longitude);
-                            city = data.city || 'Dein Standort';
-                            country = data.country || '';
-                            tz = data.timezone || null;
+                    const res2 = await fetch('https://freeipapi.com/api/json');
+                    if (res2.ok) {
+                        const data2 = await res2.json();
+                        if (data2 && typeof data2.latitude === 'number' && typeof data2.longitude === 'number') {
+                            lat = data2.latitude;
+                            lng = data2.longitude;
+                            city = data2.cityName || '';
+                            country = data2.countryName || '';
+                            tz = (data2.timeZones && data2.timeZones[0]) || null;
                         }
                     }
                 } catch(e) {}
+            }
 
-                // Fallback zu freeipapi falls geojs blockiert oder nicht antwortet
-                if (lat === null) {
-                    try {
-                        const res2 = await fetch('https://freeipapi.com/api/json');
-                        if (res2.ok) {
-                            const data2 = await res2.json();
-                            if (data2 && typeof data2.latitude === 'number' && typeof data2.longitude === 'number') {
-                                lat = data2.latitude;
-                                lng = data2.longitude;
-                                city = data2.cityName || 'Dein Standort';
-                                country = data2.countryName || '';
-                                tz = (data2.timeZones && data2.timeZones[0]) || null;
-                            }
-                        }
-                    } catch(e) {}
-                }
+            if (lat !== null && lng !== null) {
+                return { lat, lng, city, country, tz };
+            }
+            return null;
+        }
 
-                if (lat !== null && lng !== null && !userNavigatedManually) {
-                    userLocationDetected = true;
-                    try {
-                        localStorage.setItem('last_user_lat', lat);
-                        localStorage.setItem('last_user_lng', lng);
-                    } catch(e) {}
-                    console.log(`Standort via IP lokalisiert: ${city}, ${country} (${lat}, ${lng}) [${tz}]`);
-                    if (!userNavigatedManually) {
-                        zoomInDirectToLocation(lat, lng, city, country, tz);
-                    }
+        async function detectUserLocationAndFly() {
+            if (userLocationDetected || userNavigatedManually) return;
+            try {
+                const ipLoc = await getIpLocation();
+                if (!ipLoc || userLocationDetected || userNavigatedManually) return;
+                userLocationDetected = true;
+                try {
+                    localStorage.setItem('last_user_lat', ipLoc.lat);
+                    localStorage.setItem('last_user_lng', ipLoc.lng);
+                } catch(e) {}
+                console.log(`Standort via IP lokalisiert: ${ipLoc.city}, ${ipLoc.country} (${ipLoc.lat}, ${ipLoc.lng}) [${ipLoc.tz}]`);
+                if (!userNavigatedManually) {
+                    zoomInDirectToLocation(ipLoc.lat, ipLoc.lng, ipLoc.city || 'Dein Standort', ipLoc.country, ipLoc.tz, false);
                 }
             } catch(err) {
                 console.log('IP-Standort konnte nicht ermittelt werden:', err);
             }
         }
 
-        // Echter GPS-Standort per Knopfdruck (navigator.geolocation) - im Gegensatz zu
-        // detectUserLocationAndFly() oben (grobe IP-Ortung, läuft automatisch, kein Prompt) fragt
-        // dies den Browser nach dem genauen Standort und löst dabei die native Berechtigungsabfrage
-        // des Browsers aus. Muss aus einem echten Klick-Handler aufgerufen werden, sonst blockieren
-        // viele Browser den Prompt.
+        // Echter GPS-Standort per Knopfdruck mit nahtlosem IP-Fallback und wiederholbarer Auslösung
+        let activeGeoRequestId = 0;
         function requestPreciseGeolocation() {
             const btn = document.getElementById('geolocateBtn');
+            const searchInput = document.getElementById('searchInput');
+            const searchClearBtn = document.getElementById('searchClearBtn');
+            const thisRequestId = ++activeGeoRequestId;
+
+            if (btn) {
+                btn.classList.add('active');
+                btn.title = 'Standort wird ermittelt...';
+            }
+
+            function applyUserLocation(lat, lng, nameHint, countryHint, tzHint) {
+                if (thisRequestId !== activeGeoRequestId) return;
+                if (btn) {
+                    btn.classList.remove('active');
+                    btn.title = 'Meinen genauen Standort verwenden (GPS)';
+                }
+                userLocationDetected = true;
+                try {
+                    localStorage.setItem('last_user_lat', lat);
+                    localStorage.setItem('last_user_lng', lng);
+                } catch (e) {}
+
+                let nearestCity = null, minDistSq = Infinity;
+                if (typeof citiesData !== 'undefined' && citiesData) {
+                    const cosLat = Math.cos(lat * Math.PI / 180);
+                    for (const c of citiesData) {
+                        const dLat = c.lat - lat;
+                        if (Math.abs(dLat) > 0.6) continue;
+                        const dLng = (c.lng - lng) * cosLat;
+                        const dSq = dLat * dLat + dLng * dLng;
+                        if (dSq < minDistSq) { minDistSq = dSq; nearestCity = c; }
+                    }
+                }
+                const name = (nearestCity && minDistSq < 0.25) ? nearestCity.name : (nameHint || 'Mein Standort');
+                const country = (nearestCity && minDistSq < 0.25) ? nearestCity.country : (countryHint || '');
+
+                if (searchInput) {
+                    searchInput.value = name;
+                }
+                if (searchClearBtn) {
+                    searchClearBtn.style.display = 'flex';
+                }
+
+                // Vorab-Abfrage der Geländehöhe im Topographie-Modus
+                if (currentMode === 'topo') {
+                    const localElev = getElevationFromLoadedTiles(lat, lng);
+                    if (localElev !== null) {
+                        clickedPopupTileElevation = localElev;
+                    }
+                    fetchElevationForPoint(lat, lng, (elev) => {
+                        if (elev !== null) {
+                            clickedPopupTileElevation = elev;
+                            if (clickedPopupPoint && Math.abs(clickedPopupPoint.lat - lat) < 0.01 && Math.abs(clickedPopupPoint.lng - lng) < 0.01) {
+                                updatePopupContent();
+                            }
+                        }
+                    });
+                }
+
+                zoomInDirectToLocation(lat, lng, name, country, tzHint, true);
+            }
+
+            async function triggerIpFallback() {
+                if (thisRequestId !== activeGeoRequestId) return;
+                try {
+                    const ipLoc = await getIpLocation();
+                    if (thisRequestId !== activeGeoRequestId) return;
+                    if (ipLoc && ipLoc.lat !== null && ipLoc.lng !== null) {
+                        applyUserLocation(ipLoc.lat, ipLoc.lng, ipLoc.city, ipLoc.country, ipLoc.tz);
+                        return;
+                    }
+                } catch(e) {}
+                if (btn && thisRequestId === activeGeoRequestId) {
+                    btn.classList.remove('active');
+                    btn.title = 'Meinen genauen Standort verwenden (GPS)';
+                }
+            }
+
             if (!navigator.geolocation) {
-                alert('Geolokalisierung wird von diesem Browser nicht unterstützt.');
+                triggerIpFallback();
                 return;
             }
-            if (btn) btn.classList.add('active');
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    if (btn) btn.classList.remove('active');
-                    const { latitude: lat, longitude: lng } = pos.coords;
-                    userLocationDetected = true;
-                    try {
-                        localStorage.setItem('last_user_lat', lat);
-                        localStorage.setItem('last_user_lng', lng);
-                    } catch (e) {}
-                    // Nächstgelegenen bekannten Ort für eine lesbare Beschriftung suchen (gleiches
-                    // Muster wie beim Klick auf den Globus) - sonst "Mein Standort" als Fallback.
-                    let nearestCity = null, minDistSq = Infinity;
-                    if (typeof citiesData !== 'undefined' && citiesData) {
-                        const cosLat = Math.cos(lat * Math.PI / 180);
-                        for (const c of citiesData) {
-                            const dLat = c.lat - lat;
-                            if (Math.abs(dLat) > 0.6) continue;
-                            const dLng = (c.lng - lng) * cosLat;
-                            const dSq = dLat * dLat + dLng * dLng;
-                            if (dSq < minDistSq) { minDistSq = dSq; nearestCity = c; }
-                        }
-                    }
-                    const name = (nearestCity && minDistSq < 0.25) ? nearestCity.name : 'Mein Standort';
-                    const country = (nearestCity && minDistSq < 0.25) ? nearestCity.country : '';
-                    zoomInDirectToLocation(lat, lng, name, country, null);
-                    // ERST NACH dem Flug setzen: zoomInDirectToLocation() selbst bricht sofort ab,
-                    // wenn userNavigatedManually schon true ist (Schutz gegen Überschreiben einer
-                    // bereits laufenden manuellen Navigation) - das Flag verhindert danach nur noch,
-                    // dass die automatische IP-Ortung (detectUserLocationAndFly) diesen GPS-Standort
-                    // nachträglich überschreibt.
-                    userNavigatedManually = true;
-                },
-                (err) => {
-                    if (btn) btn.classList.remove('active');
-                    let msg = 'Standort konnte nicht ermittelt werden.';
-                    if (err.code === err.PERMISSION_DENIED) {
-                        msg = 'Standortzugriff wurde verweigert. Du kannst das in den Browser-Einstellungen für diese Seite ändern.';
-                    } else if (err.code === err.TIMEOUT) {
-                        msg = 'Standortabfrage hat zu lange gedauert. Bitte erneut versuchen.';
-                    }
-                    alert(msg);
-                },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-            );
+
+            let hasResponded = false;
+            // Nach 5.5 Sekunden automatisch Fallback starten, falls GPS auf Laptop/PC hängt
+            const fallbackTimer = setTimeout(() => {
+                if (!hasResponded && thisRequestId === activeGeoRequestId) {
+                    triggerIpFallback();
+                }
+            }, 5500);
+
+            try {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        hasResponded = true;
+                        clearTimeout(fallbackTimer);
+                        if (thisRequestId !== activeGeoRequestId) return;
+                        const { latitude: lat, longitude: lng } = pos.coords;
+                        applyUserLocation(lat, lng, null, null, null);
+                    },
+                    (err) => {
+                        hasResponded = true;
+                        clearTimeout(fallbackTimer);
+                        if (thisRequestId !== activeGeoRequestId) return;
+                        triggerIpFallback();
+                    },
+                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                );
+            } catch (err) {
+                clearTimeout(fallbackTimer);
+                triggerIpFallback();
+            }
         }
 
         // AUTOMATISCHE LIVE-AKTUALISIERUNG DER WETTERDATEN (alle 15 Minuten)
