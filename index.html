@@ -3925,8 +3925,11 @@
                 // Richtung auf der Kugel interpolieren
                 const currentDir = new THREE.Vector3().copy(cameraAnimation.startUnit).lerp(cameraAnimation.targetUnit, t).normalize();
                 
-                // Sanfter Bogen während des Fluges für spektakuläre Perspektive
-                const arch = Math.sin(progress * Math.PI) * Math.min(25, cameraAnimation.startDist * 0.12);
+                // Sanfter Bogen während des Fluges für spektakuläre Perspektive (nur bei Flügen aus größerer Distanz)
+                const angle = cameraAnimation.startUnit.angleTo(cameraAnimation.targetUnit);
+                const isCloseFlight = Math.min(cameraAnimation.startDist, cameraAnimation.targetDist) < 112;
+                const maxArch = isCloseFlight ? 0 : Math.min(25, cameraAnimation.startDist * 0.12 * Math.sin(Math.min(Math.PI / 2, angle)));
+                const arch = Math.sin(progress * Math.PI) * maxArch;
                 const currentDist = (cameraAnimation.startDist + (cameraAnimation.targetDist - cameraAnimation.startDist) * t) + arch;
                 
                 camera.position.copy(currentDir.multiplyScalar(currentDist));
@@ -9647,11 +9650,13 @@
             userNavigatedManually = true;
             const localV = latLngToSphereVertex(targetLat, targetLng, 1.0);
             const targetUnit = new THREE.Vector3(-localV.z, localV.y, localV.x).normalize();
-            const targetDist = 107.5; // Ideale Detailflughöhe für Relief & Straßen
 
             const startPos = camera.position.clone();
             const startUnit = startPos.clone().normalize();
             const startDist = startPos.length();
+            // Wenn der Benutzer bereits nah herangezoomt ist (z. B. im Topo- oder Einstrahlungs-Modus),
+            // darf die Kamera keinesfalls wieder herauf / hinaus springen! Zoomhöhe beibehalten!
+            const targetDist = startDist < 107.5 ? startDist : 107.5;
 
             cameraAnimation = {
                 startTime: performance.now(),
@@ -9676,10 +9681,11 @@
             userNavigatedManually = false;
             const localV = latLngToSphereVertex(targetLat, targetLng, 1.0);
             const targetUnit = new THREE.Vector3(-localV.z, localV.y, localV.x).normalize();
-            const targetDist = 107.5; // Ideale Detailflughöhe für Relief & Straßen
+            const curDist = camera.position.length();
+            const targetDist = Math.min(curDist, 107.5);
 
-            // Kamera sofort über dem Zielort ausrichten
-            const startDist = Math.max(camera.position.length(), 240);
+            // Kamera über dem Zielort ausrichten (ohne hinauszuspringen, wenn bereits herangezoomt)
+            const startDist = force ? curDist : Math.max(curDist, 240);
             const startUnit = targetUnit.clone();
             camera.position.copy(startUnit.clone().multiplyScalar(startDist));
             camera.lookAt(0, 0, 0);
@@ -10193,13 +10199,13 @@
             return `${h}:00`;
         }
 
+        let activeForecastLocation = null;
+
         function showLocationForecast(lat, lng, name, country, customTz) {
-            // Der 24h/48h-Wettertrend zeigt reine Temperaturdaten (getTempAtStep()) - gehört
-            // inhaltlich nur zur Temperatur-Ansicht. Bisher erschien das Popup bei jedem Klick
-            // unabhängig vom aktiven Layer, auch in Einstrahlung/Topographie.
-            if (currentMode !== 'temp') return;
             if (!name) name = "Ausgewählter Ort";
             const tz = customTz || getTimezoneForLocation(lat, lng, country);
+            activeForecastLocation = { lat, lng, name, country, customTz: tz };
+
             const localTimeStr = formatLocationTime(new Date(), tz, lat, lng);
 
             const placeEl = document.getElementById('forecastPlaceName');
@@ -10221,6 +10227,8 @@
 
             if (currentMode === 'solar') {
                 renderSolarForecastBody(lat, lng, tz);
+            } else if (currentMode === 'topo') {
+                renderTopoForecastBody(lat, lng, tz);
             } else {
                 renderTempForecastBody(lat, lng, tz);
             }
@@ -10566,6 +10574,140 @@
                         });
                     });
                 }
+            }
+        }
+
+        let currentTopoFetchId = 0;
+        function renderTopoForecastBody(lat, lng, tz) {
+            const reqId = ++currentTopoFetchId;
+            const windRowEl = document.getElementById('forecastWindRow');
+            const label1El = document.getElementById('forecastStatLabel1');
+            const label2El = document.getElementById('forecastStatLabel2');
+            const unitEl = document.getElementById('forecastUnit');
+            const timelineTitleEl = document.getElementById('forecastTimelineTitle');
+            const iconEl = document.getElementById('forecastCurrentIcon');
+            const tempEl = document.getElementById('forecastCurrentTemp');
+            const windEl = document.getElementById('forecastCurrentWind');
+            const minMaxEl = document.getElementById('forecastMinMax');
+            const timelineEl = document.getElementById('forecastTimeline');
+            const miniIconEl = document.getElementById('forecastMiniIcon');
+            const miniTempEl = document.getElementById('forecastMiniTemp');
+
+            if (windRowEl) windRowEl.style.display = '';
+            if (label1El) label1El.innerText = 'Reliefstufe';
+            if (label2El) label2El.innerText = 'Sichtbereich';
+            if (timelineTitleEl) timelineTitleEl.innerText = '⛰️ Topographie & Umgebungsprofil';
+
+            const getReliefInfo = (elev) => {
+                if (elev === null || isNaN(elev)) return { title: 'Gelände', icon: '⛰️', desc: 'Unbekannt' };
+                if (elev < 0) return { title: 'Depression', icon: '🌊', desc: 'unter NN' };
+                if (elev < 200) return { title: 'Flachland', icon: '🌱', desc: 'Tiefland' };
+                if (elev < 500) return { title: 'Hügelland', icon: '🌳', desc: 'Kollin' };
+                if (elev < 1500) return { title: 'Mittelgebirge', icon: '🌲', desc: 'Montan' };
+                if (elev < 2500) return { title: 'Hochgebirge', icon: '⛰️', desc: 'Alpin' };
+                return { title: 'Hochalpin', icon: '🏔️', desc: 'Gipfelzone' };
+            };
+
+            let elev = getElevationFromLoadedTiles(lat, lng);
+            if (elev === null && typeof clickedPopupTileElevation !== 'undefined' && clickedPopupTileElevation !== null) {
+                elev = clickedPopupTileElevation;
+            }
+            if (elev === null && typeof lastClickedElevation !== 'undefined' && lastClickedElevation !== null) {
+                elev = lastClickedElevation;
+            }
+
+            const applyElevToUi = (m) => {
+                if (currentMode !== 'topo' || reqId !== currentTopoFetchId) return;
+                const info = getReliefInfo(m);
+                if (unitEl) unitEl.innerText = (m !== null && m < 0) ? 'm (unter NN)' : 'm ü. NHN';
+                if (iconEl) iconEl.innerText = info.icon;
+                if (tempEl) tempEl.innerText = (m !== null) ? Math.round(m).toLocaleString('de-DE') : '...';
+                if (windEl) windEl.innerText = info.title;
+                if (miniIconEl) miniIconEl.innerText = info.icon;
+                if (miniTempEl) miniTempEl.innerText = (m !== null) ? `${Math.round(m)} m` : '... m';
+            };
+
+            applyElevToUi(elev);
+
+            if (minMaxEl) {
+                minMaxEl.innerText = `${Math.round(currentVisibleMinElev)} / ${Math.round(currentVisibleMaxElev)} m`;
+            }
+
+            if (elev === null) {
+                fetchElevationForPoint(lat, lng, (fetchedElev) => {
+                    if (reqId !== currentTopoFetchId || currentMode !== 'topo') return;
+                    if (fetchedElev !== null) {
+                        elev = fetchedElev;
+                        applyElevToUi(elev);
+                    }
+                });
+            }
+
+            // Umgebungsprofil-Karten (West -> Zentrum -> Ost & Nord/Süd)
+            if (timelineEl) {
+                const cosLat = Math.cos(lat * Math.PI / 180) || 1.0;
+                const profileSamples = [
+                    { label: 'W -25km', dLat: 0, dLng: -0.32 / cosLat },
+                    { label: 'W -10km', dLat: 0, dLng: -0.13 / cosLat },
+                    { label: 'W -3km',  dLat: 0, dLng: -0.04 / cosLat },
+                    { label: 'Zentrum', dLat: 0, dLng: 0, isCenter: true },
+                    { label: 'O +3km',  dLat: 0, dLng: 0.04 / cosLat },
+                    { label: 'O +10km', dLat: 0, dLng: 0.13 / cosLat },
+                    { label: 'O +25km', dLat: 0, dLng: 0.32 / cosLat },
+                    { label: 'N +10km', dLat: 0.09, dLng: 0 },
+                    { label: 'S -10km', dLat: -0.09, dLng: 0 }
+                ];
+
+                let html = '';
+                profileSamples.forEach((item, idx) => {
+                    const sLat = lat + item.dLat;
+                    const sLng = lng + item.dLng;
+                    let sElev = (item.isCenter && elev !== null) ? elev : getElevationFromLoadedTiles(sLat, sLng);
+                    const activeClass = item.isCenter ? 'active' : '';
+                    const sInfo = getReliefInfo(sElev);
+                    const hText = (sElev !== null) ? `${Math.round(sElev)} m` : '...';
+                    html += `
+                        <div class="forecast-hour-card ${activeClass}" data-idx="${idx}" data-lat="${sLat}" data-lng="${sLng}" title="${item.label}: ${hText}">
+                            <span class="forecast-hour-time">${item.label}</span>
+                            <span class="forecast-hour-icon">${sInfo.icon}</span>
+                            <span class="forecast-hour-temp">${hText}</span>
+                        </div>
+                    `;
+                });
+                timelineEl.innerHTML = html;
+
+                timelineEl.querySelectorAll('.forecast-hour-card').forEach(card => {
+                    const sLat = parseFloat(card.dataset.lat);
+                    const sLng = parseFloat(card.dataset.lng);
+                    const tempSpan = card.querySelector('.forecast-hour-temp');
+                    const iconSpan = card.querySelector('.forecast-hour-icon');
+                    if (tempSpan && tempSpan.innerText === '...') {
+                        fetchElevationForPoint(sLat, sLng, (fElev) => {
+                            if (reqId !== currentTopoFetchId || currentMode !== 'topo') return;
+                            if (fElev !== null && card) {
+                                const sInfo = getReliefInfo(fElev);
+                                if (iconSpan) iconSpan.innerText = sInfo.icon;
+                                if (tempSpan) tempSpan.innerText = `${Math.round(fElev)} m`;
+                                card.title = `${card.querySelector('.forecast-hour-time').innerText}: ${Math.round(fElev)} m`;
+                            }
+                        });
+                    }
+
+                    card.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        timelineEl.querySelectorAll('.forecast-hour-card').forEach(c => c.classList.remove('active'));
+                        card.classList.add('active');
+                        let cardElev = getElevationFromLoadedTiles(sLat, sLng);
+                        if (cardElev !== null) {
+                            applyElevToUi(cardElev);
+                        } else {
+                            fetchElevationForPoint(sLat, sLng, (fElev) => {
+                                if (reqId !== currentTopoFetchId || currentMode !== 'topo') return;
+                                if (fElev !== null) applyElevToUi(fElev);
+                            });
+                        }
+                    });
+                });
             }
         }
 
@@ -11285,6 +11427,17 @@
                 }
                 updateActiveData();
             }
+
+            // Wenn die Prognose-/Detailkarte oben links aktiv ist, Inhalt sofort an den neuen Kartenmodus anpassen!
+            if (forecastContainer && forecastContainer.style.display !== 'none' && activeForecastLocation) {
+                showLocationForecast(
+                    activeForecastLocation.lat,
+                    activeForecastLocation.lng,
+                    activeForecastLocation.name,
+                    activeForecastLocation.country,
+                    activeForecastLocation.customTz
+                );
+            }
         }
         window.switchLayer = switchLayer;
 
@@ -11305,6 +11458,9 @@
             solarClimSelection = value;
             if (currentMode === 'solar') {
                 applySolarRangeAndLegend();
+                if (forecastContainer && forecastContainer.style.display !== 'none' && activeForecastLocation) {
+                    renderSolarForecastBody(activeForecastLocation.lat, activeForecastLocation.lng, activeForecastLocation.customTz);
+                }
             }
             updateActiveData();
         }
