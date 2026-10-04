@@ -36,9 +36,11 @@ jobs:
           node-version: 24
 
       - name: Fetch Live Solar Radiation Timeline (GFS 0.25°)
+        continue-on-error: true
         run: node fetch_solar_timeline.js
 
       - name: Fetch Live Cloud Cover (für die Nachtseite der Einstrahlungskarte)
+        continue-on-error: true
         run: node fetch_cloud_timeline.js
 
       - name: Fetch Solar Climatology (NASA POWER, wöchentlich oder manuell)
