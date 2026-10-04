@@ -34,14 +34,37 @@ const NX = Math.ceil(FULL_NX / STRIDE);
 const NY = Math.ceil(FULL_NY / STRIDE);
 const PTS_PER_STEP = NX * NY;
 
-function fetchText(url) {
+function fetchText(url, retries = 3) {
     return new Promise((resolve, reject) => {
-        https.get(url, (res) => {
-            if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode} für ${url}`));
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => resolve(data));
-        }).on('error', reject);
+        const attempt = (n) => {
+            const req = https.get(url, { timeout: 45000 }, (res) => {
+                if (res.statusCode !== 200) {
+                    if (n > 1) {
+                        return setTimeout(() => attempt(n - 1), 2000);
+                    }
+                    return reject(new Error(`HTTP ${res.statusCode} für ${url}`));
+                }
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => resolve(data));
+            });
+            req.on('timeout', () => {
+                req.destroy();
+                if (n > 1) {
+                    setTimeout(() => attempt(n - 1), 2000);
+                } else {
+                    reject(new Error(`Timeout für ${url}`));
+                }
+            });
+            req.on('error', (err) => {
+                if (n > 1) {
+                    setTimeout(() => attempt(n - 1), 2000);
+                } else {
+                    reject(err);
+                }
+            });
+        };
+        attempt(retries);
     });
 }
 

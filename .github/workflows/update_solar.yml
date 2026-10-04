@@ -33,7 +33,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Fetch Live Solar Radiation Timeline (GFS 0.25°)
         run: node fetch_solar_timeline.js
@@ -129,10 +129,12 @@ jobs:
             echo 'No changes in solar data.'
           else
             git commit -m 'chore(data): auto-update solar radiation and cloud cover data [skip ci]'
+            git restore . || true
+            git clean -fd || true
             pushed=0
             for i in 1 2 3 4 5; do
               git fetch --depth=50 origin main
-              if git rebase origin/main && git push origin HEAD:main; then
+              if git rebase --autostash origin/main && git push origin HEAD:main; then
                 pushed=1
                 break
               fi
