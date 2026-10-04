@@ -38,13 +38,15 @@ const NX = Math.ceil(FULL_NX / STRIDE);
 const NY = Math.ceil(FULL_NY / STRIDE);
 const PTS_PER_STEP = NX * NY;
 
-function fetchText(url, retries = 3) {
+function fetchText(url, retries = 5) {
     return new Promise((resolve, reject) => {
         const attempt = (n) => {
-            const req = https.get(url, { timeout: 45000 }, (res) => {
+            const req = https.get(url, { timeout: 60000 }, (res) => {
                 if (res.statusCode !== 200) {
                     if (n > 1) {
-                        return setTimeout(() => attempt(n - 1), 2000);
+                        const delay = (6 - n) * 3000;
+                        console.warn(`HTTP ${res.statusCode} für ${url}. Wiederhole in ${delay/1000}s (${n - 1} Versuche übrig)...`);
+                        return setTimeout(() => attempt(n - 1), delay);
                     }
                     return reject(new Error(`HTTP ${res.statusCode} für ${url}`));
                 }
@@ -55,14 +57,18 @@ function fetchText(url, retries = 3) {
             req.on('timeout', () => {
                 req.destroy();
                 if (n > 1) {
-                    setTimeout(() => attempt(n - 1), 2000);
+                    const delay = (6 - n) * 3000;
+                    console.warn(`Timeout für ${url}. Wiederhole in ${delay/1000}s (${n - 1} Versuche übrig)...`);
+                    setTimeout(() => attempt(n - 1), delay);
                 } else {
                     reject(new Error(`Timeout für ${url}`));
                 }
             });
             req.on('error', (err) => {
                 if (n > 1) {
-                    setTimeout(() => attempt(n - 1), 2000);
+                    const delay = (6 - n) * 3000;
+                    console.warn(`Netzwerkfehler (${err.message}) für ${url}. Wiederhole in ${delay/1000}s...`);
+                    setTimeout(() => attempt(n - 1), delay);
                 } else {
                     reject(err);
                 }
@@ -159,7 +165,7 @@ async function run() {
         console.log(`Starte Download von ${steps.length} Zeitschritten (Grid ${NX}x${NY}, Stride ${STRIDE}), insgesamt ${totalPoints.toLocaleString()} Messpunkte...`);
         const startTime = Date.now();
 
-        const CONCURRENCY = 3;
+        const CONCURRENCY = 2;
         for (let i = 0; i < steps.length; i += CONCURRENCY) {
             const batch = [];
             for (let j = 0; j < CONCURRENCY && (i + j) < steps.length; j++) {
@@ -170,6 +176,9 @@ async function run() {
                 batch.push(p);
             }
             await Promise.all(batch);
+            if (i + CONCURRENCY < steps.length) {
+                await new Promise(r => setTimeout(r, 400));
+            }
         }
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
