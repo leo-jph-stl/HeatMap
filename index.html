@@ -9525,6 +9525,117 @@
                 }
             }
 
+            // 3. ROUTENPLANER WEGWEISER & PINS (Start = Grün A, Zwischenstopps = Cyan 1/2/..., Ziel = Rot B)
+            if (typeof routePlannerState !== 'undefined' && routePlannerState && routePlannerState.routeData && routePlannerState.waypoints) {
+                const validWps = routePlannerState.waypoints.filter(w => w.lat !== null && w.lng !== null);
+                let viaNum = 1;
+                validWps.forEach((wp, wIdx) => {
+                    const localV = latLngToSphereVertex(wp.lat, wp.lng, surfaceRadius);
+                    const worldV = localV.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
+                    const cosA = (worldV.x * cx + worldV.y * cy + worldV.z * cz) / (surfaceRadius * dist);
+                    if (cosA < horizonThreshold) return; // Punkt liegt auf der abgewandten Erdseite
+
+                    tempCityVec.copy(worldV).project(camera);
+                    if (tempCityVec.z > 1.0) return;
+
+                    const sx = (tempCityVec.x * 0.5 + 0.5) * screenW;
+                    const sy = (-tempCityVec.y * 0.5 + 0.5) * screenH;
+
+                    if (sx < 15 || sx > screenW - 15 || sy < 15 || sy > screenH - 15) return;
+
+                    cityCtx.save();
+                    
+                    const isStart = wp.type === 'start';
+                    const isEnd = wp.type === 'end';
+                    const color = isStart ? '#00ff88' : (isEnd ? '#ff3366' : '#00e5ff');
+                    const label = isStart ? 'A' : (isEnd ? 'B' : `${viaNum++}`);
+                    const badgeTitle = isStart ? 'Start' : (isEnd ? 'Ziel' : `Stopp ${label}`);
+
+                    // Dezente pulsierende Aura
+                    const pulse = (Math.sin(Date.now() * 0.005 + wIdx * 1.5) + 1) * 0.5;
+                    cityCtx.beginPath();
+                    cityCtx.arc(sx, sy, 11 + pulse * 4, 0, Math.PI * 2);
+                    cityCtx.fillStyle = isStart 
+                        ? `rgba(0, 255, 136, ${0.12 + pulse * 0.16})`
+                        : (isEnd ? `rgba(255, 51, 102, ${0.12 + pulse * 0.16})` : `rgba(0, 229, 255, ${0.12 + pulse * 0.16})`);
+                    cityCtx.fill();
+
+                    // Eleganter Pin-Kreis mit weißem Rand & dunklem Schlagschatten
+                    cityCtx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+                    cityCtx.shadowBlur = 6;
+                    cityCtx.beginPath();
+                    cityCtx.arc(sx, sy, 8.5, 0, Math.PI * 2);
+                    cityCtx.fillStyle = color;
+                    cityCtx.fill();
+                    cityCtx.strokeStyle = '#ffffff';
+                    cityCtx.lineWidth = 2.0;
+                    cityCtx.stroke();
+                    cityCtx.shadowColor = 'transparent';
+
+                    // Kürzel / Ziffer im Pin (A, 1, 2, B)
+                    cityCtx.font = '800 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                    cityCtx.fillStyle = '#0a0a0f';
+                    cityCtx.textAlign = 'center';
+                    cityCtx.textBaseline = 'middle';
+                    cityCtx.fillText(label, sx, sy + 0.5);
+
+                    // Beschriftungs-Badge oberhalb
+                    const rawName = wp.name ? wp.name.split(',')[0].trim() : badgeTitle;
+                    const name = rawName.length > 22 ? rawName.slice(0, 20) + '…' : rawName;
+                    cityCtx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                    const tw = cityCtx.measureText(name).width;
+                    const bw = tw + 14;
+                    const bh = 19;
+                    const bx = sx - bw / 2;
+                    const by = sy - 25;
+
+                    cityCtx.fillStyle = 'rgba(15, 18, 25, 0.88)';
+                    cityCtx.strokeStyle = color;
+                    cityCtx.lineWidth = 1.2;
+                    cityCtx.beginPath();
+                    if (typeof cityCtx.roundRect === 'function') {
+                        cityCtx.roundRect(bx, by, bw, bh, 9);
+                    } else {
+                        cityCtx.rect(bx, by, bw, bh);
+                    }
+                    cityCtx.fill();
+                    cityCtx.stroke();
+
+                    cityCtx.fillStyle = '#ffffff';
+                    cityCtx.fillText(name, sx, by + bh / 2);
+
+                    cityCtx.restore();
+                    placed.push({ x: sx, y: sy, spacingX: bw + 10, spacingY: 35 });
+                });
+            }
+
+            // 4. ROUTEN-SCRUBBER HOVER-MARKER (Gelber Punkt bei Mausbewegung über Höhenprofil)
+            if (typeof routePlannerState !== 'undefined' && routePlannerState && routePlannerState.hoverCoord) {
+                const { lat, lng } = routePlannerState.hoverCoord;
+                const localV = latLngToSphereVertex(lat, lng, surfaceRadius);
+                const worldV = localV.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
+                const cosA = (worldV.x * cx + worldV.y * cy + worldV.z * cz) / (surfaceRadius * dist);
+                if (cosA >= horizonThreshold) {
+                    tempCityVec.copy(worldV).project(camera);
+                    if (tempCityVec.z <= 1.0) {
+                        const sx = (tempCityVec.x * 0.5 + 0.5) * screenW;
+                        const sy = (-tempCityVec.y * 0.5 + 0.5) * screenH;
+                        cityCtx.save();
+                        cityCtx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                        cityCtx.shadowBlur = 8;
+                        cityCtx.beginPath();
+                        cityCtx.arc(sx, sy, 7, 0, Math.PI * 2);
+                        cityCtx.fillStyle = '#ffd700';
+                        cityCtx.fill();
+                        cityCtx.strokeStyle = '#ffffff';
+                        cityCtx.lineWidth = 2.0;
+                        cityCtx.stroke();
+                        cityCtx.shadowColor = 'transparent';
+                        cityCtx.restore();
+                    }
+                }
+            }
+
             // PHASE 1: Schnelle Sichtbarkeitsprüfung & Fokus-Distanzberechnung
             const candidates = [];
             const halfW = screenW * 0.5;
@@ -12129,6 +12240,7 @@
                 routePlannerState.routeGroup = null;
             }
             routePlannerState.hoverPin = null;
+            routePlannerState.hoverCoord = null;
         }
 
         function reverseGeocode(lat, lng, callback) {
@@ -12231,41 +12343,107 @@
                     sampledPoints[i].distKm = accDistKm;
                 }
 
-                // Höhenprofil via Open-Meteo Elevation API (Copernicus DEM) mit 80er Batching
-                // (Wichtig: Open-Meteo erlaubt maximal 100 Koordinaten pro Abruf!)
+                // Robuster Abruf der Höhendaten mit Retry bei Rate-Limits (429) & lokalem DEM-Fallback
                 const chunkSize = 80;
-                const chunkPromises = [];
+                const chunkResults = [];
+
                 for (let i = 0; i < sampledPoints.length; i += chunkSize) {
                     const slice = sampledPoints.slice(i, i + chunkSize);
                     const latsParam = slice.map(p => p.lat.toFixed(4)).join(',');
                     const lngsParam = slice.map(p => p.lng.toFixed(4)).join(',');
                     const elevUrl = `https://api.open-meteo.com/v1/elevation?latitude=${latsParam}&longitude=${lngsParam}`;
-                    chunkPromises.push(
-                        fetch(elevUrl)
-                            .then(r => r.ok ? r.json() : null)
-                            .then(d => (d && Array.isArray(d.elevation)) ? d.elevation : new Array(slice.length).fill(null))
-                            .catch(() => new Array(slice.length).fill(null))
-                    );
+
+                    let chunkElev = null;
+                    for (let attempt = 0; attempt < 2; attempt++) {
+                        try {
+                            const res = await fetch(elevUrl);
+                            if (res.ok) {
+                                const d = await res.json();
+                                if (d && Array.isArray(d.elevation)) {
+                                    chunkElev = d.elevation;
+                                    break;
+                                }
+                            } else if (res.status === 429) {
+                                // Kurzer Backoff bei Rate-Limit
+                                await new Promise(r => setTimeout(r, 450));
+                            }
+                        } catch (err) {
+                            await new Promise(r => setTimeout(r, 250));
+                        }
+                    }
+
+                    if (!chunkElev) {
+                        chunkElev = new Array(slice.length).fill(null);
+                    }
+                    chunkResults.push(chunkElev);
                 }
 
-                const chunks = await Promise.all(chunkPromises);
-                const elevations = chunks.flat();
+                const elevations = chunkResults.flat();
 
-                // Fehlende Werte interpolieren
+                // Fehlende Punkte durch lokale Kacheln (Copernicus DEM) oder Cache ergänzen
+                for (let i = 0; i < sampledPoints.length; i++) {
+                    if (elevations[i] === null || elevations[i] === undefined || isNaN(elevations[i])) {
+                        const pt = sampledPoints[i];
+                        const local = getElevationFromLoadedTiles(pt.lat, pt.lng);
+                        if (local !== null) {
+                            elevations[i] = local;
+                        } else {
+                            const cKey = `${pt.lat.toFixed(3)},${pt.lng.toFixed(3)}`;
+                            if (elevationCache.has(cKey)) {
+                                elevations[i] = elevationCache.get(cKey);
+                            }
+                        }
+                    }
+                }
+
+                // Zielpunkt-Höhe ermitteln als Anker für das Streckenende
+                const destWp = validWps[validWps.length - 1];
+                let destElev = getElevationFromLoadedTiles(destWp.lat, destWp.lng);
+                if (destElev === null) {
+                    const dKey = `${destWp.lat.toFixed(3)},${destWp.lng.toFixed(3)}`;
+                    if (elevationCache.has(dKey)) destElev = elevationCache.get(dKey);
+                }
+
+                // Startpunkt-Höhe ermitteln als Anker für den Streckenbeginn
+                const startWp = validWps[0];
+                let startElev = getElevationFromLoadedTiles(startWp.lat, startWp.lng);
+                if (startElev === null) {
+                    const sKey = `${startWp.lat.toFixed(3)},${startWp.lng.toFixed(3)}`;
+                    if (elevationCache.has(sKey)) startElev = elevationCache.get(sKey);
+                }
+
+                // Interpolation für verbleibende Lücken (garantiert kein horizontales Einfrieren am Streckenende!)
                 for (let i = 0; i < elevations.length; i++) {
-                    if (elevations[i] === null || elevations[i] === undefined) {
-                        let prev = (i > 0 && typeof elevations[i - 1] === 'number') ? elevations[i - 1] : null;
-                        let next = null;
-                        for (let j = i + 1; j < elevations.length; j++) {
-                            if (typeof elevations[j] === 'number') {
-                                next = elevations[j];
+                    if (elevations[i] === null || elevations[i] === undefined || isNaN(elevations[i])) {
+                        let prevIdx = -1;
+                        for (let p = i - 1; p >= 0; p--) {
+                            if (typeof elevations[p] === 'number') {
+                                prevIdx = p;
                                 break;
                             }
                         }
-                        if (prev !== null && next !== null) elevations[i] = (prev + next) / 2;
-                        else if (prev !== null) elevations[i] = prev;
-                        else if (next !== null) elevations[i] = next;
-                        else elevations[i] = 100;
+                        let nextIdx = -1;
+                        for (let n = i + 1; n < elevations.length; n++) {
+                            if (typeof elevations[n] === 'number') {
+                                nextIdx = n;
+                                break;
+                            }
+                        }
+
+                        if (prevIdx !== -1 && nextIdx !== -1) {
+                            const ratio = (i - prevIdx) / (nextIdx - prevIdx);
+                            elevations[i] = Math.round(elevations[prevIdx] + ratio * (elevations[nextIdx] - elevations[prevIdx]));
+                        } else if (prevIdx !== -1) {
+                            const targetH = (destElev !== null) ? destElev : Math.max(0, elevations[prevIdx] * 0.3);
+                            const ratio = (i - prevIdx) / (elevations.length - prevIdx);
+                            elevations[i] = Math.round(elevations[prevIdx] + ratio * (targetH - elevations[prevIdx]));
+                        } else if (nextIdx !== -1) {
+                            const originH = (startElev !== null) ? startElev : elevations[nextIdx];
+                            const ratio = i / nextIdx;
+                            elevations[i] = Math.round(originH + ratio * (elevations[nextIdx] - originH));
+                        } else {
+                            elevations[i] = 100;
+                        }
                     }
                 }
 
@@ -12405,27 +12583,27 @@
             lineMesh.renderOrder = 8;
             routePlannerState.routeGroup.add(lineMesh);
 
-            // 3D Pin-Marker Hilfsfunktion
-            function createPinMarker(lat, lng, colorHex, size = 0.5) {
-                const vert = latLngToSphereVertex(lat, lng, radius + 0.05);
-                const geom = new THREE.SphereGeometry(size, 16, 16);
-                const mat = new THREE.MeshBasicMaterial({ color: colorHex, depthTest: false });
+            // Feine 3D Boden-Marker (dezent auf der Oberfläche, ohne riesige Verdeckung)
+            function createPinMarker(lat, lng, colorHex, size = 0.05) {
+                const vert = latLngToSphereVertex(lat, lng, radius + 0.03);
+                const geom = new THREE.SphereGeometry(size, 12, 12);
+                const mat = new THREE.MeshBasicMaterial({ color: colorHex, depthTest: true });
                 const mesh = new THREE.Mesh(geom, mat);
                 mesh.position.copy(vert);
-                mesh.renderOrder = 10;
+                mesh.renderOrder = 9;
                 return mesh;
             }
 
-            // Pins für alle Wegpunkte (Start = Grün, Zwischenstopps = Blau/Cyan, Ziel = Rot)
+            // Subtile 3D-Bodenpunkte für alle Wegpunkte (Start = Grün, Zwischenstopps = Blau/Cyan, Ziel = Rot)
             validWps.forEach((wp, idx) => {
                 let col = 0x00e5ff; // Zwischenstopp (Cyan/Blau)
-                let sz = 0.48;
+                let sz = 0.045;
                 if (wp.type === 'start') {
                     col = 0x00ff88; // Grün
-                    sz = 0.55;
+                    sz = 0.055;
                 } else if (wp.type === 'end') {
                     col = 0xff3366; // Rot
-                    sz = 0.55;
+                    sz = 0.055;
                 }
                 const pin = createPinMarker(wp.lat, wp.lng, col, sz);
                 routePlannerState.routeGroup.add(pin);
@@ -12433,7 +12611,7 @@
 
             // Dynamischer Scrubber-Hover-Pin (Gelb)
             const firstCoord = rawCoords[0];
-            const hoverPin = createPinMarker(firstCoord[1], firstCoord[0], 0xffdb00, 0.65);
+            const hoverPin = createPinMarker(firstCoord[1], firstCoord[0], 0xffdb00, 0.065);
             hoverPin.visible = false;
             routePlannerState.routeGroup.add(hoverPin);
             routePlannerState.hoverPin = hoverPin;
@@ -12565,6 +12743,8 @@
                     hoverInfo.innerText = `📍 ${closest.distKm.toFixed(1)} km | ⛰️ ${closest.ele} m ü. NHN`;
                 }
 
+                routePlannerState.hoverCoord = closest;
+
                 // 3D Pin auf Globus synchronisieren
                 if (routePlannerState.hoverPin && earthMesh) {
                     const vert = latLngToSphereVertex(closest.lat, closest.lng, vectorLineRadius + 0.1);
@@ -12577,6 +12757,7 @@
                 if (scrubber) scrubber.style.display = 'none';
                 if (dot) dot.style.display = 'none';
                 if (hoverInfo) hoverInfo.innerText = 'Maus über Grafik bewegen';
+                routePlannerState.hoverCoord = null;
                 if (routePlannerState.hoverPin) routePlannerState.hoverPin.visible = false;
             };
 
