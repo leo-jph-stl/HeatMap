@@ -1113,8 +1113,103 @@
             color: #fff;
         }
 
+        /* 3D FLÄCHENMESSUNG & FORMBESTIMMUNG */
+        #area-measure-container {
+            position: absolute;
+            top: 76px;
+            right: 24px;
+            width: 380px;
+            max-width: calc(100vw - 48px);
+            max-height: calc(100vh - 96px);
+            overflow-y: auto;
+            overflow-x: hidden;
+            overscroll-behavior: contain;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(168, 85, 247, 0.4) transparent;
+            z-index: 47;
+            background: rgba(18, 18, 24, 0.95);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(168, 85, 247, 0.45);
+            border-radius: 16px;
+            padding: 14px 16px;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.8), 0 0 24px rgba(168, 85, 247, 0.2);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+            color: #fff;
+            display: none;
+            transition: opacity 0.25s ease;
+        }
+        #area-measure-container::-webkit-scrollbar {
+            width: 5px;
+        }
+        #area-measure-container::-webkit-scrollbar-thumb {
+            background: rgba(168, 85, 247, 0.4);
+            border-radius: 4px;
+        }
+        .area-mode-btn {
+            flex: 1;
+            padding: 6px 4px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 6px;
+            color: #ccc;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            text-align: center;
+        }
+        .area-mode-btn:hover {
+            background: rgba(168, 85, 247, 0.15);
+            color: #fff;
+            border-color: rgba(168, 85, 247, 0.35);
+        }
+        .area-mode-btn.active {
+            background: rgba(168, 85, 247, 0.28);
+            border-color: #c084fc;
+            color: #f3e8ff;
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.4);
+        }
+        .area-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        .area-kpi-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 8px;
+            padding: 7px 6px;
+            text-align: center;
+        }
+        .area-kpi-label {
+            font-size: 8.5px;
+            color: #aaa;
+            margin-bottom: 2px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .area-kpi-val {
+            font-size: 13px;
+            font-weight: 700;
+            color: #fff;
+        }
+        .area-point-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 6px;
+            margin-bottom: 3px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 6px;
+            font-size: 10px;
+        }
+
         @media (max-width: 1260px) {
-            #route-container {
+            #route-container, #area-measure-container {
                 right: 12px;
                 top: 86px;
                 width: 360px;
@@ -2127,6 +2222,136 @@
             </div>
         </div>
     </div>
+
+    <!-- 3D FLÄCHENMESSUNG & FORMBESTIMMUNG (POLYGON, KREIS, RECHTECK) -->
+    <div id="area-measure-container" style="display: none;">
+        <div class="forecast-header">
+            <div class="forecast-title-box">
+                <div class="forecast-place" style="color: #c084fc; display: flex; align-items: center; gap: 6px;">
+                    <span class="drag-grip" title="Fenster verschieben">⋮⋮</span> 📐 3D-Flächenrechner
+                </div>
+                <div class="forecast-sub">Geodätische Vermessung &amp; Topographie-Relieffläche</div>
+            </div>
+            <div class="forecast-btn-group">
+                <button id="areaCloseBtn" class="forecast-action-btn" title="Schließen" onclick="toggleAreaMeasure(false)">✕</button>
+            </div>
+        </div>
+
+        <div id="areaBody">
+            <!-- Form-Wahlschalter (Freies Polygon, Kreis, Rechteck) -->
+            <div style="display: flex; gap: 5px; margin-bottom: 8px; background: rgba(0,0,0,0.3); padding: 3px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                <button type="button" id="areaModePolygon" class="area-mode-btn active" onclick="setAreaShapeMode('polygon')">⬟ Polygon</button>
+                <button type="button" id="areaModeCircle" class="area-mode-btn" onclick="setAreaShapeMode('circle')">◯ Kreis</button>
+                <button type="button" id="areaModeRectangle" class="area-mode-btn" onclick="setAreaShapeMode('rectangle')">▭ Rechteck</button>
+            </div>
+
+            <!-- Interaktions- & Zeichen-Aktionen -->
+            <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+                <button type="button" id="areaDrawToggleBtn" onclick="toggleAreaDrawing()" style="flex: 2; background: linear-gradient(135deg, #a855f7, #7c3aed); color: #fff; font-weight: 700; border: none; border-radius: 7px; padding: 7px 10px; font-size: 11.5px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px; box-shadow: 0 4px 12px rgba(168,85,247,0.35);">
+                    <span id="areaDrawBtnIcon">✏️</span> <span id="areaDrawBtnText">Punkte auf Globus setzen</span>
+                </button>
+                <button type="button" id="areaUndoBtn" onclick="undoLastAreaPoint()" title="Letzten Punkt rückgängig machen" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #bbb; border-radius: 7px; padding: 7px 10px; font-size: 11px; cursor: pointer;">
+                    ↩️
+                </button>
+                <button type="button" id="areaClearBtn" onclick="clearAreaMeasure()" title="Alles löschen" style="background: rgba(255,50,50,0.12); border: 1px solid rgba(255,50,50,0.3); color: #ff7777; border-radius: 7px; padding: 7px 10px; font-size: 11px; cursor: pointer;">
+                    ✕
+                </button>
+            </div>
+
+            <!-- Form-spezifische Parameter (für Kreis und Rechteck) -->
+            <div id="areaCircleParams" style="display: none; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px; margin-bottom: 8px;">
+                <div style="display: flex; justify-content: space-between; font-size: 10.5px; margin-bottom: 4px;">
+                    <span style="color: #ccc;">Radius:</span>
+                    <strong id="areaCircleRadiusVal" style="color: #c084fc;">250 m</strong>
+                </div>
+                <input type="range" id="areaCircleRadiusSlider" min="10" max="50000" step="10" value="250" style="width: 100%; accent-color: #a855f7;" oninput="onAreaCircleRadiusChange(this.value)">
+                <div style="display: flex; justify-content: space-between; font-size: 8.5px; color: #777; margin-top: 2px;">
+                    <span>10 m</span>
+                    <span>1 km</span>
+                    <span>50 km</span>
+                </div>
+            </div>
+
+            <div id="areaRectParams" style="display: none; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px; margin-bottom: 8px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 4px;">
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 2px;">
+                            <span style="color: #ccc;">Breite (Ost-West):</span>
+                            <strong id="areaRectWidthVal" style="color: #c084fc;">500 m</strong>
+                        </div>
+                        <input type="range" id="areaRectWidthSlider" min="20" max="100000" step="20" value="500" style="width: 100%; accent-color: #a855f7;" oninput="onAreaRectWidthChange(this.value)">
+                    </div>
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 2px;">
+                            <span style="color: #ccc;">Höhe (Nord-Süd):</span>
+                            <strong id="areaRectHeightVal" style="color: #c084fc;">300 m</strong>
+                        </div>
+                        <input type="range" id="areaRectHeightSlider" min="20" max="100000" step="20" value="300" style="width: 100%; accent-color: #a855f7;" oninput="onAreaRectHeightChange(this.value)">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status / Hinweis-Anzeige -->
+            <div id="areaStatusMsg" style="font-size: 10.5px; color: #d8b4fe; text-align: center; padding: 6px; margin-bottom: 8px; background: rgba(168,85,247,0.12); border: 1px dashed rgba(168,85,247,0.3); border-radius: 6px;">
+                Klicken Sie auf den Globus, um die Eckpunkte der Fläche zu setzen.
+            </div>
+
+            <!-- Haupt-Messergebnisse (KPIs) -->
+            <div id="areaResultsBox" style="display: none;">
+                <div class="area-kpi-grid">
+                    <div class="area-kpi-card" style="background: rgba(168, 85, 247, 0.08); border-color: rgba(168, 85, 247, 0.3);">
+                        <div class="area-kpi-label" style="color: #c084fc;">Geodätische Fläche</div>
+                        <div id="areaKpiPrimary" class="area-kpi-val" style="color: #f3e8ff;">-- ha</div>
+                        <div id="areaKpiSecondary" style="font-size: 9px; color: #a855f7; margin-top: 1px;">-- m²</div>
+                    </div>
+                    <div class="area-kpi-card">
+                        <div class="area-kpi-label">Umfang (Perimeter)</div>
+                        <div id="areaKpiPerimeter" class="area-kpi-val" style="color: #00e5ff;">-- m</div>
+                        <div id="areaKpiPerimeterSec" style="font-size: 9px; color: #888; margin-top: 1px;">-- km</div>
+                    </div>
+                </div>
+
+                <!-- Topographie & Relief-Analyse -->
+                <div style="background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px; margin-bottom: 8px;">
+                    <div style="font-size: 10px; font-weight: 700; color: #ffdb00; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+                        <span>⛰️ Topographie &amp; Geländehöhen</span>
+                        <span id="areaElevStatus" style="font-size: 8.5px; color: #888;">Berechnet</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; margin-bottom: 6px;">
+                        <div class="area-kpi-card">
+                            <div class="area-kpi-label">Min. Höhe</div>
+                            <div id="areaElevMin" class="area-kpi-val" style="font-size: 11px; color: #aaa;">-- m</div>
+                        </div>
+                        <div class="area-kpi-card">
+                            <div class="area-kpi-label">Max. Höhe</div>
+                            <div id="areaElevMax" class="area-kpi-val" style="font-size: 11px; color: #ffaa00;">-- m</div>
+                        </div>
+                        <div class="area-kpi-card">
+                            <div class="area-kpi-label">Ø Höhe</div>
+                            <div id="areaElevAvg" class="area-kpi-val" style="font-size: 11px; color: #00ff88;">-- m</div>
+                        </div>
+                    </div>
+                    <!-- Echte 3D Geländefläche vs. 2D Grundfläche -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border-radius: 6px; padding: 5px 8px; font-size: 9.5px;">
+                        <span style="color: #aaa;">3D Relieffläche (Hangkorrigiert):</span>
+                        <strong id="areaTerrainArea" style="color: #ffdb00;">-- ha (+0%)</strong>
+                    </div>
+                </div>
+
+                <!-- Koordinaten & Stützpunkte -->
+                <div style="margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <div style="font-size: 9.5px; font-weight: 600; color: #aaa;">📍 Stützpunkte (<span id="areaPointsCount">0</span>)</div>
+                        <div style="display: flex; gap: 4px;">
+                            <button type="button" onclick="zoomToAreaShape()" style="background: rgba(0,229,255,0.12); border: 1px solid rgba(0,229,255,0.3); color: #00e5ff; border-radius: 4px; padding: 2px 6px; font-size: 9px; cursor: pointer;">🔍 Zentrieren</button>
+                            <button type="button" onclick="copyAreaGeoJSON()" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #ddd; border-radius: 4px; padding: 2px 6px; font-size: 9px; cursor: pointer;">📋 GeoJSON</button>
+                        </div>
+                    </div>
+                    <div id="areaPointsList" style="max-height: 90px; overflow-y: auto; scrollbar-width: thin; padding-right: 2px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <!-- Schlankes, vereintes Bottom-Dock (Zeitleiste + Farblegende) -->
     <div id="timeline-container">
@@ -2150,6 +2375,7 @@
             <button id="btn-solar-vis" class="layer-toggle-btn" onclick="switchLayer('solar')">☀️ Einstrahlung</button>
             <button id="btn-topo-vis" class="layer-toggle-btn" onclick="switchLayer('topo')">⛰️ Topographie</button>
             <button id="btn-route-vis" class="layer-toggle-btn" onclick="toggleRoutePlanner()" title="3D-Routenplaner &amp; Höhenprofil öffnen">🧭 Route</button>
+            <button id="btn-area-vis" class="layer-toggle-btn" onclick="toggleAreaMeasure()" title="3D-Flächenmessung &amp; Formbestimmung">📐 Fläche</button>
             <div id="solarClimSelectWrap" style="display:none;">
                 <select id="solarClimSelect" onchange="setSolarClimSelection(this.value)" title="Zeitraum wählen">
                     <option value="live">Live</option>
@@ -2337,7 +2563,7 @@
         // THREE.JS SETUP
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.02, 1000);
         camera.position.z = 250;
         if (window.location.search.includes('alps')) {
             camera.position.set(11.37, 89.61, 86.40);
@@ -2385,7 +2611,7 @@
         controls.dampingFactor = 0.08;
         controls.rotateSpeed = 0.35; // Sanfte, kontrollierte Drehung ohne Überschießen
         controls.zoomSpeed = 0.8;
-        controls.minDistance = 101.5; // Erlaubt tiefes Heranzoomen an Gelände, Straßen und Städte
+        controls.minDistance = 100.42; // Erlaubt tiefes, gestochen scharfes Heranzoomen an Gelände, Straßen und Parzellen
         controls.maxDistance = 600;
         controls.enablePan = false;
 
@@ -3420,7 +3646,7 @@
                 tex.minFilter = THREE.LinearFilter;
                 tex.magFilter = THREE.LinearFilter;
 
-                const segs = (z <= 4) ? 16 : 8;
+                const segs = (z <= 4) ? 16 : ((z >= 11) ? 6 : 8);
                 const geom = getTileGeometry(x, y, z, segs, surfaceRadius);
                 let mat;
 
@@ -3534,24 +3760,27 @@
         function updateTopoTiles(force = false) {
             if (currentMode !== 'topo') return;
             const now = performance.now();
-            if (!force && now - lastTopoTileUpdate < 80) return;
-            if (!force && camera.position.distanceToSquared(lastTopoCameraPos) < 0.01) return;
+            if (!force && now - lastTopoTileUpdate < 75) return;
+            if (!force && camera.position.distanceToSquared(lastTopoCameraPos) < 0.005) return;
             lastTopoCameraPos.copy(camera.position);
             lastTopoTileUpdate = now;
 
             const dist = camera.position.length();
-            const h = Math.max(1, dist - earthRadius);
+            const h = Math.max(0.01, dist - earthRadius);
 
             let z = 3;
-            if (h < 0.6) z = 12;
-            else if (h < 1.5) z = 11;
-            else if (h < 3.5) z = 10;
-            else if (h < 8.0) z = 9;
-            else if (h < 18.0) z = 8;
-            else if (h < 38.0) z = 7;
-            else if (h < 75.0) z = 6;
-            else if (h < 120.0) z = 5;
-            else if (h < 180.0) z = 4;
+            if (h < 0.44) z = 15;
+            else if (h < 0.52) z = 14;
+            else if (h < 0.68) z = 13;
+            else if (h < 1.05) z = 12;
+            else if (h < 1.75) z = 11;
+            else if (h < 3.20) z = 10;
+            else if (h < 6.50) z = 9;
+            else if (h < 14.0) z = 8;
+            else if (h < 28.0) z = 7;
+            else if (h < 55.0) z = 6;
+            else if (h < 100.0) z = 5;
+            else if (h < 160.0) z = 4;
             else z = 3;
 
             const Px = camera.position.z;
@@ -3966,11 +4195,11 @@
             } else {
                 // Exakte physikalische 1:1 Grab-and-Drag Rotation & gleichmäßige Zoom-Geschwindigkeit für jeden Höhenbereich:
                 const dist = camera.position.length();
-                const h = Math.max(dist - earthRadius, 0.5);
+                const h = Math.max(dist - earthRadius, 0.05);
                 const tanHalfFov = Math.tan((camera.fov * Math.PI) / 360);
-                controls.rotateSpeed = (h * tanHalfFov) / (Math.PI * earthRadius);
+                controls.rotateSpeed = Math.max(0.0035, (h * tanHalfFov) / (Math.PI * earthRadius) * 2.5);
                 const normalizedAlt = h / dist;
-                controls.zoomSpeed = Math.max(0.06, Math.min(0.85, 1.15 * normalizedAlt));
+                controls.zoomSpeed = Math.max(0.03, Math.min(0.85, 1.15 * normalizedAlt));
                 controls.dampingFactor = dist < 140 ? 0.16 : 0.08;
                 controls.update();
             }
@@ -9636,6 +9865,53 @@
                 }
             }
 
+            // 5. 3D FLÄCHENMESSUNG CENTROID BADGE & FORM-ÜBERSICHT
+            if (typeof areaMeasureState !== 'undefined' && areaMeasureState && areaMeasureState.active && areaMeasureState.points && areaMeasureState.points.length >= 3 && areaMeasureState.centroid) {
+                const cLat = areaMeasureState.centroid.lat;
+                const cLng = areaMeasureState.centroid.lng;
+                const localV = latLngToSphereVertex(cLat, cLng, surfaceRadius);
+                const worldV = localV.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
+                const cosA = (worldV.x * cx + worldV.y * cy + worldV.z * cz) / (surfaceRadius * dist);
+                if (cosA >= horizonThreshold) {
+                    tempCityVec.copy(worldV).project(camera);
+                    if (tempCityVec.z <= 1.0) {
+                        const sx = (tempCityVec.x * 0.5 + 0.5) * screenW;
+                        const sy = (-tempCityVec.y * 0.5 + 0.5) * screenH;
+                        if (sx >= 20 && sx <= screenW - 20 && sy >= 20 && sy <= screenH - 20) {
+                            cityCtx.save();
+                            const areaStr = (typeof formatAreaBadge === 'function') ? formatAreaBadge(areaMeasureState.areaM2) : `${Math.round(areaMeasureState.areaM2)} m²`;
+                            cityCtx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                            const tw = cityCtx.measureText(areaStr).width;
+                            const bw = tw + 20;
+                            const bh = 22;
+                            const bx = sx - bw / 2;
+                            const by = sy - bh / 2;
+
+                            cityCtx.shadowColor = 'rgba(168, 85, 247, 0.75)';
+                            cityCtx.shadowBlur = 10;
+                            cityCtx.fillStyle = 'rgba(20, 15, 30, 0.92)';
+                            cityCtx.strokeStyle = '#c084fc';
+                            cityCtx.lineWidth = 1.5;
+                            cityCtx.beginPath();
+                            if (typeof cityCtx.roundRect === 'function') {
+                                cityCtx.roundRect(bx, by, bw, bh, 11);
+                            } else {
+                                cityCtx.rect(bx, by, bw, bh);
+                            }
+                            cityCtx.fill();
+                            cityCtx.stroke();
+
+                            cityCtx.shadowColor = 'transparent';
+                            cityCtx.fillStyle = '#f3e8ff';
+                            cityCtx.textAlign = 'center';
+                            cityCtx.textBaseline = 'middle';
+                            cityCtx.fillText(areaStr, sx, sy);
+                            cityCtx.restore();
+                        }
+                    }
+                }
+            }
+
             // PHASE 1: Schnelle Sichtbarkeitsprüfung & Fokus-Distanzberechnung
             const candidates = [];
             const halfW = screenW * 0.5;
@@ -10076,7 +10352,7 @@
             event.stopImmediatePropagation();
 
             const d0 = camera.position.length();
-            const h0 = Math.max(d0 - earthRadius, 0.5);
+            const h0 = Math.max(d0 - earthRadius, 0.05);
 
             // Normalisierte Scroll-Stärke (unterstützt Mausrad-Notches und Laptop-Präzisions-Touchpads)
             const rawDelta = event.deltaMode === 1 ? event.deltaY * 25 : (event.deltaMode === 2 ? event.deltaY * 100 : event.deltaY);
@@ -10087,7 +10363,7 @@
             const zoomFactor = clampedDelta * 0.0009 * altRatio;
 
             // Neue Ziel-Distanz
-            const minD = controls.minDistance || 101.5;
+            const minD = controls.minDistance || 100.42;
             const maxD = controls.maxDistance || 600;
             const d1 = Math.max(minD, Math.min(maxD, d0 * (1 + zoomFactor)));
             if (Math.abs(d1 - d0) < 1e-6) return;
@@ -11110,6 +11386,11 @@
                 
                 // ROUTE MAP PICKING INTERCEPTION (Start/Ziel per Klick festlegen)
                 if (typeof handleRouteMapPick === 'function' && handleRouteMapPick(clickedPopupPoint.lat, clickedPopupPoint.lng)) {
+                    return;
+                }
+
+                // 3D FLÄCHENMESSUNG PICKING INTERCEPTION (Eckpunkte / Formen per Klick setzen)
+                if (typeof handleAreaMapPick === 'function' && handleAreaMapPick(clickedPopupPoint.lat, clickedPopupPoint.lng)) {
                     return;
                 }
 
@@ -12823,6 +13104,659 @@
             }
         }
 
+        // ==========================================
+        // 3D FLÄCHENMESSUNG & FORMBESTIMMUNG ENGINE
+        // ==========================================
+        const areaMeasureState = {
+            active: false,
+            shapeMode: 'polygon', // 'polygon' | 'circle' | 'rectangle'
+            isDrawing: false,
+            points: [], // [{lat, lng, ele}]
+            circleCenter: null,
+            circleRadiusM: 250,
+            rectCenter: null,
+            rectWidthM: 500,
+            rectHeightM: 300,
+            areaGroup: null,
+            centroid: null,
+            areaM2: 0,
+            perimeterM: 0,
+            elevMin: null,
+            elevMax: null,
+            elevAvg: null,
+            slopeFactor: 1.0,
+            terrainAreaM2: 0
+        };
+
+        function initAreaMeasure() {
+            // Draggable container support
+            const container = document.getElementById('area-measure-container');
+            if (container) {
+                const header = container.querySelector('.forecast-header');
+                if (header) {
+                    let isDragging = false;
+                    let startX, startY, startLeft, startTop;
+
+                    header.addEventListener('mousedown', (e) => {
+                        if (e.target.tagName === 'BUTTON') return;
+                        isDragging = true;
+                        startX = e.clientX;
+                        startY = e.clientY;
+                        const rect = container.getBoundingClientRect();
+                        startLeft = rect.left;
+                        startTop = rect.top;
+                        container.style.right = 'auto';
+                        container.style.left = startLeft + 'px';
+                        container.style.top = startTop + 'px';
+                    });
+
+                    window.addEventListener('mousemove', (e) => {
+                        if (!isDragging) return;
+                        const dx = e.clientX - startX;
+                        const dy = e.clientY - startY;
+                        container.style.left = Math.max(10, Math.min(window.innerWidth - container.offsetWidth - 10, startLeft + dx)) + 'px';
+                        container.style.top = Math.max(10, Math.min(window.innerHeight - container.offsetHeight - 10, startTop + dy)) + 'px';
+                    });
+
+                    window.addEventListener('mouseup', () => { isDragging = false; });
+                }
+            }
+        }
+
+        function toggleAreaMeasure(forceState) {
+            const container = document.getElementById('area-measure-container');
+            const btn = document.getElementById('btn-area-vis');
+            const shouldOpen = (forceState !== undefined) ? forceState : (container.style.display === 'none' || !container.style.display);
+
+            if (shouldOpen) {
+                container.style.display = 'block';
+                if (btn) btn.classList.add('active');
+                areaMeasureState.active = true;
+                if (!areaMeasureState.isDrawing && areaMeasureState.points.length === 0) {
+                    setAreaDrawing(true);
+                }
+            } else {
+                container.style.display = 'none';
+                if (btn) btn.classList.remove('active');
+                areaMeasureState.active = false;
+                setAreaDrawing(false);
+            }
+        }
+
+        function setAreaShapeMode(mode) {
+            areaMeasureState.shapeMode = mode;
+            ['polygon', 'circle', 'rectangle'].forEach(m => {
+                const b = document.getElementById('areaMode' + m.charAt(0).toUpperCase() + m.slice(1));
+                if (b) b.classList.toggle('active', m === mode);
+            });
+            const circleParams = document.getElementById('areaCircleParams');
+            const rectParams = document.getElementById('areaRectParams');
+            if (circleParams) circleParams.style.display = (mode === 'circle') ? 'block' : 'none';
+            if (rectParams) rectParams.style.display = (mode === 'rectangle') ? 'block' : 'none';
+
+            clearAreaMeasure();
+            setAreaDrawing(true);
+        }
+
+        function toggleAreaDrawing() {
+            setAreaDrawing(!areaMeasureState.isDrawing);
+        }
+
+        function setAreaDrawing(drawing) {
+            areaMeasureState.isDrawing = drawing;
+            const btnText = document.getElementById('areaDrawBtnText');
+            const btnIcon = document.getElementById('areaDrawBtnIcon');
+            const drawBtn = document.getElementById('areaDrawToggleBtn');
+            const statusMsg = document.getElementById('areaStatusMsg');
+            const canvas = (typeof renderer !== 'undefined' && renderer) ? renderer.domElement : null;
+
+            if (drawing) {
+                if (btnText) btnText.innerText = 'Punkte auf Globus setzen (Aktiv)';
+                if (btnIcon) btnIcon.innerText = '🎯';
+                if (drawBtn) drawBtn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+                if (canvas) canvas.style.cursor = 'crosshair';
+                if (statusMsg) {
+                    if (areaMeasureState.shapeMode === 'polygon') {
+                        statusMsg.innerText = '📍 Klicken Sie auf den 3D-Globus, um Eckpunkte des Polygons hinzuzufügen.';
+                    } else if (areaMeasureState.shapeMode === 'circle') {
+                        statusMsg.innerText = '📍 Klicken Sie auf den Globus, um das Kreis-Zentrum zu platzieren.';
+                    } else {
+                        statusMsg.innerText = '📍 Klicken Sie auf den Globus, um den Mittelpunkt des Rechtecks zu setzen.';
+                    }
+                }
+            } else {
+                if (btnText) btnText.innerText = 'Zeichnen / Bearbeiten fortsetzen';
+                if (btnIcon) btnIcon.innerText = '✏️';
+                if (drawBtn) drawBtn.style.background = 'linear-gradient(135deg, #a855f7, #7c3aed)';
+                if (canvas) canvas.style.cursor = '';
+                if (statusMsg && areaMeasureState.points.length >= 3) {
+                    statusMsg.innerText = '✅ Vermessung abgeschlossen. Werte und Topographie siehe unten.';
+                }
+            }
+        }
+
+        function handleAreaMapPick(lat, lng) {
+            if (!areaMeasureState.active || !areaMeasureState.isDrawing) return false;
+
+            if (areaMeasureState.shapeMode === 'circle') {
+                areaMeasureState.circleCenter = { lat, lng };
+                areaMeasureState.points = generateCirclePoints(lat, lng, areaMeasureState.circleRadiusM);
+                recomputeArea();
+                return true;
+            }
+
+            if (areaMeasureState.shapeMode === 'rectangle') {
+                areaMeasureState.rectCenter = { lat, lng };
+                areaMeasureState.points = generateRectanglePoints(lat, lng, areaMeasureState.rectWidthM, areaMeasureState.rectHeightM);
+                recomputeArea();
+                return true;
+            }
+
+            // Polygon Mode: Point hinzufügen
+            areaMeasureState.points.push({ lat, lng, ele: null });
+            recomputeArea();
+            return true;
+        }
+
+        function undoLastAreaPoint() {
+            if (areaMeasureState.shapeMode === 'polygon' && areaMeasureState.points.length > 0) {
+                areaMeasureState.points.pop();
+                recomputeArea();
+            } else if (areaMeasureState.shapeMode !== 'polygon') {
+                clearAreaMeasure();
+            }
+        }
+
+        function onAreaCircleRadiusChange(val) {
+            const r = parseFloat(val);
+            areaMeasureState.circleRadiusM = r;
+            const lbl = document.getElementById('areaCircleRadiusVal');
+            if (lbl) {
+                lbl.innerText = (r >= 1000) ? `${(r / 1000).toFixed(2)} km` : `${Math.round(r)} m`;
+            }
+            if (areaMeasureState.circleCenter) {
+                areaMeasureState.points = generateCirclePoints(areaMeasureState.circleCenter.lat, areaMeasureState.circleCenter.lng, r);
+                recomputeArea();
+            }
+        }
+
+        function onAreaRectWidthChange(val) {
+            const w = parseFloat(val);
+            areaMeasureState.rectWidthM = w;
+            const lbl = document.getElementById('areaRectWidthVal');
+            if (lbl) {
+                lbl.innerText = (w >= 1000) ? `${(w / 1000).toFixed(2)} km` : `${Math.round(w)} m`;
+            }
+            if (areaMeasureState.rectCenter) {
+                areaMeasureState.points = generateRectanglePoints(areaMeasureState.rectCenter.lat, areaMeasureState.rectCenter.lng, w, areaMeasureState.rectHeightM);
+                recomputeArea();
+            }
+        }
+
+        function onAreaRectHeightChange(val) {
+            const h = parseFloat(val);
+            areaMeasureState.rectHeightM = h;
+            const lbl = document.getElementById('areaRectHeightVal');
+            if (lbl) {
+                lbl.innerText = (h >= 1000) ? `${(h / 1000).toFixed(2)} km` : `${Math.round(h)} m`;
+            }
+            if (areaMeasureState.rectCenter) {
+                areaMeasureState.points = generateRectanglePoints(areaMeasureState.rectCenter.lat, areaMeasureState.rectCenter.lng, areaMeasureState.rectWidthM, h);
+                recomputeArea();
+            }
+        }
+
+        function generateCirclePoints(centerLat, centerLng, radiusM, numPoints = 64) {
+            const pts = [];
+            const R = 6371008.8;
+            const dRad = radiusM / R;
+            const latRad = centerLat * Math.PI / 180;
+            const lngRad = centerLng * Math.PI / 180;
+
+            for (let i = 0; i < numPoints; i++) {
+                const bearing = (i / numPoints) * 2 * Math.PI;
+                const pLat = Math.asin(Math.sin(latRad) * Math.cos(dRad) + Math.cos(latRad) * Math.sin(dRad) * Math.cos(bearing));
+                const pLng = lngRad + Math.atan2(Math.sin(bearing) * Math.sin(dRad) * Math.cos(latRad), Math.cos(dRad) - Math.sin(latRad) * Math.sin(pLat));
+                pts.push({
+                    lat: pLat * 180 / Math.PI,
+                    lng: ((pLng * 180 / Math.PI + 540) % 360) - 180,
+                    ele: null
+                });
+            }
+            return pts;
+        }
+
+        function generateRectanglePoints(centerLat, centerLng, widthM, heightM) {
+            const R = 6371008.8;
+            const dLat = (heightM / 2) / R * (180 / Math.PI);
+            const dLng = (widthM / 2) / (R * Math.cos(centerLat * Math.PI / 180)) * (180 / Math.PI);
+            return [
+                { lat: centerLat + dLat, lng: centerLng - dLng, ele: null },
+                { lat: centerLat + dLat, lng: centerLng + dLng, ele: null },
+                { lat: centerLat - dLat, lng: centerLng + dLng, ele: null },
+                { lat: centerLat - dLat, lng: centerLng - dLng, ele: null }
+            ];
+        }
+
+        function computeSphericalPolygonArea(coords) {
+            const n = coords.length;
+            if (n < 3) return 0;
+            const R = 6371008.8;
+            let sum = 0;
+            const rad = Math.PI / 180;
+            for (let i = 0; i < n; i++) {
+                const p1 = coords[i];
+                const p2 = coords[(i + 1) % n];
+                const pPrev = coords[(i - 1 + n) % n];
+
+                const dLng = (p2.lng - pPrev.lng) * rad;
+                const sinLat = Math.sin(p1.lat * rad);
+                sum += dLng * sinLat;
+            }
+            return Math.abs(sum * 0.5 * R * R);
+        }
+
+        function computeGreatCirclePerimeter(coords) {
+            const n = coords.length;
+            if (n < 2) return 0;
+            let totalDist = 0;
+            const R = 6371008.8;
+            const rad = Math.PI / 180;
+            for (let i = 0; i < n; i++) {
+                const p1 = coords[i];
+                const p2 = coords[(i + 1) % n];
+                const dLat = (p2.lat - p1.lat) * rad;
+                const dLng = (p2.lng - p1.lng) * rad;
+                const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                          Math.cos(p1.lat * rad) * Math.cos(p2.lat * rad) *
+                          Math.sin(dLng / 2) * Math.sin(dLng / 2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+                totalDist += R * c;
+            }
+            return totalDist;
+        }
+
+        let areaElevationDebounce = null;
+        function recomputeArea() {
+            const pts = areaMeasureState.points;
+            const ptsCountEl = document.getElementById('areaPointsCount');
+            if (ptsCountEl) ptsCountEl.innerText = pts.length.toString();
+
+            if (pts.length < 3) {
+                clear3DArea();
+                const resBox = document.getElementById('areaResultsBox');
+                if (resBox) resBox.style.display = 'none';
+                const statusMsg = document.getElementById('areaStatusMsg');
+                if (statusMsg) {
+                    statusMsg.style.display = 'block';
+                    statusMsg.innerText = `📍 ${pts.length} Punkt(e) gesetzt. Bitte noch mindestens ${3 - pts.length} Punkt(e) setzen.`;
+                }
+                renderAreaPointsList();
+                return;
+            }
+
+            const areaM2 = computeSphericalPolygonArea(pts);
+            const perimeterM = computeGreatCirclePerimeter(pts);
+
+            areaMeasureState.areaM2 = areaM2;
+            areaMeasureState.perimeterM = perimeterM;
+            areaMeasureState.terrainAreaM2 = areaM2 * areaMeasureState.slopeFactor;
+
+            // Centroid
+            let cLat = 0, cLng = 0;
+            pts.forEach(p => { cLat += p.lat; cLng += p.lng; });
+            cLat /= pts.length;
+            cLng /= pts.length;
+            areaMeasureState.centroid = { lat: cLat, lng: cLng };
+
+            render3DAreaGeometry();
+            updateAreaMetricsUI();
+            renderAreaPointsList();
+
+            const resBox = document.getElementById('areaResultsBox');
+            if (resBox) resBox.style.display = 'block';
+
+            clearTimeout(areaElevationDebounce);
+            areaElevationDebounce = setTimeout(sampleAreaElevationAndRelief, 350);
+        }
+
+        function updateAreaMetricsUI() {
+            const m2 = areaMeasureState.areaM2;
+            const perimM = areaMeasureState.perimeterM;
+
+            const primEl = document.getElementById('areaKpiPrimary');
+            const secEl = document.getElementById('areaKpiSecondary');
+            const perimEl = document.getElementById('areaKpiPerimeter');
+            const perimSecEl = document.getElementById('areaKpiPerimeterSec');
+
+            if (primEl && secEl) {
+                if (m2 >= 1000000) {
+                    primEl.innerText = (m2 / 1000000).toLocaleString('de-DE', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' km²';
+                    secEl.innerText = (m2 / 10000).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ha · ' + Math.round(m2).toLocaleString('de-DE') + ' m²';
+                } else if (m2 >= 10000) {
+                    primEl.innerText = (m2 / 10000).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ha';
+                    secEl.innerText = Math.round(m2).toLocaleString('de-DE') + ' m² · ' + (m2 / 100).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' a';
+                } else if (m2 >= 100) {
+                    primEl.innerText = (m2 / 100).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' a';
+                    secEl.innerText = Math.round(m2).toLocaleString('de-DE') + ' m² · ' + (m2 / 10000).toLocaleString('de-DE', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + ' ha';
+                } else {
+                    primEl.innerText = Math.round(m2).toLocaleString('de-DE') + ' m²';
+                    secEl.innerText = (m2 / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' a';
+                }
+            }
+
+            if (perimEl && perimSecEl) {
+                if (perimM >= 1000) {
+                    perimEl.innerText = (perimM / 1000).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' km';
+                    perimSecEl.innerText = Math.round(perimM).toLocaleString('de-DE') + ' m';
+                } else {
+                    perimEl.innerText = Math.round(perimM).toLocaleString('de-DE') + ' m';
+                    perimSecEl.innerText = (perimM / 1000).toLocaleString('de-DE', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' km';
+                }
+            }
+
+            const minEl = document.getElementById('areaElevMin');
+            const maxEl = document.getElementById('areaElevMax');
+            const avgEl = document.getElementById('areaElevAvg');
+            const terrEl = document.getElementById('areaTerrainArea');
+
+            if (minEl && maxEl && avgEl) {
+                minEl.innerText = (areaMeasureState.elevMin !== null) ? `${Math.round(areaMeasureState.elevMin)} m` : '-- m';
+                maxEl.innerText = (areaMeasureState.elevMax !== null) ? `${Math.round(areaMeasureState.elevMax)} m` : '-- m';
+                avgEl.innerText = (areaMeasureState.elevAvg !== null) ? `${Math.round(areaMeasureState.elevAvg)} m` : '-- m';
+            }
+
+            if (terrEl) {
+                const tM2 = areaMeasureState.terrainAreaM2 || m2;
+                const slopePct = Math.round((areaMeasureState.slopeFactor - 1) * 100);
+                const tHaStr = (tM2 >= 10000) 
+                    ? `${(tM2 / 10000).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ha`
+                    : `${Math.round(tM2).toLocaleString('de-DE')} m²`;
+                terrEl.innerText = `${tHaStr} (+${slopePct}%)`;
+            }
+        }
+
+        function renderAreaPointsList() {
+            const container = document.getElementById('areaPointsList');
+            if (!container) return;
+            const pts = areaMeasureState.points;
+            if (pts.length === 0) {
+                container.innerHTML = '<div style="color:#777; font-size:9.5px; text-align:center; padding:4px;">Noch keine Punkte vorhanden</div>';
+                return;
+            }
+
+            if (areaMeasureState.shapeMode === 'circle' && areaMeasureState.circleCenter) {
+                container.innerHTML = `
+                    <div class="area-point-item">
+                        <span style="color:#c084fc;">◯ Zentrum:</span>
+                        <span style="color:#ddd; font-family:monospace;">${areaMeasureState.circleCenter.lat.toFixed(4)}°, ${areaMeasureState.circleCenter.lng.toFixed(4)}°</span>
+                    </div>
+                    <div class="area-point-item">
+                        <span style="color:#aaa;">Stützpunkte:</span>
+                        <span style="color:#888;">${pts.length} Kreis-Segmente</span>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '';
+            pts.forEach((p, idx) => {
+                html += `
+                    <div class="area-point-item">
+                        <span style="color:#c084fc; font-weight:600;">P${idx + 1}:</span>
+                        <span style="color:#ddd; font-family:monospace;">${p.lat.toFixed(4)}°, ${p.lng.toFixed(4)}°</span>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        async function sampleAreaElevationAndRelief() {
+            const pts = areaMeasureState.points;
+            if (pts.length < 3) return;
+
+            const elevStatus = document.getElementById('areaElevStatus');
+            if (elevStatus) elevStatus.innerText = 'Lade Höhendaten...';
+
+            const sampleCoords = [];
+            pts.forEach(p => sampleCoords.push({ lat: p.lat, lng: p.lng }));
+
+            let cLat = 0, cLng = 0;
+            pts.forEach(p => { cLat += p.lat; cLng += p.lng; });
+            cLat /= pts.length;
+            cLng /= pts.length;
+            sampleCoords.push({ lat: cLat, lng: cLng });
+
+            const numMid = Math.min(pts.length, 12);
+            for (let i = 0; i < numMid; i++) {
+                const v = pts[i];
+                sampleCoords.push({
+                    lat: (cLat + v.lat) * 0.5,
+                    lng: (cLng + v.lng) * 0.5
+                });
+            }
+
+            const lats = sampleCoords.map(p => p.lat.toFixed(4)).join(',');
+            const lngs = sampleCoords.map(p => p.lng.toFixed(4)).join(',');
+            const url = `https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lngs}`;
+
+            try {
+                const res = await fetch(url);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && Array.isArray(data.elevation)) {
+                        const elevations = data.elevation.filter(e => e !== null && Number.isFinite(e));
+                        if (elevations.length > 0) {
+                            let minE = Infinity, maxE = -Infinity, sumE = 0;
+                            elevations.forEach(e => {
+                                if (e < minE) minE = e;
+                                if (e > maxE) maxE = e;
+                                sumE += e;
+                            });
+                            const avgE = sumE / elevations.length;
+                            areaMeasureState.elevMin = minE;
+                            areaMeasureState.elevMax = maxE;
+                            areaMeasureState.elevAvg = avgE;
+
+                            const R = 6371008.8;
+                            let maxDistM = 10;
+                            pts.forEach(p => {
+                                const dLat = (p.lat - cLat) * Math.PI / 180 * R;
+                                const dLng = (p.lng - cLng) * Math.PI / 180 * R * Math.cos(cLat * Math.PI / 180);
+                                const d = Math.hypot(dLat, dLng);
+                                if (d > maxDistM) maxDistM = d;
+                            });
+
+                            const elevSpan = Math.max(0, maxE - minE);
+                            const avgSlope = Math.min(2.5, elevSpan / Math.max(10, maxDistM));
+                            const slopeFactor = Math.sqrt(1 + avgSlope * avgSlope);
+                            areaMeasureState.slopeFactor = slopeFactor;
+                            areaMeasureState.terrainAreaM2 = areaMeasureState.areaM2 * slopeFactor;
+
+                            if (elevStatus) elevStatus.innerText = 'Copernicus DEM';
+                            updateAreaMetricsUI();
+                            return;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn('Area elevation fetch error:', err);
+            }
+
+            if (elevStatus) elevStatus.innerText = 'Standard-Geoid';
+        }
+
+        function render3DAreaGeometry() {
+            clear3DArea();
+            const pts = areaMeasureState.points;
+            if (pts.length < 3 || !earthMesh) return;
+
+            const areaGroup = new THREE.Group();
+            areaGroup.name = 'areaMeasureGroup';
+
+            let cLat = 0, cLng = 0;
+            pts.forEach(p => { cLat += p.lat; cLng += p.lng; });
+            cLat /= pts.length;
+            cLng /= pts.length;
+            areaMeasureState.centroid = { lat: cLat, lng: cLng };
+
+            const rMesh = surfaceRadius + 0.035;
+            const positions = [];
+            const subDiv = 4;
+
+            for (let i = 0; i < pts.length; i++) {
+                const p1 = pts[i];
+                const p2 = pts[(i + 1) % pts.length];
+
+                for (let s = 0; s < subDiv; s++) {
+                    const t1 = s / subDiv;
+                    const t2 = (s + 1) / subDiv;
+
+                    const latA = cLat + (p1.lat - cLat) * t1;
+                    const lngA = cLng + (p1.lng - cLng) * t1;
+                    const latB = cLat + (p2.lat - cLat) * t1;
+                    const lngB = cLng + (p2.lng - cLng) * t1;
+
+                    const latA2 = cLat + (p1.lat - cLat) * t2;
+                    const lngA2 = cLng + (p1.lng - cLng) * t2;
+                    const latB2 = cLat + (p2.lat - cLat) * t2;
+                    const lngB2 = cLng + (p2.lng - cLng) * t2;
+
+                    const vA = latLngToSphereVertex(latA, lngA, rMesh);
+                    const vB = latLngToSphereVertex(latB, lngB, rMesh);
+                    const vA2 = latLngToSphereVertex(latA2, lngA2, rMesh);
+                    const vB2 = latLngToSphereVertex(latB2, lngB2, rMesh);
+
+                    positions.push(vA.x, vA.y, vA.z);
+                    positions.push(vA2.x, vA2.y, vA2.z);
+                    positions.push(vB.x, vB.y, vB.z);
+
+                    positions.push(vB.x, vB.y, vB.z);
+                    positions.push(vA2.x, vA2.y, vA2.z);
+                    positions.push(vB2.x, vB2.y, vB2.z);
+                }
+            }
+
+            const geom = new THREE.BufferGeometry();
+            geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geom.computeVertexNormals();
+
+            const mat = new THREE.MeshBasicMaterial({
+                color: 0x9333ea,
+                transparent: true,
+                opacity: 0.38,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+
+            const surfaceMesh = new THREE.Mesh(geom, mat);
+            areaGroup.add(surfaceMesh);
+
+            // Perimeter Glowing Line
+            const linePositions = [];
+            const rLine = surfaceRadius + 0.045;
+            for (let i = 0; i < pts.length; i++) {
+                const p1 = pts[i];
+                const p2 = pts[(i + 1) % pts.length];
+                const segs = 8;
+                for (let s = 0; s < segs; s++) {
+                    const t = s / segs;
+                    const curLat = p1.lat + (p2.lat - p1.lat) * t;
+                    const curLng = p1.lng + (p2.lng - p1.lng) * t;
+                    const v = latLngToSphereVertex(curLat, curLng, rLine);
+                    linePositions.push(v.x, v.y, v.z);
+                }
+            }
+            const v0 = latLngToSphereVertex(pts[0].lat, pts[0].lng, rLine);
+            linePositions.push(v0.x, v0.y, v0.z);
+
+            const lineGeom = new THREE.BufferGeometry();
+            lineGeom.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
+            const lineMat = new THREE.LineBasicMaterial({
+                color: 0xd8b4fe,
+                linewidth: 2,
+                transparent: true,
+                opacity: 0.95
+            });
+            const lineMesh = new THREE.Line(lineGeom, lineMat);
+            areaGroup.add(lineMesh);
+
+            // Vertex Dots
+            const dotGeom = new THREE.SphereGeometry(0.12, 8, 8);
+            const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            pts.forEach(p => {
+                const dot = new THREE.Mesh(dotGeom, dotMat);
+                dot.position.copy(latLngToSphereVertex(p.lat, p.lng, rLine + 0.02));
+                areaGroup.add(dot);
+            });
+
+            earthMesh.add(areaGroup);
+            areaMeasureState.areaGroup = areaGroup;
+        }
+
+        function clear3DArea() {
+            if (areaMeasureState.areaGroup && earthMesh) {
+                earthMesh.remove(areaMeasureState.areaGroup);
+                areaMeasureState.areaGroup.traverse(obj => {
+                    if (obj.geometry) obj.geometry.dispose();
+                    if (obj.material) {
+                        if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+                        else obj.material.dispose();
+                    }
+                });
+                areaMeasureState.areaGroup = null;
+            }
+        }
+
+        function zoomToAreaShape() {
+            const pts = areaMeasureState.points;
+            if (!pts || !pts.length) return;
+            let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+            pts.forEach(p => {
+                if (p.lat < minLat) minLat = p.lat;
+                if (p.lat > maxLat) maxLat = p.lat;
+                if (p.lng < minLng) minLng = p.lng;
+                if (p.lng > maxLng) maxLng = p.lng;
+            });
+            const cLat = (minLat + maxLat) / 2;
+            const cLng = (minLng + maxLng) / 2;
+            if (typeof zoomInDirectToLocation === 'function') {
+                zoomInDirectToLocation(cLat, cLng);
+            }
+        }
+
+        function copyAreaGeoJSON() {
+            const pts = areaMeasureState.points;
+            if (pts.length < 3) return;
+            const ring = pts.map(p => [parseFloat(p.lng.toFixed(6)), parseFloat(p.lat.toFixed(6))]);
+            ring.push(ring[0]);
+
+            const geojson = {
+                type: "Feature",
+                geometry: {
+                    type: "Polygon",
+                    coordinates: [ring]
+                },
+                properties: {
+                    area_m2: Math.round(areaMeasureState.areaM2),
+                    area_ha: +(areaMeasureState.areaM2 / 10000).toFixed(3),
+                    perimeter_m: Math.round(areaMeasureState.perimeterM),
+                    elevation_min_m: areaMeasureState.elevMin,
+                    elevation_max_m: areaMeasureState.elevMax,
+                    elevation_avg_m: areaMeasureState.elevAvg ? Math.round(areaMeasureState.elevAvg) : null,
+                    slope_factor: areaMeasureState.slopeFactor ? +areaMeasureState.slopeFactor.toFixed(3) : 1.0,
+                    terrain_area_m2: Math.round(areaMeasureState.terrainAreaM2 || areaMeasureState.areaM2)
+                }
+            };
+
+            const jsonStr = JSON.stringify(geojson, null, 2);
+            navigator.clipboard.writeText(jsonStr).then(() => {
+                alert('GeoJSON der vermessenen Fläche erfolgreich in die Zwischenablage kopiert!');
+            }).catch(() => {
+                prompt('GeoJSON kopieren:', jsonStr);
+            });
+        }
+
         // BUTTON HANDLERS FOR PV DASHBOARD
         const pvQuickBtn = document.getElementById('pvQuickBtn');
         if (pvQuickBtn) {
@@ -12866,6 +13800,7 @@
         initPvEuroToggle();
         initPvCalibrationToggle();
         initRoutePlanner();
+        initAreaMeasure();
 
         // INIT
         if (typeof tempMetadata !== 'undefined' && tempMetadata.nx < 1440) {
