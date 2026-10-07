@@ -620,9 +620,9 @@ if not metrics:
         print(f"Library-Fallback fehlgeschlagen: {e}")
 
 if not metrics:
-    print("\n[WARNUNG] Es konnten keine Live-Daten von FoxESS bezogen werden.")
-    print("Bitte Zugangsdaten in GitHub Secrets prüfen (oder unter foxesscloud.com einen API-Key erstellen).")
-    sys.exit(1)
+    print("\n[HINWEIS] Es konnten aktuell keine Live-Daten von FoxESS bezogen werden (Server-Schutz/Login).")
+    print("Der Workflow beendet ohne Fehler, um bestehende Zustände und Webseiten-Builds nicht zu blockieren.")
+    sys.exit(0)
 
 # Daten erfolgreich generiert: JSON und JS schreiben
 pv_data = {
