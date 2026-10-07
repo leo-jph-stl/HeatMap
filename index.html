@@ -3663,7 +3663,6 @@
         let activeTopoHttpCount = 0;
         const topoTileQueue = [];
         const pendingTopoImages = new Map();
-        let activeTopoKeys = new Set();
 
         function queueTopoTile(z, x, y, key, provider, d2) {
             if (loadedTopoTiles.has(key) || loadingTopoKeys.has(key)) return;
