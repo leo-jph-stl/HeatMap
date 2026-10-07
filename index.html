@@ -971,6 +971,29 @@
             border-color: #00e5ff;
             box-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
         }
+        .route-color-btn {
+            padding: 3px 6px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #aaa;
+            border-radius: 5px;
+            font-size: 9.5px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            user-select: none;
+        }
+        .route-color-btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+        .route-color-btn.active {
+            background: rgba(255, 255, 255, 0.22);
+            color: #fff;
+            border-color: #fff;
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+        }
         .route-wp-row {
             position: relative;
             margin-bottom: 5px;
@@ -2132,10 +2155,21 @@
 
         <div id="routeBody">
             <!-- Modus-Wahlschalter (Auto, Fahrrad, Fußgänger) -->
-            <div style="display: flex; gap: 5px; margin-bottom: 8px; background: rgba(0,0,0,0.3); padding: 3px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+            <div style="display: flex; gap: 5px; margin-bottom: 6px; background: rgba(0,0,0,0.3); padding: 3px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
                 <button type="button" id="routeModeDriving" class="route-mode-btn active" onclick="setRouteMode('driving')">🚗 Auto</button>
                 <button type="button" id="routeModeBike" class="route-mode-btn" onclick="setRouteMode('bike')">🚴 Fahrrad</button>
                 <button type="button" id="routeModeFoot" class="route-mode-btn" onclick="setRouteMode('foot')">🥾 Fuß</button>
+            </div>
+
+            <!-- Kontrast-Stil (Garantierte Lesbarkeit auf Topographie, Einstrahlung & Temperatur) -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; background: rgba(0,0,0,0.22); padding: 4px 7px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.05); font-size: 9.5px;">
+                <span style="color: #888; font-weight: 600; display: flex; align-items: center; gap: 4px;">🎨 Kontrast-Linie:</span>
+                <div style="display: flex; gap: 3px;">
+                    <button type="button" class="route-color-btn active" id="routeColorAuto" onclick="setRouteColorTheme('auto')" title="Auto-Adaptiv: Wählt automatisch die maximale Kontrastfarbe zum aktuellen Kartenmodus (Topographie = Signal-Orange, Einstrahlung = Neon-Pink, Temperatur = Neon-Cyan)">⚡ Auto</button>
+                    <button type="button" class="route-color-btn" id="routeColorOrange" onclick="setRouteColorTheme('orange')" title="Signal-Orange mit tiefschwarzer Obsidian-Kontur">🟠 Orange</button>
+                    <button type="button" class="route-color-btn" id="routeColorCyan" onclick="setRouteColorTheme('cyan')" title="Neon-Cyan mit tiefschwarzer Obsidian-Kontur">🔷 Cyan</button>
+                    <button type="button" class="route-color-btn" id="routeColorPink" onclick="setRouteColorTheme('pink')" title="Neon-Pink/Magenta mit tiefschwarzer Obsidian-Kontur">🌸 Pink</button>
+                </div>
             </div>
 
             <!-- Dynamische Wegpunkte-Liste (Start, Zwischenstopps, Ziel) -->
@@ -3622,40 +3656,88 @@
             }
         }
 
-        function loadTopoTileMesh(z, x, y, key) {
+        // =========================================================================
+        // HIGH-PERFORMANCE TOPO TILE PYRAMID & LOD MANAGER (Keine Löcher, Ultra-schnell)
+        // =========================================================================
+        const TOPO_CONCURRENT_LIMIT = 8;
+        let activeTopoHttpCount = 0;
+        const topoTileQueue = [];
+        const pendingTopoImages = new Map();
+        const loadedTopoTiles = new Map();
+        const loadingTopoKeys = new Set();
+        let activeTopoKeys = new Set();
+
+        function queueTopoTile(z, x, y, key, provider, d2) {
             if (loadedTopoTiles.has(key) || loadingTopoKeys.has(key)) return;
             loadingTopoKeys.add(key);
+            topoTileQueue.push({ z, x, y, key, provider, d2 });
+            processTopoTileQueue();
+        }
 
+        function processTopoTileQueue() {
+            if (topoTileQueue.length === 0 || activeTopoHttpCount >= TOPO_CONCURRENT_LIMIT) return;
+
+            // Kacheln im direkten Blickzentrum (geringste Distanz d2) zuerst laden
+            topoTileQueue.sort((a, b) => a.d2 - b.d2);
+
+            while (activeTopoHttpCount < TOPO_CONCURRENT_LIMIT && topoTileQueue.length > 0) {
+                const item = topoTileQueue.shift();
+                if (item.provider !== currentTopoProvider) {
+                    loadingTopoKeys.delete(item.key);
+                    continue;
+                }
+
+                activeTopoHttpCount++;
+                fetchAndBuildTopoTile(item.z, item.x, item.y, item.key, item.provider);
+            }
+        }
+
+        function fetchAndBuildTopoTile(z, x, y, key, provider) {
             let url = '';
             let isTerrarium = false;
-            if (currentTopoProvider === 'hypsometric') {
+            if (provider === 'hypsometric') {
                 url = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
                 isTerrarium = true;
-            } else if (currentTopoProvider === 'arcgis') {
+            } else if (provider === 'arcgis') {
                 url = `https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${z}/${y}/${x}`;
             } else {
                 const sub = ['a', 'b', 'c'][((x + y) % 3 + 3) % 3];
                 url = `https://${sub}.tile.opentopomap.org/${z}/${x}/${y}.png`;
             }
 
-            textureLoader.load(url, (tex) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            pendingTopoImages.set(key, img);
+
+            const cleanup = () => {
+                pendingTopoImages.delete(key);
                 loadingTopoKeys.delete(key);
-                // WICHTIG: Keine WebGL-Mipmaps auf Höhen-Datentexturen erzeugen! Mipmap-Mittelwertbildung
-                // korrumpiert die Byte-Kanäle von Höhen-DEMs und verursacht verwaschene, unsaubere Kanten.
+                activeTopoHttpCount = Math.max(0, activeTopoHttpCount - 1);
+                processTopoTileQueue();
+            };
+
+            img.onload = () => {
+                if (provider !== currentTopoProvider) {
+                    cleanup();
+                    return;
+                }
+
+                const tex = new THREE.Texture(img);
                 tex.generateMipmaps = false;
                 tex.minFilter = THREE.LinearFilter;
                 tex.magFilter = THREE.LinearFilter;
+                tex.needsUpdate = true;
 
                 const segs = (z <= 4) ? 16 : ((z >= 11) ? 6 : 8);
                 const geom = getTileGeometry(x, y, z, segs, surfaceRadius);
-                let mat;
 
                 let tileMinElev = 0;
                 let tileMaxElev = 100;
 
+                let mat;
                 if (isTerrarium) {
                     try {
-                        const bounds = sampleTileElevationBounds(tex.image);
+                        const bounds = sampleTileElevationBounds(img);
                         tileMinElev = bounds.minElev;
                         tileMaxElev = bounds.maxElev;
                     } catch (e) {}
@@ -3696,7 +3778,7 @@
                                 float dx = (eR - eL) * 0.04;
                                 float dy = (eT - eB) * 0.04;
                                 vec3 normal = normalize(vec3(-dx, -dy, 1.0));
-                                vec3 sunDir = normalize(vec3(-0.6, 0.6, 0.75)); // Nordwest-Licht
+                                vec3 sunDir = normalize(vec3(-0.6, 0.6, 0.75));
 
                                 float shade = clamp(dot(normal, sunDir), 0.0, 1.0);
                                 float hillshade = mix(0.72, 1.18, shade);
@@ -3712,8 +3794,8 @@
                             u_texelSize: { value: new THREE.Vector2(1.0 / 256.0, 1.0 / 256.0) }
                         },
                         polygonOffset: true,
-                        polygonOffsetFactor: -1.0,
-                        polygonOffsetUnits: -4.0,
+                        polygonOffsetFactor: -1.0 - (z * 0.25),
+                        polygonOffsetUnits: -4.0 - (z * 0.5),
                         side: THREE.DoubleSide,
                         transparent: false,
                         depthWrite: true
@@ -3722,8 +3804,8 @@
                     mat = new THREE.MeshBasicMaterial({
                         map: tex,
                         polygonOffset: true,
-                        polygonOffsetFactor: -1.0,
-                        polygonOffsetUnits: -4.0,
+                        polygonOffsetFactor: -1.0 - (z * 0.25),
+                        polygonOffsetUnits: -4.0 - (z * 0.5),
                         side: THREE.DoubleSide,
                         transparent: false,
                         depthWrite: true
@@ -3731,17 +3813,14 @@
                 }
 
                 const mesh = new THREE.Mesh(geom, mat);
-                mesh.renderOrder = 1;
+                mesh.renderOrder = z; // Höhere Zoomstufen liegen sauber über Elternkacheln
                 topoTileGroup.add(mesh);
-                loadedTopoTiles.set(key, { z, x, y, mesh, provider: currentTopoProvider, minElev: tileMinElev, maxElev: tileMaxElev, lastUsed: performance.now() });
-                loadingTopoKeys.delete(key);
+                loadedTopoTiles.set(key, { z, x, y, mesh, provider, minElev: tileMinElev, maxElev: tileMaxElev, lastUsed: performance.now() });
 
-                // Falls diese Kachel im aktuellen Viewport liegt, sofort Dynamik-Bereich anpassen
                 if (activeTopoKeys.has(key)) {
                     refreshVisibleElevationRange();
                 }
 
-                // Wenn ein Popup aktiv ist und die Höhe noch unbestimmt ist, sofort mit den neuen Kacheldaten aktualisieren
                 if (clickedPopupPoint && currentMode === 'topo' && (clickedPopupTileElevation === null || lastClickedElevation === null)) {
                     const localElev = getElevationFromLoadedTiles(clickedPopupPoint.lat, clickedPopupPoint.lng);
                     if (localElev !== null) {
@@ -3749,9 +3828,15 @@
                         updatePopupContent();
                     }
                 }
-            }, undefined, () => {
-                loadingTopoKeys.delete(key);
-            });
+
+                cleanup();
+            };
+
+            img.onerror = () => {
+                cleanup();
+            };
+
+            img.src = url;
         }
 
         let lastTopoTileUpdate = 0;
@@ -3760,8 +3845,8 @@
         function updateTopoTiles(force = false) {
             if (currentMode !== 'topo') return;
             const now = performance.now();
-            if (!force && now - lastTopoTileUpdate < 75) return;
-            if (!force && camera.position.distanceToSquared(lastTopoCameraPos) < 0.005) return;
+            if (!force && now - lastTopoTileUpdate < 60) return;
+            if (!force && camera.position.distanceToSquared(lastTopoCameraPos) < 0.003) return;
             lastTopoCameraPos.copy(camera.position);
             lastTopoTileUpdate = now;
 
@@ -3769,18 +3854,17 @@
             const h = Math.max(0.01, dist - earthRadius);
 
             let z = 3;
-            if (h < 0.44) z = 15;
-            else if (h < 0.52) z = 14;
-            else if (h < 0.68) z = 13;
-            else if (h < 1.05) z = 12;
-            else if (h < 1.75) z = 11;
-            else if (h < 3.20) z = 10;
-            else if (h < 6.50) z = 9;
-            else if (h < 14.0) z = 8;
-            else if (h < 28.0) z = 7;
-            else if (h < 55.0) z = 6;
-            else if (h < 100.0) z = 5;
-            else if (h < 160.0) z = 4;
+            if (h < 0.40) z = 14;
+            else if (h < 0.78) z = 13;
+            else if (h < 1.55) z = 12;
+            else if (h < 3.00) z = 11;
+            else if (h < 6.00) z = 10;
+            else if (h < 12.0) z = 9;
+            else if (h < 24.0) z = 8;
+            else if (h < 48.0) z = 7;
+            else if (h < 95.0) z = 6;
+            else if (h < 170.0) z = 5;
+            else if (h < 260.0) z = 4;
             else z = 3;
 
             const Px = camera.position.z;
@@ -3797,8 +3881,6 @@
             const horizonRad = Math.acos(Math.min(1.0, earthRadius / dist));
             const horizonDeg = horizonRad * (180 / Math.PI);
 
-            // Blickfeld auf dem Globus (Winkelbereich in Grad vom Zentrum aus)
-            // Großzügige Randabdeckung verhindert jegliche Lücken an den Rändern bei Schrägsicht und Wischbewegungen
             const fovGroundDeg = (tanFovHalf * (h * 2.2) / earthRadius) * (180 / Math.PI);
             const groundSpanDeg = Math.max(0.5, Math.min(horizonDeg * 0.95, fovGroundDeg));
 
@@ -3832,35 +3914,61 @@
                 }
             }
             candidateTiles.sort((a, b) => a.d2 - b.d2);
-            const maxTiles = 128;
+            const maxTiles = 96;
             const activeTiles = candidateTiles.slice(0, maxTiles);
             const activeKeys = new Set(activeTiles.map(t => t.key));
             activeTopoKeys = activeKeys;
 
+            // Priorisierte Lade-Warteschlange befüllen
             activeTiles.forEach(t => {
-                loadTopoTileMesh(t.z, t.x, t.y, t.key);
+                queueTopoTile(t.z, t.x, t.y, t.key, currentTopoProvider, t.d2);
             });
 
-            // Kacheln bereinigen: Kacheln einer anderen Zoomstufe (z) sofort entfernen,
-            // um jegliches Z-Fighting (Flimmern sich überlagernder Dreiecksnetze verschiedener Stufen) auszuschließen!
-            for (const [key, tileObj] of loadedTopoTiles.entries()) {
-                if (tileObj.z !== z || tileObj.provider !== currentTopoProvider) {
-                    topoTileGroup.remove(tileObj.mesh);
-                    tileObj.mesh.geometry.dispose();
-                    if (tileObj.mesh.material.map) tileObj.mesh.material.map.dispose();
-                    tileObj.mesh.material.dispose();
-                    loadedTopoTiles.delete(key);
-                } else if (!activeKeys.has(key)) {
-                    if (now - tileObj.lastUsed > 4000) {
-                        topoTileGroup.remove(tileObj.mesh);
-                        tileObj.mesh.geometry.dispose();
-                        if (tileObj.mesh.material.map) tileObj.mesh.material.map.dispose();
-                        tileObj.mesh.material.dispose();
-                        loadedTopoTiles.delete(key);
-                    }
-                } else {
-                    tileObj.lastUsed = now;
+            // Warteschlange von nicht mehr aktiven/weit entfernten Kacheln bereinigen
+            for (let i = topoTileQueue.length - 1; i >= 0; i--) {
+                const it = topoTileQueue[i];
+                if (!activeKeys.has(it.key)) {
+                    loadingTopoKeys.delete(it.key);
+                    topoTileQueue.splice(i, 1);
                 }
+            }
+
+            // Laufende HTTP-Downloads abbrechen, wenn Kamera weggeschwenkt ist
+            for (const [key, imgObj] of pendingTopoImages.entries()) {
+                if (!activeKeys.has(key)) {
+                    imgObj.src = '';
+                    imgObj.onload = null;
+                    imgObj.onerror = null;
+                    pendingTopoImages.delete(key);
+                    loadingTopoKeys.delete(key);
+                    activeTopoHttpCount = Math.max(0, activeTopoHttpCount - 1);
+                }
+            }
+
+            // PYRAMIDEN-LOD: Elternkacheln bleiben als lückenloser Hintergrund sichtbar!
+            // Nur nicht mehr sichtbare Kacheln bereinigen, wenn der Speicher / Cache (220 Kacheln) voll ist
+            const maxLoadedTiles = 220;
+            if (loadedTopoTiles.size > maxLoadedTiles) {
+                const sortedTiles = Array.from(loadedTopoTiles.entries())
+                    .filter(([k, t]) => !activeKeys.has(k) && t.provider === currentTopoProvider)
+                    .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+
+                const removeCount = loadedTopoTiles.size - maxLoadedTiles + 20;
+                for (let i = 0; i < Math.min(removeCount, sortedTiles.length); i++) {
+                    const [k, t] = sortedTiles[i];
+                    if (now - t.lastUsed > 8000) {
+                        topoTileGroup.remove(t.mesh);
+                        t.mesh.geometry.dispose();
+                        if (t.mesh.material.map) t.mesh.material.map.dispose();
+                        t.mesh.material.dispose();
+                        loadedTopoTiles.delete(k);
+                    }
+                }
+            }
+
+            for (const key of activeKeys) {
+                const t = loadedTopoTiles.get(key);
+                if (t) t.lastUsed = now;
             }
 
             refreshVisibleElevationRange();
@@ -3871,6 +3979,18 @@
 
         function setTopoSubSelection(provider) {
             currentTopoProvider = provider;
+
+            // Laufende Downloads abbrechen & Warteschlange leeren
+            for (const [key, imgObj] of pendingTopoImages.entries()) {
+                imgObj.src = '';
+                imgObj.onload = null;
+                imgObj.onerror = null;
+            }
+            pendingTopoImages.clear();
+            topoTileQueue.length = 0;
+            loadingTopoKeys.clear();
+            activeTopoHttpCount = 0;
+
             for (const [key, tileObj] of loadedTopoTiles.entries()) {
                 topoTileGroup.remove(tileObj.mesh);
                 tileObj.mesh.geometry.dispose();
@@ -3878,7 +3998,6 @@
                 tileObj.mesh.material.dispose();
             }
             loadedTopoTiles.clear();
-            loadingTopoKeys.clear();
             activeTopoKeys.clear();
 
             const ticksEl = document.getElementById('topo-legend-ticks');
@@ -9754,6 +9873,78 @@
                 }
             }
 
+            // 2.5 ROUTEN-PFAD (HÖCHSTE LESBARKEIT: Tiefschwarze Obsidian-Kontur + Brillanter Signal-Kern)
+            if (typeof routePlannerState !== 'undefined' && routePlannerState && routePlannerState.routeData && routePlannerState.routeData.rawCoords) {
+                const coords = routePlannerState.routeData.rawCoords;
+                if (coords.length >= 2) {
+                    cityCtx.save();
+                    cityCtx.lineCap = 'round';
+                    cityCtx.lineJoin = 'round';
+
+                    const segments = [];
+                    let currentSeg = [];
+
+                    for (let i = 0; i < coords.length; i++) {
+                        const pt = coords[i]; // [lng, lat]
+                        const localV = latLngToSphereVertex(pt[1], pt[0], surfaceRadius);
+                        const worldV = localV.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
+                        const cosA = (worldV.x * cx + worldV.y * cy + worldV.z * cz) / (surfaceRadius * dist);
+
+                        if (cosA >= horizonThreshold) {
+                            tempCityVec.copy(worldV).project(camera);
+                            if (tempCityVec.z <= 1.0) {
+                                const sx = (tempCityVec.x * 0.5 + 0.5) * screenW;
+                                const sy = (-tempCityVec.y * 0.5 + 0.5) * screenH;
+                                currentSeg.push({ sx, sy });
+                                continue;
+                            }
+                        }
+                        if (currentSeg.length > 1) {
+                            segments.push(currentSeg);
+                        }
+                        currentSeg = [];
+                    }
+                    if (currentSeg.length > 1) {
+                        segments.push(currentSeg);
+                    }
+
+                    if (segments.length > 0) {
+                        // Pass 1: Tiefdunkle Obsidian-Kontur (Garantierte Lesbarkeit auf Topographie, Einstrahlung & Thermal)
+                        cityCtx.lineWidth = 5.8;
+                        cityCtx.strokeStyle = 'rgba(8, 12, 18, 0.95)';
+                        cityCtx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+                        cityCtx.shadowBlur = 4;
+                        for (let s = 0; s < segments.length; s++) {
+                            const seg = segments[s];
+                            cityCtx.beginPath();
+                            cityCtx.moveTo(seg[0].sx, seg[0].sy);
+                            for (let k = 1; k < seg.length; k++) {
+                                cityCtx.lineTo(seg[k].sx, seg[k].sy);
+                            }
+                            cityCtx.stroke();
+                        }
+
+                        // Pass 2: Brillanter, leuchtender Signal-Kern
+                        const coreColor = (typeof getActiveRouteColor === 'function') ? getActiveRouteColor() : '#00e5ff';
+                        cityCtx.shadowColor = coreColor;
+                        cityCtx.shadowBlur = 6;
+                        cityCtx.lineWidth = 2.8;
+                        cityCtx.strokeStyle = coreColor;
+                        for (let s = 0; s < segments.length; s++) {
+                            const seg = segments[s];
+                            cityCtx.beginPath();
+                            cityCtx.moveTo(seg[0].sx, seg[0].sy);
+                            for (let k = 1; k < seg.length; k++) {
+                                cityCtx.lineTo(seg[k].sx, seg[k].sy);
+                            }
+                            cityCtx.stroke();
+                        }
+                    }
+
+                    cityCtx.restore();
+                }
+            }
+
             // 3. ROUTENPLANER WEGWEISER & PINS (Start = Grün A, Zwischenstopps = Cyan 1/2/..., Ziel = Rot B)
             if (typeof routePlannerState !== 'undefined' && routePlannerState && routePlannerState.routeData && routePlannerState.waypoints) {
                 const validWps = routePlannerState.waypoints.filter(w => w.lat !== null && w.lng !== null);
@@ -11829,6 +12020,8 @@
                     activeForecastLocation.country,
                     activeForecastLocation.customTz
                 );
+            if (typeof update3DRouteLineColor === 'function') {
+                update3DRouteLineColor();
             }
         }
         window.switchLayer = switchLayer;
@@ -12164,12 +12357,51 @@
                 { id: 'wp_start', type: 'start', lat: null, lng: null, name: '' },
                 { id: 'wp_end', type: 'end', lat: null, lng: null, name: '' }
             ],
-            mode: 'driving',    // 'driving' | 'bike' | 'foot'
-            isPicking: null,    // waypoint id or null
-            routeData: null,    // { coordinates, distanceKm, durationText, elevationProfile, ascent, descent, minElev, maxElev, maxSlope, viaWpPoints }
-            routeGroup: null,   // THREE.Group containing 3D line & pins
-            hoverPin: null      // THREE.Mesh
+            mode: 'driving',            // 'driving' | 'bike' | 'foot'
+            routeColorTheme: 'auto',    // 'auto' | 'orange' | 'cyan' | 'pink'
+            isPicking: null,            // waypoint id or null
+            routeData: null,            // { coordinates, distanceKm, durationText, elevationProfile, ascent, descent, minElev, maxElev, maxSlope, viaWpPoints }
+            routeGroup: null,           // THREE.Group containing 3D line
+            lineMesh: null,             // THREE.LineSegments
+            hoverCoord: null            // { lat, lng, ele, distKm }
         };
+
+        function getActiveRouteColor() {
+            const theme = (typeof routePlannerState !== 'undefined' && routePlannerState && routePlannerState.routeColorTheme) ? routePlannerState.routeColorTheme : 'auto';
+            if (theme === 'orange') return '#ff6600';
+            if (theme === 'cyan') return '#00e5ff';
+            if (theme === 'pink') return '#ff007f';
+            // Auto-Adaptiv je nach aktivem Kartenmodus (garantiert maximalen Farb- und Helligkeitskontrast):
+            if (typeof currentMode !== 'undefined' && currentMode === 'topo') return '#ff6600'; // Signal-Orange: Extrem hoher Kontrast zu Cyan/Grün-Senken & Erdtönen
+            if (typeof currentMode !== 'undefined' && currentMode === 'solar') return '#ff007f'; // Neon-Pink: Maximaler Kontrast zu Gelb/Orange/Blau-Klimadaten
+            return '#00e5ff'; // Signal-Cyan: Klassische Neon-Linie für Standard-/Temperatur-Modus
+        }
+
+        function getActiveRouteHex() {
+            const col = getActiveRouteColor();
+            if (col === '#ff6600') return 0xff6600;
+            if (col === '#ff007f') return 0xff007f;
+            return 0x00e5ff;
+        }
+
+        function setRouteColorTheme(theme) {
+            routePlannerState.routeColorTheme = theme;
+            ['auto', 'orange', 'cyan', 'pink'].forEach(t => {
+                const b = document.getElementById('routeColor' + t.charAt(0).toUpperCase() + t.slice(1));
+                if (b) b.classList.toggle('active', t === theme);
+            });
+            update3DRouteLineColor();
+        }
+        window.setRouteColorTheme = setRouteColorTheme;
+
+        function update3DRouteLineColor() {
+            if (routePlannerState && routePlannerState.lineMesh && routePlannerState.lineMesh.material) {
+                routePlannerState.lineMesh.material.color.setHex(getActiveRouteHex());
+            }
+            if (typeof renderCityLabels === 'function') {
+                renderCityLabels();
+            }
+        }
 
         function initRoutePlanner() {
             const container = document.getElementById('route-container');
@@ -12520,6 +12752,7 @@
                 });
                 routePlannerState.routeGroup = null;
             }
+            routePlannerState.lineMesh = null;
             routePlannerState.hoverPin = null;
             routePlannerState.hoverCoord = null;
         }
@@ -12853,49 +13086,24 @@
             const lineGeo = new THREE.BufferGeometry();
             lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
             
-            // Leuchtende 3D Linie (Cyan/Neon)
+            // 3D Linie auf dem Globus (Farbwert adaptiv an gewählten Kontrast & Kartenmodus angepasst)
+            const activeHex = (typeof getActiveRouteHex === 'function') ? getActiveRouteHex() : 0x00e5ff;
             const lineMat = new THREE.LineBasicMaterial({
-                color: 0x00e5ff,
+                color: activeHex,
                 transparent: true,
                 opacity: 0.95,
                 depthTest: true
             });
             const lineMesh = new THREE.LineSegments(lineGeo, lineMat);
             lineMesh.renderOrder = 8;
+            routePlannerState.lineMesh = lineMesh;
             routePlannerState.routeGroup.add(lineMesh);
 
-            // Feine 3D Boden-Marker (dezent auf der Oberfläche, ohne riesige Verdeckung)
-            function createPinMarker(lat, lng, colorHex, size = 0.05) {
-                const vert = latLngToSphereVertex(lat, lng, radius + 0.03);
-                const geom = new THREE.SphereGeometry(size, 12, 12);
-                const mat = new THREE.MeshBasicMaterial({ color: colorHex, depthTest: true });
-                const mesh = new THREE.Mesh(geom, mat);
-                mesh.position.copy(vert);
-                mesh.renderOrder = 9;
-                return mesh;
-            }
-
-            // Subtile 3D-Bodenpunkte für alle Wegpunkte (Start = Grün, Zwischenstopps = Blau/Cyan, Ziel = Rot)
-            validWps.forEach((wp, idx) => {
-                let col = 0x00e5ff; // Zwischenstopp (Cyan/Blau)
-                let sz = 0.045;
-                if (wp.type === 'start') {
-                    col = 0x00ff88; // Grün
-                    sz = 0.055;
-                } else if (wp.type === 'end') {
-                    col = 0xff3366; // Rot
-                    sz = 0.055;
-                }
-                const pin = createPinMarker(wp.lat, wp.lng, col, sz);
-                routePlannerState.routeGroup.add(pin);
-            });
-
-            // Dynamischer Scrubber-Hover-Pin (Gelb)
-            const firstCoord = rawCoords[0];
-            const hoverPin = createPinMarker(firstCoord[1], firstCoord[0], 0xffdb00, 0.065);
-            hoverPin.visible = false;
-            routePlannerState.routeGroup.add(hoverPin);
-            routePlannerState.hoverPin = hoverPin;
+            // HINWEIS: Keine statischen 3D-Kugeln für Wegpunkte mehr auf der Erdoberfläche erzeugen!
+            // 3D-Kugeln im Weltkoordinatensystem besitzen eine feste Ausdehnung in Raum-Einheiten und
+            // würden beim Heranzoomen an Städte (z.B. Phoenix) zu riesigen, stadtweiten Scheiben anwachsen.
+            // Die Wegpunkte und der Scrubber werden stattdessen zu 100% als maßstabsunabhängige, gestochen
+            // scharfe 2D-Pins in renderCityLabels() mit fester Pixelgröße (8,5 px), Badges und A/1/2/B gerendert.
 
             earthMesh.add(routePlannerState.routeGroup);
         }
