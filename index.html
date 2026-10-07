@@ -3663,8 +3663,6 @@
         let activeTopoHttpCount = 0;
         const topoTileQueue = [];
         const pendingTopoImages = new Map();
-        const loadedTopoTiles = new Map();
-        const loadingTopoKeys = new Set();
         let activeTopoKeys = new Set();
 
         function queueTopoTile(z, x, y, key, provider, d2) {
@@ -4312,14 +4310,28 @@
                     }
                 }
             } else {
-                // Exakte physikalische 1:1 Grab-and-Drag Rotation & gleichmäßige Zoom-Geschwindigkeit für jeden Höhenbereich:
+                // Exakte physikalische 1:1 Grab-and-Drag Rotation & progressive Dämpfung für jeden Höhenbereich:
                 const dist = camera.position.length();
-                const h = Math.max(dist - earthRadius, 0.05);
+                const h = Math.max(dist - surfaceRadius, 0.01);
                 const tanHalfFov = Math.tan((camera.fov * Math.PI) / 360);
-                controls.rotateSpeed = Math.max(0.0035, (h * tanHalfFov) / (Math.PI * earthRadius) * 2.5);
+                
+                // Echte 1:1 Boden-Synchronisation: Pixelverschiebung bewegt die Erdoberfläche exakt 1:1 unter dem Cursor/Finger
+                controls.rotateSpeed = Math.min(0.45, Math.max(0.00015, (h * tanHalfFov) / (Math.PI * surfaceRadius) * 1.15));
+                
                 const normalizedAlt = h / dist;
-                controls.zoomSpeed = Math.max(0.03, Math.min(0.85, 1.15 * normalizedAlt));
-                controls.dampingFactor = dist < 140 ? 0.16 : 0.08;
+                controls.zoomSpeed = Math.max(0.015, Math.min(0.85, 1.15 * normalizedAlt));
+                
+                // Adaptives Damping: In Bodennähe stoppt die Karte sofort beim Loslassen (kein unkontrolliertes Wegfliegen!),
+                // im Weltraum bleibt das flüssige, filmreife Ausrollen des Globus erhalten.
+                if (dist < 101.5) {
+                    controls.dampingFactor = 0.35; // Sofortiger Stillstand & Präzisionskontrolle am Boden
+                } else if (dist < 106.0) {
+                    controls.dampingFactor = 0.25;
+                } else if (dist < 140.0) {
+                    controls.dampingFactor = 0.16;
+                } else {
+                    controls.dampingFactor = 0.08;
+                }
                 controls.update();
             }
             
@@ -10543,14 +10555,14 @@
             event.stopImmediatePropagation();
 
             const d0 = camera.position.length();
-            const h0 = Math.max(d0 - earthRadius, 0.05);
+            const h0 = Math.max(d0 - surfaceRadius, 0.01);
 
             // Normalisierte Scroll-Stärke (unterstützt Mausrad-Notches und Laptop-Präzisions-Touchpads)
             const rawDelta = event.deltaMode === 1 ? event.deltaY * 25 : (event.deltaMode === 2 ? event.deltaY * 100 : event.deltaY);
             const clampedDelta = Math.max(-120, Math.min(120, rawDelta));
             
-            // Adaptiver Höhenfaktor: In Bodennähe skaliert der Zoom feiner, im Weltall zügiger
-            const altRatio = Math.max(0.04, Math.min(1.0, h0 / 140));
+            // Adaptiver Höhenfaktor: In Bodennähe skaliert der Zoom feinfühlig, im Weltall zügiger
+            const altRatio = Math.max(0.005, Math.min(1.0, h0 / 120));
             const zoomFactor = clampedDelta * 0.0009 * altRatio;
 
             // Neue Ziel-Distanz
@@ -12020,6 +12032,7 @@
                     activeForecastLocation.country,
                     activeForecastLocation.customTz
                 );
+            }
             if (typeof update3DRouteLineColor === 'function') {
                 update3DRouteLineColor();
             }
