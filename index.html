@@ -194,6 +194,12 @@
             border-color: rgba(0, 230, 118, 0.5);
             color: #00e676;
         }
+        .layer-toggle-btn.active-satellite {
+            background: rgba(56, 189, 248, 0.18);
+            border-color: rgba(56, 189, 248, 0.6);
+            color: #38bdf8;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+        }
         #topoSubSelectWrap {
             display: none;
             align-items: center;
@@ -2408,6 +2414,7 @@
             <button id="btn-temp-vis" class="layer-toggle-btn active" onclick="switchLayer('temp')">🌡️ Temperatur</button>
             <button id="btn-solar-vis" class="layer-toggle-btn" onclick="switchLayer('solar')">☀️ Einstrahlung</button>
             <button id="btn-topo-vis" class="layer-toggle-btn" onclick="switchLayer('topo')">⛰️ Topographie</button>
+            <button id="btn-satellite-vis" class="layer-toggle-btn" onclick="switchLayer('satellite')">🛰️ Satellit</button>
             <button id="btn-route-vis" class="layer-toggle-btn" onclick="toggleRoutePlanner()" title="3D-Routenplaner &amp; Höhenprofil öffnen">🧭 Route</button>
             <button id="btn-area-vis" class="layer-toggle-btn" onclick="toggleAreaMeasure()" title="3D-Flächenmessung &amp; Formbestimmung">📐 Fläche</button>
             <div id="solarClimSelectWrap" style="display:none;">
@@ -2431,6 +2438,7 @@
             <div id="topoSubSelectWrap" style="display:none;">
                 <select id="topoSubSelect" onchange="setTopoSubSelection(this.value)" title="Kartenstil wählen">
                     <option value="hypsometric" selected>Farbrelief (Höhenschichten)</option>
+                    <option value="satellite">Satellit (Echtfarben HD)</option>
                     <option value="opentopo">OpenTopoMap (Wanderkarte)</option>
                     <option value="arcgis">ArcGIS World Topo</option>
                 </select>
@@ -3210,7 +3218,7 @@
         let lastCameraPos = new THREE.Vector3();
 
         function updateHillshadeTiles() {
-            if (currentMode === 'topo') return;
+            if (currentMode === 'topo' || currentMode === 'satellite') return;
             const now = performance.now();
             if (now - lastTileUpdate < 100) return;
             
@@ -3599,7 +3607,7 @@
         }
 
         function refreshVisibleElevationRange() {
-            if (currentMode !== 'topo' || currentTopoProvider !== 'hypsometric') return;
+            if ((currentMode !== 'topo' && currentMode !== 'satellite') || currentTopoProvider !== 'hypsometric') return;
 
             // Frustum aus aktuellem Kamera-Blickfeld aufbauen
             _topoFrustumMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -3695,6 +3703,8 @@
             if (provider === 'hypsometric') {
                 url = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
                 isTerrarium = true;
+            } else if (provider === 'satellite') {
+                url = `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
             } else if (provider === 'arcgis') {
                 url = `https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${z}/${y}/${x}`;
             } else {
@@ -3840,7 +3850,7 @@
         let lastTopoCameraPos = new THREE.Vector3();
 
         function updateTopoTiles(force = false) {
-            if (currentMode !== 'topo') return;
+            if (currentMode !== 'topo' && currentMode !== 'satellite') return;
             const now = performance.now();
             if (!force && now - lastTopoTileUpdate < 60) return;
             if (!force && camera.position.distanceToSquared(lastTopoCameraPos) < 0.003) return;
@@ -3851,8 +3861,10 @@
             const h = Math.max(0.01, dist - earthRadius);
 
             let z = 3;
-            if (h < 0.40) z = 14;
-            else if (h < 0.78) z = 13;
+            if (h < 0.12) z = 17;
+            else if (h < 0.22) z = 16;
+            else if (h < 0.40) z = 15;
+            else if (h < 0.78) z = 14;
             else if (h < 1.55) z = 12;
             else if (h < 3.00) z = 11;
             else if (h < 6.00) z = 10;
@@ -3863,6 +3875,14 @@
             else if (h < 170.0) z = 5;
             else if (h < 260.0) z = 4;
             else z = 3;
+
+            if (currentTopoProvider === 'hypsometric' || currentTopoProvider === 'opentopo') {
+                z = Math.min(15, z);
+            } else if (currentTopoProvider === 'arcgis') {
+                z = Math.min(16, z);
+            } else if (currentTopoProvider === 'satellite') {
+                z = Math.min(17, z);
+            }
 
             const Px = camera.position.z;
             const Py = camera.position.y;
@@ -3971,7 +3991,7 @@
             refreshVisibleElevationRange();
         }
         controls.addEventListener('change', () => {
-            if (currentMode === 'topo') updateTopoTiles();
+            if (currentMode === 'topo' || currentMode === 'satellite') updateTopoTiles();
         });
 
         function setTopoSubSelection(provider) {
@@ -3997,8 +4017,23 @@
             loadedTopoTiles.clear();
             activeTopoKeys.clear();
 
+            if (provider === 'satellite') {
+                if (typeof topoBaseMesh !== 'undefined' && topoBaseMesh) {
+                    topoBaseMesh.material.map = earthTexture;
+                    topoBaseMesh.material.needsUpdate = true;
+                }
+            } else {
+                if (typeof topoBaseMesh !== 'undefined' && topoBaseMesh) {
+                    topoBaseMesh.material.map = topoBaseTexture;
+                    topoBaseMesh.material.needsUpdate = true;
+                }
+            }
+
             const ticksEl = document.getElementById('topo-legend-ticks');
             const legendBar = document.getElementById('legend-bar');
+            const minEl = document.getElementById('legend-min');
+            const maxEl = document.getElementById('legend-max');
+
             if (provider === 'hypsometric') {
                 if (ticksEl) ticksEl.style.display = 'flex';
                 if (legendBar) {
@@ -4006,13 +4041,26 @@
                     legendBar.style.background = topoGradientCss;
                 }
                 applyDynamicElevationRange(currentVisibleMinElev, currentVisibleMaxElev);
+            } else if (provider === 'satellite') {
+                if (ticksEl) ticksEl.style.display = 'none';
+                if (legendBar) {
+                    legendBar.style.display = '';
+                    legendBar.style.background = 'linear-gradient(to right, #0a192f, #1b4d3e, #4a6741, #8a795d, #d4c5a9, #ffffff)';
+                }
+                if (minEl) minEl.innerText = 'Global HD';
+                if (maxEl) maxEl.innerText = 'Sub-Meter Zoom';
             } else {
                 if (ticksEl) ticksEl.style.display = 'none';
-                const minEl = document.getElementById('legend-min');
-                const maxEl = document.getElementById('legend-max');
+                if (legendBar) {
+                    legendBar.style.display = '';
+                    legendBar.style.background = 'linear-gradient(to right, #2c3e50, #4ca1af, #c4e0e5)';
+                }
                 if (minEl) minEl.innerText = provider === 'opentopo' ? 'OpenTopoMap' : 'ArcGIS';
                 if (maxEl) maxEl.innerText = 'Relief';
             }
+
+            const topoSelect = document.getElementById('topoSubSelect');
+            if (topoSelect) topoSelect.value = provider;
 
             updateTopoTiles(true);
         }
@@ -4055,7 +4103,7 @@
         const tempVec1 = new THREE.Vector3();
 
         function renderScreenWindParticles(timeScale = 1.0) {
-            if (currentMode === 'topo') {
+            if (currentMode === 'topo' || currentMode === 'satellite') {
                 screenWindCtx.clearRect(0, 0, screenW, screenH);
                 return;
             }
@@ -4285,12 +4333,12 @@
                     const anim = cameraAnimation;
                     cameraAnimation = null;
                     controls.enabled = true;
-                    if (currentMode === 'topo') updateTopoTiles(true);
+                    if (currentMode === 'topo' || currentMode === 'satellite') updateTopoTiles(true);
                     
                     if (anim && anim.targetName && !anim.targetName.includes('PV-Anlage')) {
                         // Temperatur- & Höhen-Popup am Zielort aktivieren & anzeigen
                         clickedPopupPoint = { lat: anim.targetLat, lng: anim.targetLng };
-                        if (currentMode === 'topo') {
+                        if (currentMode === 'topo' || currentMode === 'satellite') {
                             const localElev = getElevationFromLoadedTiles(anim.targetLat, anim.targetLng);
                             clickedPopupTileElevation = (localElev !== null) ? localElev : null;
                         }
@@ -4347,7 +4395,7 @@
                 if (typeof updateHillshadeTiles === 'function') updateHillshadeTiles();
             } catch(e) { /* hillshade render safe */ }
             try {
-                if (typeof updateTopoTiles === 'function' && currentMode === 'topo') updateTopoTiles();
+                if (typeof updateTopoTiles === 'function' && (currentMode === 'topo' || currentMode === 'satellite')) updateTopoTiles();
             } catch(e) { /* topo render safe */ }
 
             // Dynamische, seidenweiche hypsometrische Höhenanpassung (LERP - verhindert jegliches Ruckeln/Farbspringen beim Wischen)
@@ -10576,7 +10624,7 @@
             zoomRaycaster.setFromCamera({ x: mouseX, y: mouseY }, camera);
 
             let hits = [];
-            if (currentMode === 'topo') {
+            if (currentMode === 'topo' || currentMode === 'satellite') {
                 if (topoTileGroup && topoTileGroup.children.length > 0) {
                     hits = zoomRaycaster.intersectObjects(topoTileGroup.children, false);
                 }
@@ -10816,7 +10864,7 @@
 
             if (currentMode === 'solar') {
                 renderSolarForecastBody(lat, lng, tz);
-            } else if (currentMode === 'topo') {
+            } else if (currentMode === 'topo' || currentMode === 'satellite') {
                 renderTopoForecastBody(lat, lng, tz);
             } else {
                 renderTempForecastBody(lat, lng, tz);
@@ -11206,7 +11254,7 @@
             }
 
             const applyElevToUi = (m) => {
-                if (currentMode !== 'topo' || reqId !== currentTopoFetchId) return;
+                if ((currentMode !== 'topo' && currentMode !== 'satellite') || reqId !== currentTopoFetchId) return;
                 const info = getReliefInfo(m);
                 if (unitEl) unitEl.innerText = (m !== null && m < 0) ? 'm (unter NN)' : 'm ü. NHN';
                 if (iconEl) iconEl.innerText = info.icon;
@@ -11224,7 +11272,7 @@
 
             if (elev === null) {
                 fetchElevationForPoint(lat, lng, (fetchedElev) => {
-                    if (reqId !== currentTopoFetchId || currentMode !== 'topo') return;
+                    if (reqId !== currentTopoFetchId || (currentMode !== 'topo' && currentMode !== 'satellite')) return;
                     if (fetchedElev !== null) {
                         elev = fetchedElev;
                         applyElevToUi(elev);
@@ -11272,7 +11320,7 @@
                     const iconSpan = card.querySelector('.forecast-hour-icon');
                     if (tempSpan && tempSpan.innerText === '...') {
                         fetchElevationForPoint(sLat, sLng, (fElev) => {
-                            if (reqId !== currentTopoFetchId || currentMode !== 'topo') return;
+                            if (reqId !== currentTopoFetchId || (currentMode !== 'topo' && currentMode !== 'satellite')) return;
                             if (fElev !== null && card) {
                                 const sInfo = getReliefInfo(fElev);
                                 if (iconSpan) iconSpan.innerText = sInfo.icon;
@@ -11291,7 +11339,7 @@
                             applyElevToUi(cardElev);
                         } else {
                             fetchElevationForPoint(sLat, sLng, (fElev) => {
-                                if (reqId !== currentTopoFetchId || currentMode !== 'topo') return;
+                                if (reqId !== currentTopoFetchId || (currentMode !== 'topo' && currentMode !== 'satellite')) return;
                                 if (fElev !== null) applyElevToUi(fElev);
                             });
                         }
@@ -11311,7 +11359,7 @@
 
         function updatePopupContent() {
             if (!clickedPopupPoint) return;
-            if (currentMode === 'topo') {
+            if (currentMode === 'topo' || currentMode === 'satellite') {
                 const ptKey = `${clickedPopupPoint.lat.toFixed(3)},${clickedPopupPoint.lng.toFixed(3)}`;
                 const renderElevHtml = (elev) => {
                     if (elev === null) {
@@ -11369,7 +11417,7 @@
                             }
                             lastClickedElevation = elev;
                             lastElevationPointKey = ptKey;
-                            if (clickedPopupPoint && currentMode === 'topo') {
+                            if (clickedPopupPoint && (currentMode === 'topo' || currentMode === 'satellite')) {
                                 renderElevHtml(elev);
                             }
                         });
@@ -11406,7 +11454,7 @@
             if (cameraAnimation) {
                 cameraAnimation = null;
                 controls.enabled = true;
-                if (currentMode === 'topo') updateTopoTiles(true);
+                if (currentMode === 'topo' || currentMode === 'satellite') updateTopoTiles(true);
             }
             userNavigatedManually = true;
         }
@@ -11537,7 +11585,7 @@
             let pt = null;
             let directTileElev = null;
 
-            if (currentMode === 'topo' && topoTileGroup && topoTileGroup.children.length > 0) {
+            if ((currentMode === 'topo' || currentMode === 'satellite') && topoTileGroup && topoTileGroup.children.length > 0) {
                 // Präziser Raycast direkt gegen die sichtbaren Kacheln (R = surfaceRadius)
                 // Verhindert den Parallaxenfehler, der beim Durchschießen auf die Basiskugel entsteht!
                 const topoHits = raycaster.intersectObjects(topoTileGroup.children, false);
@@ -11550,7 +11598,7 @@
                     }
                 }
             }
-            if (currentMode === 'topo' && !pt && typeof topoBaseMesh !== 'undefined' && topoBaseMesh) {
+            if ((currentMode === 'topo' || currentMode === 'satellite') && !pt && typeof topoBaseMesh !== 'undefined' && topoBaseMesh) {
                 const baseHits = raycaster.intersectObject(topoBaseMesh);
                 if (baseHits.length > 0) {
                     pt = baseHits[0].point.clone();
@@ -11795,9 +11843,13 @@
         }
 
         function updateActiveData() {
-            if (currentMode === 'topo') {
+            if (currentMode === 'topo' || currentMode === 'satellite') {
                 const titleEl = document.getElementById('timeDisplayTitle');
-                if (titleEl) titleEl.innerText = '⛰️ Topographie & Geländehöhen';
+                if (titleEl) {
+                    titleEl.innerText = (currentMode === 'satellite') 
+                        ? '🛰️ Echtfarben-Satellitenbild (HD)' 
+                        : '⛰️ Topographie & Geländehöhen';
+                }
                 updatePopupContent();
                 return;
             }
@@ -11936,9 +11988,11 @@
             const btnTempVis = document.getElementById('btn-temp-vis');
             const btnSolarVis = document.getElementById('btn-solar-vis');
             const btnTopoVis = document.getElementById('btn-topo-vis');
+            const btnSatelliteVis = document.getElementById('btn-satellite-vis');
             if (btnTempVis) btnTempVis.className = 'layer-toggle-btn' + (mode === 'temp' ? ' active' : '');
             if (btnSolarVis) btnSolarVis.className = 'layer-toggle-btn' + (mode === 'solar' ? ' active-solar' : '');
             if (btnTopoVis) btnTopoVis.className = 'layer-toggle-btn' + (mode === 'topo' ? ' active-topo' : '');
+            if (btnSatelliteVis) btnSatelliteVis.className = 'layer-toggle-btn' + (mode === 'satellite' ? ' active-satellite' : '');
 
             const climWrap = document.getElementById('solarClimSelectWrap');
             if (climWrap) climWrap.style.display = mode === 'solar' ? 'flex' : 'none';
@@ -11951,7 +12005,7 @@
             const timeLabels = document.querySelector('.time-labels');
             const timeDisplayTitle = document.getElementById('timeDisplayTitle');
 
-            if (mode === 'topo') {
+            if (mode === 'topo' || mode === 'satellite') {
                 if (playAnimId) {
                     cancelAnimationFrame(playAnimId);
                     playAnimId = null;
@@ -11961,25 +12015,27 @@
                 if (playSpeedBtn) playSpeedBtn.style.display = 'none';
                 if (timeSlider) timeSlider.style.display = 'none';
                 if (timeLabels) timeLabels.style.display = 'none';
-                if (timeDisplayTitle) timeDisplayTitle.innerText = '⛰️ Topographisches Farbrelief';
 
-                // Im Topographie-Modus die darunterliegende Wetter-Raster-Sphäre und den Hillshade-Layer
-                // ausblenden, um jegliches Z-Fighting (Flackern / Durchscheinen blauer Pixel) vollständig
-                // zu eliminieren. Das echte Geländerelief wird nahtlos über topoBaseMesh und topoTileGroup gerendert.
+                // Im Topographie- & Satelliten-Modus die darunterliegende Wetter-Raster-Sphäre und den Hillshade-Layer
+                // ausblenden, um jegliches Z-Fighting vollständig zu eliminieren.
                 dataMesh.visible = false;
                 hillshadeGroup.visible = false;
                 if (typeof topoBaseMesh !== 'undefined' && topoBaseMesh) topoBaseMesh.visible = true;
                 topoTileGroup.visible = true;
 
-                const legendBar = document.getElementById('legend-bar');
-                if (legendBar) {
-                    legendBar.style.display = '';
-                    legendBar.style.background = topoGradientCss;
+                if (mode === 'satellite') {
+                    if (timeDisplayTitle) timeDisplayTitle.innerText = '🛰️ Echtfarben-Satellitenbild (HD)';
+                    document.getElementById('timeLabel').innerText = 'Echtfarben-Satellitenaufnahme (HD Weltweit)';
+                    setTopoSubSelection('satellite');
+                } else {
+                    if (timeDisplayTitle) timeDisplayTitle.innerText = '⛰️ Topographisches Farbrelief';
+                    document.getElementById('timeLabel').innerText = 'Topographisches Farbrelief & Geländehöhen';
+                    if (currentTopoProvider === 'satellite') {
+                        setTopoSubSelection('hypsometric');
+                    } else {
+                        setTopoSubSelection(currentTopoProvider);
+                    }
                 }
-                const topoTicks = document.getElementById('topo-legend-ticks');
-                if (topoTicks) topoTicks.style.display = currentTopoProvider === 'hypsometric' ? 'flex' : 'none';
-                applyDynamicElevationRange(currentVisibleMinElev, currentVisibleMaxElev);
-                document.getElementById('timeLabel').innerText = 'Topographisches Farbrelief & Geländehöhen';
 
                 updateTopoTiles(true);
             } else {
@@ -12246,8 +12302,8 @@
                     searchClearBtn.style.display = 'flex';
                 }
 
-                // Vorab-Abfrage der Geländehöhe im Topographie-Modus
-                if (currentMode === 'topo') {
+                // Vorab-Abfrage der Geländehöhe im Topographie- & Satelliten-Modus
+                if (currentMode === 'topo' || currentMode === 'satellite') {
                     const localElev = getElevationFromLoadedTiles(lat, lng);
                     if (localElev !== null) {
                         clickedPopupTileElevation = localElev;
@@ -12384,7 +12440,9 @@
             if (theme === 'cyan') return '#00e5ff';
             if (theme === 'pink') return '#ff007f';
             // Auto-Adaptiv je nach aktivem Kartenmodus (garantiert maximalen Farb- und Helligkeitskontrast):
-            if (typeof currentMode !== 'undefined' && currentMode === 'topo') return '#ff6600'; // Signal-Orange: Extrem hoher Kontrast zu Cyan/Grün-Senken & Erdtönen
+            if (typeof currentMode !== 'undefined' && (currentMode === 'topo' || currentMode === 'satellite')) {
+                return (currentMode === 'satellite') ? '#38bdf8' : '#ff6600'; // Strahlendes Himmelsblau auf Satellit, Signal-Orange auf Topo
+            }
             if (typeof currentMode !== 'undefined' && currentMode === 'solar') return '#ff007f'; // Neon-Pink: Maximaler Kontrast zu Gelb/Orange/Blau-Klimadaten
             return '#00e5ff'; // Signal-Cyan: Klassische Neon-Linie für Standard-/Temperatur-Modus
         }
