@@ -2770,6 +2770,12 @@
         topoBaseTexture.minFilter = THREE.LinearFilter;
         topoBaseTexture.magFilter = THREE.LinearFilter;
 
+        const satelliteBaseTexture = textureLoader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg');
+        satelliteBaseTexture.wrapS = THREE.ClampToEdgeWrapping;
+        satelliteBaseTexture.wrapT = THREE.ClampToEdgeWrapping;
+        satelliteBaseTexture.minFilter = THREE.LinearFilter;
+        satelliteBaseTexture.magFilter = THREE.LinearFilter;
+
         // Pre-baking der Wetterdaten in GPU-DataTextures (dauert dank Lookup-Tabelle nur ~80ms)
         // Generisch für jedes Skalarfeld-Grid (Temperatur, Sonneneinstrahlung, Klimatologie-Layer, ...)
         // - nutzt nur step.data/step.header/step.scale, nichts Temperatur-Spezifisches.
@@ -3818,6 +3824,50 @@
                         transparent: false,
                         depthWrite: true
                     });
+                } else if (provider === 'satellite') {
+                    mat = new THREE.ShaderMaterial({
+                        vertexShader: `
+                            varying vec2 vUv;
+                            void main() {
+                                vUv = uv;
+                                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                            }
+                        `,
+                        fragmentShader: `
+                            precision highp float;
+                            uniform sampler2D u_tile;
+                            varying vec2 vUv;
+
+                            void main() {
+                                vec4 texCol = texture2D(u_tile, vUv);
+                                vec3 col = texCol.rgb;
+
+                                // Subtile Glättung & Entzerrung extremer Satellitenbild-Farbausreißer (z.B. überstrahltes Ockergelb/Buntstich)
+                                // Lässt die Landschaft harmonischer ineinander übergehen, ohne Schärfe oder Details einzubüßen.
+                                float r = col.r;
+                                float g = col.g;
+                                float b = col.b;
+                                float yellowExcess = (r * 0.55 + g * 0.45) - b * 1.75;
+                                if (yellowExcess > 0.38 && r > 0.52 && g > 0.42 && b < 0.35) {
+                                    float weight = clamp((yellowExcess - 0.38) * 1.6, 0.0, 0.65);
+                                    float lum = dot(col, vec3(0.299, 0.587, 0.114));
+                                    vec3 targetNatural = vec3(lum * 1.06, lum * 0.98, lum * 0.78);
+                                    col = mix(col, targetNatural, weight);
+                                }
+
+                                gl_FragColor = vec4(col, 1.0);
+                            }
+                        `,
+                        uniforms: {
+                            u_tile: { value: tex }
+                        },
+                        polygonOffset: true,
+                        polygonOffsetFactor: -1.0 - (z * 0.25),
+                        polygonOffsetUnits: -4.0 - (z * 0.5),
+                        side: THREE.DoubleSide,
+                        transparent: false,
+                        depthWrite: true
+                    });
                 } else {
                     mat = new THREE.MeshBasicMaterial({
                         map: tex,
@@ -4030,7 +4080,7 @@
 
             if (provider === 'satellite') {
                 if (typeof topoBaseMesh !== 'undefined' && topoBaseMesh) {
-                    topoBaseMesh.material.map = earthTexture;
+                    topoBaseMesh.material.map = satelliteBaseTexture;
                     topoBaseMesh.material.needsUpdate = true;
                 }
             } else {
