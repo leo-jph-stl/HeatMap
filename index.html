@@ -13814,33 +13814,52 @@
             const areaGroup = new THREE.Group();
             areaGroup.name = 'areaMeasureGroup';
 
-            let cLat = 0, cLng = 0;
-            pts.forEach(p => { cLat += p.lat; cLng += p.lng; });
+            function unwrapLng(targetLng, refLng) {
+                let diff = targetLng - refLng;
+                while (diff > 180) diff -= 360;
+                while (diff < -180) diff += 360;
+                return refLng + diff;
+            }
+
+            // Robust Centroid Calculation
+            let cLat = 0;
+            let sinSum = 0, cosSum = 0;
+            pts.forEach(p => {
+                cLat += p.lat;
+                const rad = p.lng * Math.PI / 180;
+                sinSum += Math.sin(rad);
+                cosSum += Math.cos(rad);
+            });
             cLat /= pts.length;
-            cLng /= pts.length;
+            const cLng = Math.atan2(sinSum, cosSum) * 180 / Math.PI;
             areaMeasureState.centroid = { lat: cLat, lng: cLng };
 
-            const rMesh = surfaceRadius + 0.035;
+            const rMesh = surfaceRadius + 0.015;
             const positions = [];
-            const subDiv = 4;
+            const subDiv = 6;
 
             for (let i = 0; i < pts.length; i++) {
                 const p1 = pts[i];
                 const p2 = pts[(i + 1) % pts.length];
 
+                const p1Lat = p1.lat;
+                const p1Lng = unwrapLng(p1.lng, cLng);
+                const p2Lat = p2.lat;
+                const p2Lng = unwrapLng(p2.lng, cLng);
+
                 for (let s = 0; s < subDiv; s++) {
                     const t1 = s / subDiv;
                     const t2 = (s + 1) / subDiv;
 
-                    const latA = cLat + (p1.lat - cLat) * t1;
-                    const lngA = cLng + (p1.lng - cLng) * t1;
-                    const latB = cLat + (p2.lat - cLat) * t1;
-                    const lngB = cLng + (p2.lng - cLng) * t1;
+                    const latA = cLat + (p1Lat - cLat) * t1;
+                    const lngA = cLng + (p1Lng - cLng) * t1;
+                    const latB = cLat + (p2Lat - cLat) * t1;
+                    const lngB = cLng + (p2Lng - cLng) * t1;
 
-                    const latA2 = cLat + (p1.lat - cLat) * t2;
-                    const lngA2 = cLng + (p1.lng - cLng) * t2;
-                    const latB2 = cLat + (p2.lat - cLat) * t2;
-                    const lngB2 = cLng + (p2.lng - cLng) * t2;
+                    const latA2 = cLat + (p1Lat - cLat) * t2;
+                    const lngA2 = cLng + (p1Lng - cLng) * t2;
+                    const latB2 = cLat + (p2Lat - cLat) * t2;
+                    const lngB2 = cLng + (p2Lng - cLng) * t2;
 
                     const vA = latLngToSphereVertex(latA, lngA, rMesh);
                     const vB = latLngToSphereVertex(latB, lngB, rMesh);
@@ -13866,23 +13885,27 @@
                 transparent: true,
                 opacity: 0.38,
                 side: THREE.DoubleSide,
-                depthWrite: false
+                depthWrite: false,
+                polygonOffset: true,
+                polygonOffsetFactor: -1.0,
+                polygonOffsetUnits: -2.0
             });
 
             const surfaceMesh = new THREE.Mesh(geom, mat);
             areaGroup.add(surfaceMesh);
 
-            // Perimeter Glowing Line
+            // Perimeter Glowing Line hugging spherical surface
             const linePositions = [];
-            const rLine = surfaceRadius + 0.045;
+            const rLine = surfaceRadius + 0.022;
             for (let i = 0; i < pts.length; i++) {
                 const p1 = pts[i];
                 const p2 = pts[(i + 1) % pts.length];
-                const segs = 8;
+                const segs = 16;
+                const p2LngUnwrapped = unwrapLng(p2.lng, p1.lng);
                 for (let s = 0; s < segs; s++) {
                     const t = s / segs;
                     const curLat = p1.lat + (p2.lat - p1.lat) * t;
-                    const curLng = p1.lng + (p2.lng - p1.lng) * t;
+                    const curLng = p1.lng + (p2LngUnwrapped - p1.lng) * t;
                     const v = latLngToSphereVertex(curLat, curLng, rLine);
                     linePositions.push(v.x, v.y, v.z);
                 }
@@ -13893,20 +13916,21 @@
             const lineGeom = new THREE.BufferGeometry();
             lineGeom.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
             const lineMat = new THREE.LineBasicMaterial({
-                color: 0xd8b4fe,
+                color: 0xf0abfc,
                 linewidth: 2,
                 transparent: true,
-                opacity: 0.95
+                opacity: 0.95,
+                depthWrite: false
             });
             const lineMesh = new THREE.Line(lineGeom, lineMat);
             areaGroup.add(lineMesh);
 
             // Vertex Dots
-            const dotGeom = new THREE.SphereGeometry(0.12, 8, 8);
-            const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const dotGeom = new THREE.SphereGeometry(0.06, 8, 8);
+            const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthWrite: false });
             pts.forEach(p => {
                 const dot = new THREE.Mesh(dotGeom, dotMat);
-                dot.position.copy(latLngToSphereVertex(p.lat, p.lng, rLine + 0.02));
+                dot.position.copy(latLngToSphereVertex(p.lat, p.lng, rLine + 0.008));
                 areaGroup.add(dot);
             });
 
