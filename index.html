@@ -203,6 +203,56 @@
             color: #38bdf8;
             box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
         }
+        .layer-toggle-btn.active-moon {
+            background: rgba(226, 232, 240, 0.22);
+            border-color: rgba(255, 255, 255, 0.7);
+            color: #ffffff;
+            box-shadow: 0 0 12px rgba(255, 255, 255, 0.35);
+        }
+        #celestial-body-toggle {
+            display: flex;
+            align-items: center;
+            background: rgba(18, 22, 28, 0.85);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 20px;
+            padding: 2px;
+            gap: 2px;
+            margin-right: 6px;
+            flex-shrink: 0;
+        }
+        .celestial-btn {
+            background: transparent;
+            border: none;
+            color: #8892b0;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 9px;
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+        .celestial-btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.08);
+        }
+        .celestial-btn.active {
+            background: rgba(255, 255, 255, 0.16);
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.28);
+        }
+        #celestial-btn-moon.active {
+            background: linear-gradient(135deg, rgba(200, 210, 230, 0.25), rgba(160, 175, 200, 0.15));
+            color: #f1f5f9;
+            border-color: rgba(226, 232, 240, 0.45);
+            box-shadow: 0 0 10px rgba(200, 220, 255, 0.3);
+        }
         #topoSubSelectWrap {
             display: none;
             align-items: center;
@@ -2411,6 +2461,10 @@
             <button id="playSpeedBtn" title="Wiedergabegeschwindigkeit">1x</button>
             <div id="timeDisplayTitle">Live (Jetzt)</div>
             <div style="display: flex; gap: 4px; align-items: center;">
+                <div id="celestial-body-toggle" title="Himmelskörper wählen (Erde / Mond)">
+                    <button type="button" id="celestial-btn-earth" class="celestial-btn active" onclick="switchCelestialBody('earth')">🌍 Erde</button>
+                    <button type="button" id="celestial-btn-moon" class="celestial-btn" onclick="switchCelestialBody('moon')">🌙 Mond</button>
+                </div>
                 <button id="pvQuickBtn" class="pv-badge-btn" title="Login für PV-Anlagendetails">🔒 PV-Login</button>
                 <button id="pvZunQuickBtn" class="pv-badge-btn" style="display:none; border-color: rgba(0, 229, 255, 0.4); background: rgba(0, 229, 255, 0.12); color: #00e5ff;">☀️</button>
             </div>
@@ -2422,6 +2476,7 @@
             <span id="timeLabelMax">+72h</span>
         </div>
         <div id="layer-toggles-visible">
+            <button id="btn-moon-vis" class="layer-toggle-btn" onclick="switchCelestialBody('moon')" style="display:none;" title="Detaillierte Mond-Reliefkarte &amp; Mondlandestellen">🌙 Mond-Atlas</button>
             <button id="btn-temp-vis" class="layer-toggle-btn active" onclick="switchLayer('temp')">🌡️ Temperatur</button>
             <button id="btn-solar-vis" class="layer-toggle-btn" onclick="switchLayer('solar')">☀️ Einstrahlung</button>
             <button id="btn-topo-vis" class="layer-toggle-btn" onclick="switchLayer('topo')">⛰️ Topographie</button>
@@ -2686,6 +2741,222 @@
         earthMesh.rotation.y = -Math.PI / 2;
         earthMesh.renderOrder = 0;
         scene.add(earthMesh);
+
+        // CELESTIAL BODIES (Erde vs. Mond)
+        let currentCelestialBody = 'earth';
+        const moonTexture = textureLoader.load('https://cdn.jsdelivr.net/gh/mrdoob/three.js@master/examples/textures/planets/moon_1024.jpg');
+        moonTexture.wrapS = THREE.ClampToEdgeWrapping;
+        moonTexture.wrapT = THREE.ClampToEdgeWrapping;
+        moonTexture.minFilter = THREE.LinearFilter;
+        moonTexture.magFilter = THREE.LinearFilter;
+
+        const moonBumpTexture = textureLoader.load('https://cdn.jsdelivr.net/gh/jeromeetienne/threex.planets@master/images/moonbump1k.jpg');
+        moonBumpTexture.wrapS = THREE.ClampToEdgeWrapping;
+        moonBumpTexture.wrapT = THREE.ClampToEdgeWrapping;
+        moonBumpTexture.minFilter = THREE.LinearFilter;
+        moonBumpTexture.magFilter = THREE.LinearFilter;
+
+        // Detaillierte Landmarken des Mondes: Apollo-Landestellen, Mondmeere (Maria), markante Krater & Gebirge
+        const moonLandmarks = [
+            {
+                name: 'Apollo 11',
+                type: 'apollo',
+                lat: 0.674,
+                lng: 23.473,
+                elev: -1500,
+                desc: 'Erste bemannte Mondlandung (Neil Armstrong & Buzz Aldrin, 20. Juli 1969). "Der Adler ist gelandet."',
+                area: 'Mare Tranquillitatis (Meer der Ruhe)',
+                date: '20.07.1969'
+            },
+            {
+                name: 'Apollo 12',
+                type: 'apollo',
+                lat: -3.012,
+                lng: -23.422,
+                elev: -1400,
+                desc: 'Präzisionslandung nahe Surveyor 3 (Pete Conrad & Alan Bean, November 1969).',
+                area: 'Oceanus Procellarum (Ozean der Stürme)',
+                date: '19.11.1969'
+            },
+            {
+                name: 'Apollo 14',
+                type: 'apollo',
+                lat: -3.645,
+                lng: -17.471,
+                elev: -1200,
+                desc: 'Erforschung des Hochlandes (Alan Shepard & Edgar Mitchell, Februar 1971).',
+                area: 'Fra Mauro Hochland',
+                date: '05.02.1971'
+            },
+            {
+                name: 'Apollo 15',
+                type: 'apollo',
+                lat: 26.132,
+                lng: 3.634,
+                elev: -2100,
+                desc: 'Erster Einsatz des Lunar Roving Vehicle (LRV) an der Hadley-Rille am Fuße der Mond-Apenninen.',
+                area: 'Hadley-Apennine',
+                date: '30.07.1971'
+            },
+            {
+                name: 'Apollo 16',
+                type: 'apollo',
+                lat: -8.973,
+                lng: 15.500,
+                elev: 200,
+                desc: 'Mondhochland-Mission (John Young & Charles Duke, April 1972) im Descartes-Hochland.',
+                area: 'Descartes Highlands',
+                date: '21.04.1972'
+            },
+            {
+                name: 'Apollo 17',
+                type: 'apollo',
+                lat: 20.191,
+                lng: 30.772,
+                elev: -2600,
+                desc: 'Letzte bemannte Mondlandung des Apollo-Programms (Eugene Cernan & Harrison Schmitt, Dezember 1972).',
+                area: 'Taurus-Littrow-Tal',
+                date: '11.12.1972'
+            },
+            {
+                name: 'Tycho',
+                type: 'crater',
+                lat: -43.31,
+                lng: -11.36,
+                elev: -4800,
+                diam: '86 km',
+                desc: 'Prominenter Einschlagkrater im südlichen Hochland mit spektakulärem, tausende Kilometer weitem Strahlensystem.',
+                area: 'Südliches Hochland'
+            },
+            {
+                name: 'Copernicus',
+                type: 'crater',
+                lat: 9.62,
+                lng: -20.08,
+                elev: -3800,
+                diam: '93 km',
+                desc: 'Klassischer terrassierter Riesenkrater mit zentralem Bergmassiv im Oceanus Procellarum.',
+                area: 'Oceanus Procellarum'
+            },
+            {
+                name: 'Kepler',
+                type: 'crater',
+                lat: 8.12,
+                lng: -38.01,
+                elev: -2700,
+                diam: '31 km',
+                desc: 'Heller Strahlkrater zwischen Oceanus Procellarum und Mare Insularum.',
+                area: 'Oceanus Procellarum'
+            },
+            {
+                name: 'Aristarchus',
+                type: 'crater',
+                lat: 23.73,
+                lng: -47.49,
+                elev: -3000,
+                diam: '40 km',
+                desc: 'Hellste Großformation auf der Mondvorderseite mit starker Albedo und vulkanischem Plateau.',
+                area: 'Aristarchus-Plateau'
+            },
+            {
+                name: 'Plato',
+                type: 'crater',
+                lat: 51.62,
+                lng: -9.38,
+                elev: -2000,
+                diam: '101 km',
+                desc: 'Dunkel gefluteter Ringgebirgskrater am Nordrand des Mare Imbrium.',
+                area: 'Montes Alpes'
+            },
+            {
+                name: 'Mare Tranquillitatis',
+                type: 'mare',
+                lat: 8.5,
+                lng: 31.4,
+                elev: -1500,
+                desc: 'Meer der Ruhe: Weite basaltische Tiefebene aus basaltischer Lava, Landeort von Apollo 11.',
+                area: 'Östliche Mondhemisphäre'
+            },
+            {
+                name: 'Mare Imbrium',
+                type: 'mare',
+                lat: 32.8,
+                lng: -15.6,
+                elev: -2500,
+                desc: 'Regenmeer: Eines der größten Einschlagbecken des Sonnensystems (Durchmesser ~1145 km).',
+                area: 'Nordwestliche Mondhemisphäre'
+            },
+            {
+                name: 'Mare Serenitatis',
+                type: 'mare',
+                lat: 28.0,
+                lng: 17.5,
+                elev: -2200,
+                desc: 'Heiterkeitsmeer: Rundes Lavabecken östlich der Montes Apenninus.',
+                area: 'Nordöstliche Hemisphäre'
+            },
+            {
+                name: 'Mare Crisium',
+                type: 'mare',
+                lat: 17.0,
+                lng: 59.1,
+                elev: -3600,
+                desc: 'Gefahrenmeer: Isoliertes, markantes kreisrundes Mondmeer nahe dem Ostrand.',
+                area: 'Ostrand'
+            },
+            {
+                name: 'Oceanus Procellarum',
+                type: 'mare',
+                lat: 18.4,
+                lng: -57.4,
+                elev: -2000,
+                desc: 'Ozean der Stürme: Das mit Abstand größte Mondmeer, erstreckt sich über 2500 km.',
+                area: 'Westliche Hemisphäre'
+            },
+            {
+                name: 'Montes Apenninus',
+                type: 'mountain',
+                lat: 18.9,
+                lng: -3.7,
+                elev: 5400,
+                desc: 'Mond-Apenninen: Gewaltiger Gebirgszug am Südostrand des Mare Imbrium (Gipfel bis zu 5.400 m Höhe).',
+                area: 'Mare Imbrium Rand'
+            },
+            {
+                name: 'Mons Huygens',
+                type: 'mountain',
+                lat: 20.0,
+                lng: -2.9,
+                elev: 5500,
+                desc: 'Höchster Einzelberg des Apenninen-Hauptkamms (ca. 5.500 m über Basalt-Ebene).',
+                area: 'Montes Apenninus'
+            },
+            {
+                name: 'Clavius',
+                type: 'crater',
+                lat: -58.4,
+                lng: -14.4,
+                elev: -4900,
+                diam: '225 km',
+                desc: 'Riesiger, uralter Einschlagskrater im Südpolar-Hochland mit charakteristischer Kraterkette im Inneren.',
+                area: 'Südliches Hochland'
+            },
+            {
+                name: 'Südpol-Aitken-Becken',
+                type: 'mare',
+                lat: -53.0,
+                lng: 169.0,
+                elev: -8000,
+                desc: 'Größtes und tiefstes bekanntes Einschlagbecken des Mondes (Rückseite, bis zu 8.2 km Tiefe).',
+                area: 'Mondrückseite'
+            }
+        ];
+
+        // Vorberechnete 3D-Koordinaten für Mond-Landmarken
+        moonLandmarks.forEach(m => {
+            const localV = latLngToSphereVertex(m.lat, m.lng, surfaceRadius);
+            m.worldPos = localV.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
+        });
 
         // GPU WEBGL SHADER ENGINE (60 FPS STUFENLOSE WETTER-TEXTURGLÄTTUNG)
         const isWebGL2 = !!renderer.capabilities.isWebGL2;
@@ -9773,6 +10044,133 @@
             cityCtx.clearRect(0, 0, screenW, screenH);
             const dist = camera.position.length();
 
+            // SONDERFALL: MOND-MODUS (Apollo-Landestellen & lunare Krater/Meere)
+            if (currentCelestialBody === 'moon') {
+                if (typeof moonLandmarks === 'undefined' || !moonLandmarks.length) return;
+                const cx = camera.position.x;
+                const cy = camera.position.y;
+                const cz = camera.position.z;
+                const horizonThreshold = 0.05;
+
+                cityCtx.save();
+                for (let i = 0; i < moonLandmarks.length; i++) {
+                    const lm = moonLandmarks[i];
+                    if (!lm.worldPos) continue;
+
+                    // Sichtbarkeitsprüfung gegen Krümmungshorizont
+                    const cosA = (lm.worldPos.x * cx + lm.worldPos.y * cy + lm.worldPos.z * cz) / (surfaceRadius * dist);
+                    if (cosA < horizonThreshold) continue;
+
+                    tempCityVec.copy(lm.worldPos).project(camera);
+                    if (tempCityVec.z > 1.0) continue;
+
+                    const sx = (tempCityVec.x * 0.5 + 0.5) * screenW;
+                    const sy = (-tempCityVec.y * 0.5 + 0.5) * screenH;
+                    if (sx < 25 || sx > screenW - 25 || sy < 25 || sy > screenH - 25) continue;
+
+                    if (lm.type === 'apollo') {
+                        // Apollo Landestellen: Spektakulärer glühender Signalmarker
+                        const pulse = (Math.sin(Date.now() * 0.005 + i) + 1) * 0.5;
+                        const auraR = 6.0 + pulse * 5.0;
+
+                        // Äußerer Glow
+                        cityCtx.beginPath();
+                        cityCtx.arc(sx, sy, auraR + 5, 0, Math.PI * 2);
+                        cityCtx.fillStyle = `rgba(0, 229, 255, ${0.18 + pulse * 0.22})`;
+                        cityCtx.fill();
+
+                        // Ring
+                        cityCtx.beginPath();
+                        cityCtx.arc(sx, sy, 5.0, 0, Math.PI * 2);
+                        cityCtx.fillStyle = '#00e5ff';
+                        cityCtx.fill();
+                        cityCtx.strokeStyle = '#ffffff';
+                        cityCtx.lineWidth = 1.6;
+                        cityCtx.stroke();
+
+                        // Badge
+                        const badgeText = `🚀 ${lm.name}`;
+                        cityCtx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                        const textW = cityCtx.measureText(badgeText).width;
+                        const bW = textW + 14;
+                        const bH = 20;
+                        const bX = sx - bW / 2;
+                        const bY = sy - 28;
+
+                        cityCtx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+                        cityCtx.strokeStyle = 'rgba(0, 229, 255, 0.9)';
+                        cityCtx.lineWidth = 1.3;
+                        cityCtx.beginPath();
+                        if (typeof cityCtx.roundRect === 'function') {
+                            cityCtx.roundRect(bX, bY, bW, bH, 10);
+                        } else {
+                            cityCtx.rect(bX, bY, bW, bH);
+                        }
+                        cityCtx.fill();
+                        cityCtx.stroke();
+
+                        cityCtx.fillStyle = '#38bdf8';
+                        cityCtx.textAlign = 'center';
+                        cityCtx.textBaseline = 'middle';
+                        cityCtx.fillText(badgeText, sx, bY + bH / 2);
+
+                    } else if (lm.type === 'crater') {
+                        // Krater-Markierung mit Umriss-Symbol
+                        cityCtx.beginPath();
+                        cityCtx.arc(sx, sy, 3.2, 0, Math.PI * 2);
+                        cityCtx.fillStyle = '#e2e8f0';
+                        cityCtx.fill();
+                        cityCtx.strokeStyle = '#0f172a';
+                        cityCtx.lineWidth = 1.2;
+                        cityCtx.stroke();
+
+                        // Krater-Label
+                        cityCtx.textAlign = 'center';
+                        cityCtx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+                        cityCtx.shadowBlur = 4;
+                        cityCtx.fillStyle = '#f8fafc';
+                        cityCtx.font = '600 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                        cityCtx.fillText(`⊚ ${lm.name}`, sx, sy - 7);
+                        if (dist < 200 && lm.diam) {
+                            cityCtx.fillStyle = '#94a3b8';
+                            cityCtx.font = '500 9px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                            cityCtx.fillText(`⌀ ${lm.diam}`, sx, sy + 11);
+                        }
+                        cityCtx.shadowColor = 'transparent';
+
+                    } else if (lm.type === 'mountain') {
+                        // Mondgebirge / Mons
+                        cityCtx.beginPath();
+                        cityCtx.arc(sx, sy, 3.0, 0, Math.PI * 2);
+                        cityCtx.fillStyle = '#f59e0b';
+                        cityCtx.fill();
+                        cityCtx.strokeStyle = '#ffffff';
+                        cityCtx.lineWidth = 1.0;
+                        cityCtx.stroke();
+
+                        cityCtx.textAlign = 'center';
+                        cityCtx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+                        cityCtx.shadowBlur = 4;
+                        cityCtx.fillStyle = '#fde68a';
+                        cityCtx.font = '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                        cityCtx.fillText(`⛰️ ${lm.name}`, sx, sy - 6);
+                        cityCtx.shadowColor = 'transparent';
+
+                    } else {
+                        // Mare (Mondmeer)
+                        cityCtx.textAlign = 'center';
+                        cityCtx.shadowColor = 'rgba(0, 0, 0, 0.95)';
+                        cityCtx.shadowBlur = 5;
+                        cityCtx.fillStyle = '#cbd5e1';
+                        cityCtx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                        cityCtx.fillText(`🌊 ${lm.name}`, sx, sy);
+                        cityCtx.shadowColor = 'transparent';
+                    }
+                }
+                cityCtx.restore();
+                return;
+            }
+
             // Küstenlinien-Detailgrad dynamisch überblenden (50m Basis + 10m Ultra-Detail bei Nah-Zoom)
             if (coastMesh10 && coastMesh50) {
                 if (dist <= 135) {
@@ -10431,6 +10829,29 @@
 
             const matches = [];
 
+            // SONDERFALL: MOND-SUCHE
+            if (currentCelestialBody === 'moon') {
+                if (typeof moonLandmarks !== 'undefined') {
+                    for (let i = 0; i < moonLandmarks.length; i++) {
+                        const lm = moonLandmarks[i];
+                        const nameLow = lm.name.toLowerCase();
+                        const areaLow = (lm.area || '').toLowerCase();
+                        const descLow = (lm.desc || '').toLowerCase();
+
+                        if (nameLow.startsWith(query)) {
+                            matches.push({ city: { ...lm, isMoon: true, country: lm.area }, priority: 10 });
+                        } else if (nameLow.includes(query) || areaLow.includes(query) || descLow.includes(query)) {
+                            matches.push({ city: { ...lm, isMoon: true, country: lm.area }, priority: 5 });
+                        }
+                    }
+                }
+                matches.sort((a, b) => b.priority - a.priority);
+                currentSuggestions = matches.slice(0, 6).map(m => m.city);
+                activeSuggestionIndex = -1;
+                renderSuggestionsHtml(query);
+                return;
+            }
+
             // PV-Anlagen-Treffer: nur wenn eingeloggt UND die echten Standortdaten bereits geladen sind
             // (vor Login/ohne Daten bleiben lat/lng/Namen null - siehe PV_SYSTEM_LOCATION weiter oben).
             // Absichtlich KEINE hardcodierten Adress-Strings mehr hier, nur die dynamischen Felder.
@@ -10504,12 +10925,14 @@
                         tempStr = (pData && pData.solar_power !== undefined) ? 
                             `<span style="color:${pColor}; font-weight:700;">☀️ ${pData.solar_power.toFixed(2)} kW</span>` : 
                             `<span style="color:${pColor}; font-weight:700;">☀️ PV</span>`;
+                    } else if (city.isMoon) {
+                        tempStr = `<span style="color:#38bdf8; font-weight:600;">${city.type === 'apollo' ? '🚀 Apollo' : (city.type === 'crater' ? '⊚ Krater' : '🌊 Mare')}</span>`;
                     } else {
                         const real = getInterpolatedData(city.lat, city.lng);
                         tempStr = Math.round(real.t) + '°C';
                     }
                     const countryStr = city.country || '';
-                    const nameStyle = city.isPv ? `style="color:${city.pvPlant === 'zun' ? '#00e5ff' : '#ffdb00'}; font-weight:700;"` : '';
+                    const nameStyle = city.isPv ? `style="color:${city.pvPlant === 'zun' ? '#00e5ff' : '#ffdb00'}; font-weight:700;"` : (city.isMoon ? 'style="color:#f1f5f9; font-weight:600;"' : '');
                     html += `
                         <div class="suggestion-item" data-idx="${idx}">
                             <div class="suggestion-main">
@@ -10522,14 +10945,16 @@
                 });
             }
 
-            html += `
-                <div class="suggestion-item suggestion-online" data-online="true">
-                    <div class="suggestion-main">
-                        <div class="suggestion-name" style="color: #00ccff;">🔍 Weltweit suchen nach "${escapeHtml(query)}"...</div>
-                        <div class="suggestion-sub">OpenStreetMap-Suche für Berge, Täler & Orte</div>
+            if (currentCelestialBody !== 'moon') {
+                html += `
+                    <div class="suggestion-item suggestion-online" data-online="true">
+                        <div class="suggestion-main">
+                            <div class="suggestion-name" style="color: #00ccff;">🔍 Weltweit suchen nach "${escapeHtml(query)}"...</div>
+                            <div class="suggestion-sub">OpenStreetMap-Suche für Berge, Täler & Orte</div>
+                        </div>
                     </div>
-                </div>
-            `;
+                `;
+            }
 
             searchSuggestions.innerHTML = html;
             searchSuggestions.style.display = 'block';
@@ -10553,7 +10978,13 @@
             searchSuggestions.style.display = 'none';
             searchClearBtn.style.display = 'flex';
             flyToLocation(city.lat, city.lng, city.name);
-            if (city.isPv) {
+            if (city.isMoon) {
+                // Moon Landmark Popup & Info
+                clickedPopupPoint = { lat: city.lat, lng: city.lng };
+                if (typeof showMoonLandmarkDetails === 'function') {
+                    showMoonLandmarkDetails(city);
+                }
+            } else if (city.isPv) {
                 showPvDashboard(city.pvPlant || 'foxess');
             } else {
                 showLocationForecast(city.lat, city.lng, city.name, city.country);
@@ -11416,10 +11847,70 @@
         const mouse = new THREE.Vector2();
 
         let lastClickedElevation = null;
-        let lastElevationPointKey = null;
+        function showMoonLandmarkDetails(landmark) {
+            if (!landmark || !popupEl) return;
+            const typeIcon = landmark.type === 'apollo' ? '🚀' : (landmark.type === 'crater' ? '⊚' : (landmark.type === 'mountain' ? '⛰️' : '🌊'));
+            const typeLabel = landmark.type === 'apollo' ? 'Apollo Mondlandestelle' : (landmark.type === 'crater' ? 'Einschlagkrater' : (landmark.type === 'mountain' ? 'Mondgebirge' : 'Mondmeer (Mare)'));
+            const elevStr = landmark.elev >= 0 ? `+${landmark.elev} m` : `${landmark.elev} m`;
+            const latStr = `${Math.abs(landmark.lat).toFixed(2)}° ${landmark.lat >= 0 ? 'N' : 'S'}`;
+            const lngStr = `${Math.abs(landmark.lng).toFixed(2)}° ${landmark.lng >= 0 ? 'E' : 'W'}`;
+
+            popupEl.style.display = 'block';
+            popupEl.innerHTML = `
+                <div style="min-width: 190px; max-width: 260px; line-height: 1.4;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 3px;">
+                        <span style="font-size: 10px; color: #38bdf8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${typeIcon} ${typeLabel}</span>
+                        ${landmark.date ? `<span style="font-size: 9px; color: #94a3b8; background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px;">${landmark.date}</span>` : ''}
+                    </div>
+                    <div style="font-size: 14px; font-weight: 700; color: #ffffff; margin-bottom: 2px;">${escapeHtml(landmark.name)}</div>
+                    <div style="font-size: 10.5px; color: #cbd5e1; margin-bottom: 5px;">${escapeHtml(landmark.area || '')}</div>
+                    <div style="font-size: 10px; color: #94a3b8; background: rgba(0,0,0,0.3); border-radius: 5px; padding: 4px 6px; margin-bottom: 5px;">
+                        ${escapeHtml(landmark.desc || '')}
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 9.5px; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px;">
+                        <span>📍 ${latStr}, ${lngStr}</span>
+                        <strong style="color: #facc15;">${elevStr}</strong>
+                    </div>
+                </div>
+            `;
+        }
 
         function updatePopupContent() {
             if (!clickedPopupPoint) return;
+
+            // SONDERFALL: MOND-POPUP
+            if (currentCelestialBody === 'moon') {
+                let nearest = null;
+                let minDistSq = Infinity;
+                if (typeof moonLandmarks !== 'undefined') {
+                    const cLat = clickedPopupPoint.lat;
+                    const cLng = clickedPopupPoint.lng;
+                    const cosL = Math.cos(cLat * Math.PI / 180);
+                    for (let i = 0; i < moonLandmarks.length; i++) {
+                        const lm = moonLandmarks[i];
+                        const dLat = lm.lat - cLat;
+                        const dLng = (lm.lng - cLng) * cosL;
+                        const dSq = dLat * dLat + dLng * dLng;
+                        if (dSq < minDistSq) {
+                            minDistSq = dSq;
+                            nearest = lm;
+                        }
+                    }
+                }
+                if (nearest && minDistSq < 25.0) {
+                    showMoonLandmarkDetails(nearest);
+                } else {
+                    const latStr = `${Math.abs(clickedPopupPoint.lat).toFixed(2)}° ${clickedPopupPoint.lat >= 0 ? 'N' : 'S'}`;
+                    const lngStr = `${Math.abs(clickedPopupPoint.lng).toFixed(2)}° ${clickedPopupPoint.lng >= 0 ? 'E' : 'W'}`;
+                    popupEl.innerHTML = `
+                        <div style="font-size: 11px; color: #94a3b8; margin-bottom: 2px;">🌙 Mond-Koordinate</div>
+                        <strong style="font-size: 13px; color: #f1f5f9;">${latStr}, ${lngStr}</strong><br>
+                        <span style="font-size: 10px; color: #64748b;">Mondkruste / Regolith</span>
+                    `;
+                }
+                return;
+            }
+
             if (currentMode === 'topo' || currentMode === 'satellite') {
                 const ptKey = `${clickedPopupPoint.lat.toFixed(3)},${clickedPopupPoint.lng.toFixed(3)}`;
                 const renderElevHtml = (elev) => {
@@ -11755,7 +12246,7 @@
                 }
                 const pName = (nearestCity && minDistSq < 0.25) ? nearestCity.name : "Ausgewählter Ort";
                 const pCountry = (nearestCity && minDistSq < 0.25) ? nearestCity.country : "";
-                if (dSqPv >= 0.08) {
+                if (currentCelestialBody !== 'moon' && dSqPv >= 0.08) {
                     showLocationForecast(clickedPopupPoint.lat, clickedPopupPoint.lng, pName, pCountry);
                 }
             } else {
@@ -12154,6 +12645,165 @@
             }
         }
         window.switchLayer = switchLayer;
+
+        // CELESTIAL BODY WECHSLER (🌍 ERDE <-> 🌙 MOND)
+        let lastEarthMode = 'temp';
+        function switchCelestialBody(body) {
+            const prevBody = currentCelestialBody;
+            currentCelestialBody = body;
+
+            const btnEarth = document.getElementById('celestial-btn-earth');
+            const btnMoon = document.getElementById('celestial-btn-moon');
+            const btnMoonVis = document.getElementById('btn-moon-vis');
+            const searchInput = document.getElementById('searchInput');
+
+            if (btnEarth) btnEarth.className = 'celestial-btn' + (body === 'earth' ? ' active' : '');
+            if (btnMoon) btnMoon.className = 'celestial-btn' + (body === 'moon' ? ' active' : '');
+
+            const earthButtons = [
+                document.getElementById('btn-temp-vis'),
+                document.getElementById('btn-solar-vis'),
+                document.getElementById('btn-topo-vis'),
+                document.getElementById('btn-satellite-vis'),
+                document.getElementById('btn-route-vis'),
+                document.getElementById('btn-area-vis'),
+                document.getElementById('solarClimSelectWrap'),
+                document.getElementById('topoSubSelectWrap'),
+                document.getElementById('pvQuickBtn'),
+                document.getElementById('pvZunQuickBtn')
+            ];
+
+            const playBtn = document.getElementById('playBtn');
+            const playSpeedBtn = document.getElementById('playSpeedBtn');
+            const timeSlider = document.getElementById('timeSlider');
+            const timeLabels = document.querySelector('.time-labels');
+            const timeDisplayTitle = document.getElementById('timeDisplayTitle');
+            const legendEl = document.getElementById('legend');
+
+            if (body === 'moon') {
+                if (prevBody === 'earth') {
+                    lastEarthMode = currentMode || 'temp';
+                }
+
+                // Animation & Zeitleiste anhalten & ausblenden
+                if (playAnimId) {
+                    cancelAnimationFrame(playAnimId);
+                    playAnimId = null;
+                    if (playBtn) playBtn.innerText = '▶ Play';
+                }
+                if (playBtn) playBtn.style.display = 'none';
+                if (playSpeedBtn) playSpeedBtn.style.display = 'none';
+                if (timeSlider) timeSlider.style.display = 'none';
+                if (timeLabels) timeLabels.style.display = 'none';
+
+                // Alle irdischen Ebenen-Buttons ausblenden
+                earthButtons.forEach(b => { if (b) b.style.display = 'none'; });
+                if (btnMoonVis) {
+                    btnMoonVis.style.display = 'inline-flex';
+                    btnMoonVis.className = 'layer-toggle-btn active-moon';
+                }
+
+                // 3D-Meshes konfigurieren: Erdkacheln, Wetter, Grenzen und Flüsse ausblenden
+                if (dataMesh) dataMesh.visible = false;
+                if (hillshadeGroup) hillshadeGroup.visible = false;
+                if (typeof topoBaseMesh !== 'undefined' && topoBaseMesh) topoBaseMesh.visible = false;
+                if (topoTileGroup) topoTileGroup.visible = false;
+                if (typeof lineMesh !== 'undefined' && lineMesh) lineMesh.visible = false;
+                if (typeof landBordersMesh !== 'undefined' && landBordersMesh) landBordersMesh.visible = false;
+                if (typeof statesMesh !== 'undefined' && statesMesh) statesMesh.visible = false;
+                if (typeof coastMesh10 !== 'undefined' && coastMesh10) coastMesh10.visible = false;
+                if (typeof coastMesh50 !== 'undefined' && coastMesh50) coastMesh50.visible = false;
+                if (typeof lakesMesh !== 'undefined' && lakesMesh) lakesMesh.visible = false;
+                if (typeof riversMesh !== 'undefined' && riversMesh) riversMesh.visible = false;
+                if (typeof roadsMesh !== 'undefined' && roadsMesh) roadsMesh.visible = false;
+                if (typeof urbanFillMesh !== 'undefined' && urbanFillMesh) urbanFillMesh.visible = false;
+                if (typeof urbanLineMesh !== 'undefined' && urbanLineMesh) urbanLineMesh.visible = false;
+
+                // Partikel löschen
+                if (typeof screenWindCtx !== 'undefined' && screenWindCtx) {
+                    screenWindCtx.clearRect(0, 0, screenW, screenH);
+                }
+
+                // Mond-Textur & Relief aktivieren
+                if (earthMesh) {
+                    earthMesh.visible = true;
+                    earthMesh.material.map = moonTexture;
+                    if (earthMesh.material.bumpMap !== undefined) {
+                        earthMesh.material.bumpMap = moonBumpTexture;
+                        earthMesh.material.bumpScale = 0.05;
+                    }
+                    earthMesh.material.needsUpdate = true;
+                }
+
+                // UI-Texte aktualisieren
+                if (timeDisplayTitle) timeDisplayTitle.innerText = '🌙 Mond-Atlas (3D Oberflächenrelief)';
+                const timeLabelEl = document.getElementById('timeLabel');
+                if (timeLabelEl) timeLabelEl.innerText = 'Mondoberfläche: Apollo-Landestellen, Krater & Maria';
+
+                // Legende an Mond anpassen
+                if (legendEl) {
+                    legendEl.style.display = 'flex';
+                    const legMin = document.getElementById('legend-min');
+                    const legMax = document.getElementById('legend-max');
+                    const legBar = document.getElementById('legend-bar');
+                    if (legMin) legMin.innerText = 'Maria (-8 km)';
+                    if (legMax) legMax.innerText = 'Hochland (+5.5 km)';
+                    if (legBar) legBar.style.background = 'linear-gradient(to right, #11151c, #2a303c, #586376, #94a3b8, #cbd5e1, #ffffff)';
+                }
+
+                // Suchleisten-Platzhalter anpassen
+                if (searchInput) {
+                    searchInput.placeholder = 'Mondkrater, Maria oder Apollo-Mission suchen...';
+                    searchInput.value = '';
+                }
+                const searchClearBtn = document.getElementById('searchClearBtn');
+                if (searchClearBtn) searchClearBtn.style.display = 'none';
+
+                // Popup und Prognosekarte schließen
+                if (popupEl) popupEl.style.display = 'none';
+                clickedPopupPoint = null;
+                const fc = document.getElementById('forecast-container');
+                if (fc) fc.style.display = 'none';
+
+                // Kamera sanft auf Apollo 11 zentrieren, falls bisher über Erde
+                flyToLocation(0.674, 23.473, 'Apollo 11');
+
+            } else {
+                // ZURÜCK ZUR ERDE
+                // Alle irdischen Buttons wieder einblenden
+                earthButtons.forEach(b => { if (b) b.style.display = ''; });
+                if (btnMoonVis) btnMoonVis.style.display = 'none';
+
+                // Erd-Textur wiederherstellen
+                if (earthMesh) {
+                    earthMesh.material.map = earthTexture;
+                    if (earthMesh.material.bumpMap !== undefined) {
+                        earthMesh.material.bumpMap = null;
+                    }
+                    earthMesh.material.needsUpdate = true;
+                }
+
+                // Vektor-Ebenen reaktivieren
+                if (typeof lineMesh !== 'undefined' && lineMesh) lineMesh.visible = true;
+                if (typeof landBordersMesh !== 'undefined' && landBordersMesh) landBordersMesh.visible = true;
+                if (typeof statesMesh !== 'undefined' && statesMesh) statesMesh.visible = true;
+                if (typeof coastMesh50 !== 'undefined' && coastMesh50) coastMesh50.visible = true;
+
+                // Suchfeld zurücksetzen
+                if (searchInput) {
+                    searchInput.placeholder = 'Ort oder Stadt suchen...';
+                    searchInput.value = '';
+                }
+
+                // Zuletzt aktiven Erd-Modus wiederherstellen
+                switchLayer(lastEarthMode || 'temp');
+            }
+
+            if (typeof renderCityLabels === 'function') {
+                renderCityLabels();
+            }
+        }
+        window.switchCelestialBody = switchCelestialBody;
 
         function applySolarRangeAndLegend() {
             const isLive = solarClimSelection === 'live';
