@@ -354,7 +354,7 @@
             position: absolute;
             top: 24px;
             left: 24px;
-            width: 330px;
+            width: 480px;
             max-width: calc(100vw - 48px);
             z-index: 50;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -1476,16 +1476,22 @@
     <canvas id="cityLabelsCanvas"></canvas>
     <div id="popup"></div>
 
-    <!-- Suchleiste -->
+    <!-- Suchleiste & Himmelskörper-Wechsler -->
     <div id="search-container">
-        <div id="search-box">
-            <svg class="search-icon" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-            <input type="text" id="searchInput" placeholder="Ort oder Stadt suchen..." autocomplete="off" spellcheck="false">
-            <button id="searchClearBtn" title="Löschen">✕</button>
-            <button id="geolocateBtn" title="Meinen genauen Standort verwenden (GPS)">📍</button>
+        <div style="display: flex; gap: 8px; align-items: center; width: 100%;">
+            <div id="search-box" style="flex: 1;">
+                <svg class="search-icon" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" id="searchInput" placeholder="Ort oder Stadt suchen..." autocomplete="off" spellcheck="false">
+                <button id="searchClearBtn" title="Löschen">✕</button>
+                <button id="geolocateBtn" title="Meinen genauen Standort verwenden (GPS)">📍</button>
+            </div>
+            <div id="celestial-body-toggle" title="Himmelskörper wählen (Erde / Mond)">
+                <button type="button" id="celestial-btn-earth" class="celestial-btn active" onclick="switchCelestialBody('earth')">🌍 Erde</button>
+                <button type="button" id="celestial-btn-moon" class="celestial-btn" onclick="switchCelestialBody('moon')">🌙 Mond</button>
+            </div>
         </div>
         <div id="searchSuggestions" style="display: none;"></div>
     </div>
@@ -2476,11 +2482,11 @@
             <span id="timeLabelMax">+72h</span>
         </div>
         <div id="layer-toggles-visible">
-            <button id="btn-moon-vis" class="layer-toggle-btn" onclick="switchCelestialBody('moon')" style="display:none;" title="Detaillierte Mond-Reliefkarte &amp; Mondlandestellen">🌙 Mond-Atlas</button>
             <button id="btn-temp-vis" class="layer-toggle-btn active" onclick="switchLayer('temp')">🌡️ Temperatur</button>
             <button id="btn-solar-vis" class="layer-toggle-btn" onclick="switchLayer('solar')">☀️ Einstrahlung</button>
             <button id="btn-topo-vis" class="layer-toggle-btn" onclick="switchLayer('topo')">⛰️ Topographie</button>
             <button id="btn-satellite-vis" class="layer-toggle-btn" onclick="switchLayer('satellite')">🛰️ Satellit</button>
+            <button id="btn-moon-vis" class="layer-toggle-btn" onclick="switchCelestialBody('moon')" title="Detaillierte 3D Mondkarte &amp; Apollo-Landestellen">🌙 Mond</button>
             <button id="btn-route-vis" class="layer-toggle-btn" onclick="toggleRoutePlanner()" title="3D-Routenplaner &amp; Höhenprofil öffnen">🧭 Route</button>
             <button id="btn-area-vis" class="layer-toggle-btn" onclick="toggleAreaMeasure()" title="3D-Flächenmessung &amp; Formbestimmung">📐 Fläche</button>
             <div id="solarClimSelectWrap" style="display:none;">
@@ -12530,6 +12536,9 @@
         }, 60000);
 
         function switchLayer(mode) {
+            if (currentCelestialBody === 'moon') {
+                switchCelestialBody('earth');
+            }
             currentMode = mode;
 
             const btnTemp = document.getElementById('btn-temp');
@@ -12541,10 +12550,12 @@
             const btnSolarVis = document.getElementById('btn-solar-vis');
             const btnTopoVis = document.getElementById('btn-topo-vis');
             const btnSatelliteVis = document.getElementById('btn-satellite-vis');
+            const btnMoonVis = document.getElementById('btn-moon-vis');
             if (btnTempVis) btnTempVis.className = 'layer-toggle-btn' + (mode === 'temp' ? ' active' : '');
             if (btnSolarVis) btnSolarVis.className = 'layer-toggle-btn' + (mode === 'solar' ? ' active-solar' : '');
             if (btnTopoVis) btnTopoVis.className = 'layer-toggle-btn' + (mode === 'topo' ? ' active-topo' : '');
             if (btnSatelliteVis) btnSatelliteVis.className = 'layer-toggle-btn' + (mode === 'satellite' ? ' active-satellite' : '');
+            if (btnMoonVis) btnMoonVis.className = 'layer-toggle-btn';
 
             const climWrap = document.getElementById('solarClimSelectWrap');
             if (climWrap) climWrap.style.display = mode === 'solar' ? 'flex' : 'none';
@@ -12696,10 +12707,12 @@
                 if (timeSlider) timeSlider.style.display = 'none';
                 if (timeLabels) timeLabels.style.display = 'none';
 
-                // Alle irdischen Ebenen-Buttons ausblenden
-                earthButtons.forEach(b => { if (b) b.style.display = 'none'; });
+                // Alle irdischen Ebenen-Buttons deaktivieren
+                const allVisBtns = document.querySelectorAll('.layer-toggle-btn');
+                allVisBtns.forEach(b => {
+                    b.classList.remove('active', 'active-solar', 'active-topo', 'active-satellite');
+                });
                 if (btnMoonVis) {
-                    btnMoonVis.style.display = 'inline-flex';
                     btnMoonVis.className = 'layer-toggle-btn active-moon';
                 }
 
@@ -12770,9 +12783,7 @@
 
             } else {
                 // ZURÜCK ZUR ERDE
-                // Alle irdischen Buttons wieder einblenden
-                earthButtons.forEach(b => { if (b) b.style.display = ''; });
-                if (btnMoonVis) btnMoonVis.style.display = 'none';
+                if (btnMoonVis) btnMoonVis.className = 'layer-toggle-btn';
 
                 // Erd-Textur wiederherstellen
                 if (earthMesh) {
