@@ -1460,6 +1460,19 @@
                 padding-top: 6px;
                 font-size: 10px;
             }
+            .celestial-btn {
+                padding: 3px 7px;
+                font-size: 10.5px;
+            }
+            #celestial-body-toggle {
+                margin-right: 0;
+            }
+        }
+        @media (max-width: 440px) {
+            .celestial-btn {
+                padding: 3px 5px;
+                font-size: 10px;
+            }
         }
     </style>
 </head>
@@ -2486,7 +2499,7 @@
             <button id="btn-solar-vis" class="layer-toggle-btn" onclick="switchLayer('solar')">☀️ Einstrahlung</button>
             <button id="btn-topo-vis" class="layer-toggle-btn" onclick="switchLayer('topo')">⛰️ Topographie</button>
             <button id="btn-satellite-vis" class="layer-toggle-btn" onclick="switchLayer('satellite')">🛰️ Satellit</button>
-            <button id="btn-moon-vis" class="layer-toggle-btn" onclick="switchCelestialBody('moon')" title="Detaillierte 3D Mondkarte &amp; Apollo-Landestellen">🌙 Mond</button>
+            <button id="btn-moon-vis" class="layer-toggle-btn" onclick="toggleMoonEarth()" title="Detaillierte 3D Mondkarte &amp; Apollo-Landestellen">🌙 Mond</button>
             <button id="btn-route-vis" class="layer-toggle-btn" onclick="toggleRoutePlanner()" title="3D-Routenplaner &amp; Höhenprofil öffnen">🧭 Route</button>
             <button id="btn-area-vis" class="layer-toggle-btn" onclick="toggleAreaMeasure()" title="3D-Flächenmessung &amp; Formbestimmung">📐 Fläche</button>
             <div id="solarClimSelectWrap" style="display:none;">
@@ -12815,6 +12828,15 @@
             }
         }
         window.switchCelestialBody = switchCelestialBody;
+
+        function toggleMoonEarth() {
+            if (currentCelestialBody === 'moon') {
+                switchCelestialBody('earth');
+            } else {
+                switchCelestialBody('moon');
+            }
+        }
+        window.toggleMoonEarth = toggleMoonEarth;
 
         function applySolarRangeAndLegend() {
             const isLive = solarClimSelection === 'live';
