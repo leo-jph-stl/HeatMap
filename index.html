@@ -2763,17 +2763,32 @@
 
         // CELESTIAL BODIES (Erde vs. Mond)
         let currentCelestialBody = 'earth';
-        const moonTexture = textureLoader.load('https://cdn.jsdelivr.net/gh/mrdoob/three.js@master/examples/textures/planets/moon_1024.jpg');
+        const moonTexture = textureLoader.load('assets/moon_4k.jpg', undefined, undefined, () => {
+            console.warn('Moon 4k fallback to 2k');
+            textureLoader.load('assets/moon_2k.jpg', (tex) => {
+                tex.wrapS = THREE.ClampToEdgeWrapping;
+                tex.wrapT = THREE.ClampToEdgeWrapping;
+                tex.minFilter = THREE.LinearMipmapLinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+                tex.generateMipmaps = true;
+                if (earthMesh && currentCelestialBody === 'moon') {
+                    earthMesh.material.map = tex;
+                    earthMesh.material.needsUpdate = true;
+                }
+            });
+        });
         moonTexture.wrapS = THREE.ClampToEdgeWrapping;
         moonTexture.wrapT = THREE.ClampToEdgeWrapping;
-        moonTexture.minFilter = THREE.LinearFilter;
+        moonTexture.minFilter = THREE.LinearMipmapLinearFilter;
         moonTexture.magFilter = THREE.LinearFilter;
+        moonTexture.generateMipmaps = true;
 
-        const moonBumpTexture = textureLoader.load('https://cdn.jsdelivr.net/gh/jeromeetienne/threex.planets@master/images/moonbump1k.jpg');
+        const moonBumpTexture = textureLoader.load('assets/moon_bump.jpg');
         moonBumpTexture.wrapS = THREE.ClampToEdgeWrapping;
         moonBumpTexture.wrapT = THREE.ClampToEdgeWrapping;
-        moonBumpTexture.minFilter = THREE.LinearFilter;
+        moonBumpTexture.minFilter = THREE.LinearMipmapLinearFilter;
         moonBumpTexture.magFilter = THREE.LinearFilter;
+        moonBumpTexture.generateMipmaps = true;
 
         // Detaillierte Landmarken des Mondes: Apollo-Landestellen, Mondmeere (Maria), markante Krater & Gebirge
         const moonLandmarks = [
@@ -3525,7 +3540,7 @@
         let lastCameraPos = new THREE.Vector3();
 
         function updateHillshadeTiles() {
-            if (currentMode === 'topo' || currentMode === 'satellite') return;
+            if (currentCelestialBody === 'moon' || currentMode === 'topo' || currentMode === 'satellite') return;
             const now = performance.now();
             if (now - lastTileUpdate < 100) return;
             
@@ -4417,6 +4432,264 @@
         }
         window.setTopoSubSelection = setTopoSubSelection;
 
+        // =========================================================================
+        // HIGH-RESOLUTION NASA LROC MOON TILE SYSTEM (LOD Streaming bis Sub-Kilometer)
+        // =========================================================================
+        const moonTileGroup = new THREE.Group();
+        moonTileGroup.rotation.y = -Math.PI / 2;
+        moonTileGroup.visible = false;
+        scene.add(moonTileGroup);
+
+        const loadedMoonTiles = new Map();
+        const loadingMoonKeys = new Set();
+        const activeMoonKeys = new Set();
+        const moonTileQueue = [];
+        const pendingMoonImages = new Map();
+        const MOON_CONCURRENT_LIMIT = 8;
+        let activeMoonHttpCount = 0;
+
+        function getMoonTileGeometry(row, col, z, segs = 8, radius = surfaceRadius + 0.04) {
+            const nCols = Math.pow(2, z + 1);
+            const nRows = Math.pow(2, z);
+            const lngMin = -180 + (col / nCols) * 360;
+            const lngMax = -180 + ((col + 1) / nCols) * 360;
+            const latMax = 90 - (row / nRows) * 180;
+            const latMin = 90 - ((row + 1) / nRows) * 180;
+
+            const positions = [];
+            const uvs = [];
+            const indices = [];
+
+            for (let iy = 0; iy <= segs; iy++) {
+                const vTile = iy / segs;
+                const lat = latMax - vTile * (latMax - latMin);
+                const vNorm = (90 - lat) / 180;
+
+                for (let ix = 0; ix <= segs; ix++) {
+                    const uTile = ix / segs;
+                    const lng = lngMin + uTile * (lngMax - lngMin);
+                    const uNorm = (lng + 180) / 360;
+
+                    const px = - radius * Math.cos(uNorm * Math.PI * 2) * Math.sin(vNorm * Math.PI);
+                    const py = radius * Math.cos(vNorm * Math.PI);
+                    const pz = radius * Math.sin(uNorm * Math.PI * 2) * Math.sin(vNorm * Math.PI);
+
+                    positions.push(px, py, pz);
+                    uvs.push(uTile, 1.0 - vTile);
+                }
+            }
+
+            for (let iy = 0; iy < segs; iy++) {
+                for (let ix = 0; ix < segs; ix++) {
+                    const a = iy * (segs + 1) + ix;
+                    const b = a + 1;
+                    const c = a + (segs + 1);
+                    const d = c + 1;
+                    indices.push(a, c, d, a, d, b);
+                }
+            }
+
+            const geom = new THREE.BufferGeometry();
+            geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            geom.setIndex(indices);
+            geom.computeVertexNormals();
+            geom.computeBoundingSphere();
+            return geom;
+        }
+
+        function queueMoonTile(z, row, col, key, d2) {
+            if (loadedMoonTiles.has(key) || loadingMoonKeys.has(key)) return;
+            loadingMoonKeys.add(key);
+            moonTileQueue.push({ z, row, col, key, d2 });
+            processMoonTileQueue();
+        }
+
+        function processMoonTileQueue() {
+            if (moonTileQueue.length === 0 || activeMoonHttpCount >= MOON_CONCURRENT_LIMIT) return;
+            moonTileQueue.sort((a, b) => a.d2 - b.d2);
+
+            while (activeMoonHttpCount < MOON_CONCURRENT_LIMIT && moonTileQueue.length > 0) {
+                const item = moonTileQueue.shift();
+                if (currentCelestialBody !== 'moon') {
+                    loadingMoonKeys.delete(item.key);
+                    continue;
+                }
+                activeMoonHttpCount++;
+                fetchAndBuildMoonTile(item.z, item.row, item.col, item.key);
+            }
+        }
+
+        function fetchAndBuildMoonTile(z, row, col, key) {
+            const url = `https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/${z}/${row}/${col}.jpg`;
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            pendingMoonImages.set(key, img);
+
+            const cleanup = () => {
+                pendingMoonImages.delete(key);
+                loadingMoonKeys.delete(key);
+                activeMoonHttpCount = Math.max(0, activeMoonHttpCount - 1);
+                processMoonTileQueue();
+            };
+
+            img.onload = () => {
+                if (currentCelestialBody !== 'moon') {
+                    cleanup();
+                    return;
+                }
+                const tex = new THREE.Texture(img);
+                tex.generateMipmaps = false;
+                tex.minFilter = THREE.LinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+                tex.needsUpdate = true;
+
+                const segs = (z <= 4) ? 12 : 8;
+                const geom = getMoonTileGeometry(row, col, z, segs, surfaceRadius + 0.04);
+                const mat = new THREE.MeshBasicMaterial({
+                    map: tex,
+                    side: THREE.FrontSide,
+                    depthWrite: true,
+                    depthTest: true
+                });
+                const mesh = new THREE.Mesh(geom, mat);
+                mesh.renderOrder = 1;
+                moonTileGroup.add(mesh);
+                loadedMoonTiles.set(key, { z, row, col, mesh, lastUsed: performance.now() });
+                cleanup();
+            };
+
+            img.onerror = () => {
+                cleanup();
+            };
+
+            img.src = url;
+        }
+
+        let lastMoonTileUpdate = 0;
+        let lastMoonCameraPos = new THREE.Vector3();
+
+        function updateMoonTiles(force = false) {
+            if (currentCelestialBody !== 'moon') {
+                if (moonTileGroup.visible) moonTileGroup.visible = false;
+                return;
+            }
+            if (!moonTileGroup.visible) moonTileGroup.visible = true;
+
+            const now = performance.now();
+            if (!force && now - lastMoonTileUpdate < 60) return;
+            if (!force && camera.position.distanceToSquared(lastMoonCameraPos) < 0.003) return;
+            lastMoonCameraPos.copy(camera.position);
+            lastMoonTileUpdate = now;
+
+            const dist = camera.position.length();
+            const h = Math.max(1, dist - earthRadius);
+
+            // Bei weitem Abstand (h > 100) reicht die 4K-Basissphäre völlig aus!
+            if (h > 100) {
+                moonTileQueue.length = 0;
+                return;
+            }
+
+            let z = 3;
+            if (h <= 5) z = 7;
+            else if (h <= 14) z = 6;
+            else if (h <= 32) z = 5;
+            else if (h <= 65) z = 4;
+            else z = 3;
+
+            const Px = camera.position.z;
+            const Py = camera.position.y;
+            const Pz = -camera.position.x;
+            const vFrac = Math.acos(Math.min(Math.max(Py / dist, -1), 1)) / Math.PI;
+            const centerLat = 90 - vFrac * 180;
+            let uFrac = Math.atan2(Pz, -Px) / (2 * Math.PI);
+            if (uFrac < 0) uFrac += 1;
+            const centerLng = uFrac * 360 - 180;
+
+            const nCols = Math.pow(2, z + 1);
+            const nRows = Math.pow(2, z);
+
+            const fovRad = (camera.fov * Math.PI) / 180;
+            const viewAngle = 2 * Math.asin(Math.min(1.0, Math.tan(fovRad / 2) * (dist / surfaceRadius)));
+            const degSpan = Math.min(100, Math.max(8, (viewAngle * 180 / Math.PI) * 1.25));
+
+            const latSpan = degSpan / 2;
+            const cosLat = Math.max(0.2, Math.cos(centerLat * Math.PI / 180));
+            const lngSpan = Math.min(180, latSpan / cosLat);
+
+            const latMin = Math.max(-90, centerLat - latSpan);
+            const latMax = Math.min(90, centerLat + latSpan);
+            const lngMin = centerLng - lngSpan;
+            const lngMax = centerLng + lngSpan;
+
+            const colMin = Math.floor((lngMin + 180) / 360 * nCols);
+            const colMax = Math.floor((lngMax + 180) / 360 * nCols);
+            const rowMin = Math.max(0, Math.floor((90 - latMax) / 180 * nRows));
+            const rowMax = Math.min(nRows - 1, Math.floor((90 - latMin) / 180 * nRows));
+
+            const candidateTiles = [];
+            for (let r = rowMin; r <= rowMax; r++) {
+                const tLat = 90 - (r + 0.5) / nRows * 180;
+                const dLat = tLat - centerLat;
+
+                for (let c = colMin; c <= colMax; c++) {
+                    const wrappedCol = ((c % nCols) + nCols) % nCols;
+                    const tLon = -180 + (wrappedCol + 0.5) / nCols * 360;
+                    let dLng = Math.abs(tLon - centerLng);
+                    if (dLng > 180) dLng = 360 - dLng;
+                    dLng *= cosLat;
+
+                    const d2 = dLat * dLat + dLng * dLng;
+                    const key = `${z}_${r}_${wrappedCol}`;
+                    candidateTiles.push({ z, row: r, col: wrappedCol, key, d2 });
+                }
+            }
+
+            candidateTiles.sort((a, b) => a.d2 - b.d2);
+            const maxTiles = 28;
+            activeMoonKeys.clear();
+            const activeList = candidateTiles.slice(0, maxTiles);
+            activeList.forEach(t => activeMoonKeys.add(t.key));
+
+            activeList.forEach(t => {
+                if (loadedMoonTiles.has(t.key)) {
+                    loadedMoonTiles.get(t.key).lastUsed = now;
+                } else {
+                    queueMoonTile(t.z, t.row, t.col, t.key, t.d2);
+                }
+            });
+
+            for (let i = moonTileQueue.length - 1; i >= 0; i--) {
+                if (!activeMoonKeys.has(moonTileQueue[i].key)) {
+                    loadingMoonKeys.delete(moonTileQueue[i].key);
+                    moonTileQueue.splice(i, 1);
+                }
+            }
+
+            if (loadedMoonTiles.size > 120) {
+                const sorted = Array.from(loadedMoonTiles.entries())
+                    .filter(([k, t]) => !activeMoonKeys.has(k))
+                    .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+
+                const removeCount = loadedMoonTiles.size - 100;
+                for (let i = 0; i < Math.min(removeCount, sorted.length); i++) {
+                    const [k, t] = sorted[i];
+                    if (t.z !== z || (now - t.lastUsed > 6000)) {
+                        moonTileGroup.remove(t.mesh);
+                        t.mesh.geometry.dispose();
+                        if (t.mesh.material.map) t.mesh.material.map.dispose();
+                        t.mesh.material.dispose();
+                        loadedMoonTiles.delete(k);
+                    }
+                }
+            }
+        }
+        controls.addEventListener('change', () => {
+            if (currentCelestialBody === 'moon') updateMoonTiles();
+        });
+        window.updateMoonTiles = updateMoonTiles;
+
         // SCREEN-SPACE WIND & CITY LABELS (Windy.com Architektur - IMMER GESTOCHEN SCHARF!)
         const screenWindCanvas = document.getElementById('screenWindCanvas');
         let screenW = window.innerWidth;
@@ -4454,7 +4727,7 @@
         const tempVec1 = new THREE.Vector3();
 
         function renderScreenWindParticles(timeScale = 1.0) {
-            if (currentMode === 'topo' || currentMode === 'satellite') {
+            if (currentCelestialBody === 'moon' || currentMode === 'topo' || currentMode === 'satellite') {
                 screenWindCtx.clearRect(0, 0, screenW, screenH);
                 return;
             }
@@ -4748,6 +5021,9 @@
             try {
                 if (typeof updateTopoTiles === 'function' && (currentMode === 'topo' || currentMode === 'satellite')) updateTopoTiles();
             } catch(e) { /* topo render safe */ }
+            try {
+                if (typeof updateMoonTiles === 'function' && currentCelestialBody === 'moon') updateMoonTiles();
+            } catch(e) { /* moon tile safe */ }
 
             // Dynamische, seidenweiche hypsometrische Höhenanpassung (LERP - verhindert jegliches Ruckeln/Farbspringen beim Wischen)
             if (currentMode === 'topo' && currentTopoProvider === 'hypsometric') {
@@ -12750,15 +13026,17 @@
                     screenWindCtx.clearRect(0, 0, screenW, screenH);
                 }
 
-                // Mond-Textur & Relief aktivieren
+                // Mond-Textur & hochauflösendes Relief aktivieren
                 if (earthMesh) {
                     earthMesh.visible = true;
                     earthMesh.material.map = moonTexture;
-                    if (earthMesh.material.bumpMap !== undefined) {
-                        earthMesh.material.bumpMap = moonBumpTexture;
-                        earthMesh.material.bumpScale = 0.05;
-                    }
                     earthMesh.material.needsUpdate = true;
+                }
+                if (typeof moonTileGroup !== 'undefined' && moonTileGroup) {
+                    moonTileGroup.visible = true;
+                }
+                if (typeof updateMoonTiles === 'function') {
+                    updateMoonTiles(true);
                 }
 
                 // UI-Texte aktualisieren
@@ -12798,12 +13076,24 @@
                 // ZURÜCK ZUR ERDE
                 if (btnMoonVis) btnMoonVis.className = 'layer-toggle-btn';
 
+                if (typeof moonTileGroup !== 'undefined' && moonTileGroup) {
+                    moonTileGroup.visible = false;
+                }
+                if (typeof pendingMoonImages !== 'undefined') {
+                    for (const [key, imgObj] of pendingMoonImages.entries()) {
+                        imgObj.src = '';
+                        imgObj.onload = null;
+                        imgObj.onerror = null;
+                    }
+                    pendingMoonImages.clear();
+                    moonTileQueue.length = 0;
+                    loadingMoonKeys.clear();
+                    activeMoonHttpCount = 0;
+                }
+
                 // Erd-Textur wiederherstellen
                 if (earthMesh) {
                     earthMesh.material.map = earthTexture;
-                    if (earthMesh.material.bumpMap !== undefined) {
-                        earthMesh.material.bumpMap = null;
-                    }
                     earthMesh.material.needsUpdate = true;
                 }
 
