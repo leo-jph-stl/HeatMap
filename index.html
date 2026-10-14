@@ -209,6 +209,127 @@
             color: #ffffff;
             box-shadow: 0 0 12px rgba(255, 255, 255, 0.35);
         }
+        .overlay-divider {
+            width: 1px;
+            height: 18px;
+            background: rgba(255, 255, 255, 0.18);
+            margin: 0 4px;
+            flex-shrink: 0;
+        }
+        .layer-toggle-btn.overlay-pill {
+            background: rgba(15, 23, 42, 0.6);
+            border-color: rgba(255, 255, 255, 0.2);
+            color: #94a3b8;
+            font-size: 11px;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .layer-toggle-btn.overlay-pill:hover {
+            color: #f1f5f9;
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+        .layer-toggle-btn.overlay-pill.active {
+            background: rgba(14, 165, 233, 0.18);
+            border-color: rgba(56, 189, 248, 0.6);
+            color: #38bdf8;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+        }
+        .layer-toggle-btn.overlay-pill.active-ht {
+            background: rgba(239, 68, 68, 0.16);
+            border-color: rgba(239, 68, 68, 0.6);
+            color: #fca5a5;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.25);
+        }
+        .layer-toggle-btn.overlay-pill.active-menu {
+            background: rgba(168, 85, 247, 0.18);
+            border-color: rgba(168, 85, 247, 0.6);
+            color: #c084fc;
+        }
+        .overlay-glass-menu {
+            position: fixed;
+            bottom: 96px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.94);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            box-shadow: 0 20px 45px rgba(0, 0, 0, 0.7), 0 0 1px rgba(255, 255, 255, 0.3);
+            border-radius: 16px;
+            width: 330px;
+            max-width: 92vw;
+            z-index: 1000;
+            padding: 14px;
+            color: #fff;
+            animation: popupFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .overlay-menu-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+            padding-bottom: 8px;
+            margin-bottom: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            color: #f1f5f9;
+        }
+        .overlay-menu-close {
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            font-size: 14px;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 6px;
+            line-height: 1;
+        }
+        .overlay-menu-close:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .overlay-checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 9px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            user-select: none;
+            margin-bottom: 3px;
+        }
+        .overlay-checkbox-row:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+        .overlay-checkbox-row input[type="checkbox"] {
+            accent-color: #38bdf8;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            margin: 0;
+            flex-shrink: 0;
+        }
+        .overlay-icon {
+            font-size: 17px;
+            flex-shrink: 0;
+            width: 22px;
+            text-align: center;
+        }
+        .overlay-text {
+            display: flex;
+            flex-direction: column;
+        }
+        .overlay-text strong {
+            font-size: 12px;
+            color: #f8fafc;
+            font-weight: 600;
+        }
+        .overlay-text small {
+            font-size: 10px;
+            color: #94a3b8;
+            margin-top: 1px;
+            line-height: 1.25;
+        }
         #celestial-body-toggle {
             display: flex;
             align-items: center;
@@ -2502,6 +2623,10 @@
             <button id="btn-moon-vis" class="layer-toggle-btn" onclick="toggleMoonEarth()" title="Detaillierte 3D Mondkarte &amp; Apollo-Landestellen">🌙 Mond</button>
             <button id="btn-route-vis" class="layer-toggle-btn" onclick="toggleRoutePlanner()" title="3D-Routenplaner &amp; Höhenprofil öffnen">🧭 Route</button>
             <button id="btn-area-vis" class="layer-toggle-btn" onclick="toggleAreaMeasure()" title="3D-Flächenmessung &amp; Formbestimmung">📐 Fläche</button>
+            <div class="overlay-divider"></div>
+            <button id="btn-overlay-ht" class="layer-toggle-btn overlay-pill active-ht" onclick="toggleOverlay('ht')" title="Hoch- &amp; Tiefdruckgebiete (H/T) ein-/ausblenden">🔴🔵 Hoch/Tief</button>
+            <button id="btn-overlay-isobars" class="layer-toggle-btn overlay-pill active" onclick="toggleOverlay('isobars')" title="Isobaren (Luftdruck-Höhenlinien in hPa) ein-/ausblenden">🌀 Isobaren</button>
+            <button id="btn-overlay-menu" class="layer-toggle-btn overlay-pill" onclick="toggleOverlayMenu()" title="Zusätzliche Wetter-Ebenen &amp; Overlays anpassen">🥞 Ebenen ▾</button>
             <div id="solarClimSelectWrap" style="display:none;">
                 <select id="solarClimSelect" onchange="setSolarClimSelection(this.value)" title="Zeitraum wählen">
                     <option value="live">Live</option>
@@ -2529,6 +2654,48 @@
                 </select>
             </div>
         </div>
+
+        <!-- Zusätzliche Wetter-Ebenen / Overlays Dropdown-Panel -->
+        <div id="overlay-menu-panel" class="overlay-glass-menu" style="display: none;">
+            <div class="overlay-menu-header">
+                <span>🥞 Zusätzliche Wetter-Ebenen</span>
+                <button class="overlay-menu-close" onclick="toggleOverlayMenu(false)">✕</button>
+            </div>
+            <div class="overlay-menu-body">
+                <label class="overlay-checkbox-row">
+                    <input type="checkbox" id="chk-overlay-ht" checked onchange="toggleOverlay('ht', this.checked)">
+                    <span class="overlay-icon">🔴🔵</span>
+                    <div class="overlay-text">
+                        <strong>Hoch- &amp; Tiefdruckgebiete (H / T)</strong>
+                        <small>Zentren &amp; Kerndruck in hPa (Zyklonen &amp; Antizyklonen)</small>
+                    </div>
+                </label>
+                <label class="overlay-checkbox-row">
+                    <input type="checkbox" id="chk-overlay-isobars" checked onchange="toggleOverlay('isobars', this.checked)">
+                    <span class="overlay-icon">🌀</span>
+                    <div class="overlay-text">
+                        <strong>Luftdruck &amp; Isobaren</strong>
+                        <small>Höhenlinien des Luftdrucks (4 hPa Schrittweite)</small>
+                    </div>
+                </label>
+                <label class="overlay-checkbox-row">
+                    <input type="checkbox" id="chk-overlay-wind" checked onchange="toggleOverlay('wind', this.checked)">
+                    <span class="overlay-icon">💨</span>
+                    <div class="overlay-text">
+                        <strong>Windströmungs-Animation</strong>
+                        <small>Partikelbahnen &amp; Windvektoren über der Erdoberfläche</small>
+                    </div>
+                </label>
+                <label class="overlay-checkbox-row">
+                    <input type="checkbox" id="chk-overlay-borders" checked onchange="toggleOverlay('borders', this.checked)">
+                    <span class="overlay-icon">🌐</span>
+                    <div class="overlay-text">
+                        <strong>Grenzen &amp; Städtenamen</strong>
+                        <small>Ländergrenzen, Küsten &amp; weltweite Ortsschilder</small>
+                    </div>
+                </label>
+            </div>
+        </div>
         <div id="legend" style="display: flex; flex-direction: column; width: 100%;">
             <div style="display: flex; align-items: center; width: 100%;">
                 <span id="legend-min">-30°C</span>
@@ -2550,6 +2717,7 @@
         </div>
     </div>
     
+    <script src="pressure_data.js"></script>
     <script src="wind_data.js"></script>
     <script id="tempDataScript" src="temp_data.js?_v=20260916_v1"></script>
     <script src="solar_climatology_data.js"></script>
@@ -4727,7 +4895,7 @@
         const tempVec1 = new THREE.Vector3();
 
         function renderScreenWindParticles(timeScale = 1.0) {
-            if (currentCelestialBody === 'moon' || currentMode === 'topo' || currentMode === 'satellite') {
+            if ((typeof overlayState !== 'undefined' && !overlayState.wind) || currentCelestialBody === 'moon' || currentMode === 'topo' || currentMode === 'satellite') {
                 screenWindCtx.clearRect(0, 0, screenW, screenH);
                 return;
             }
@@ -5132,6 +5300,170 @@
             scene.add(lineMesh);
             return lineMesh;
         }
+
+        // =========================================================================
+        // SYNOPTISCHE ISOBAREN & HOCH-/TIEFDRUCKGEBIETE (GFS MSLP Luftdruckfeld)
+        // =========================================================================
+        const isobarGroup = new THREE.Group();
+        isobarGroup.rotation.y = -Math.PI / 2;
+        isobarGroup.renderOrder = 4;
+        scene.add(isobarGroup);
+
+        const overlayState = {
+            ht: true,       // Hoch- & Tiefdruckgebiete (H / T)
+            isobars: true,  // Luftdruck-Isobaren
+            wind: true,     // Windströmungs-Partikel
+            borders: true   // Grenzen & Städtenamen
+        };
+
+        function buildIsobar3DMesh() {
+            while (isobarGroup.children.length > 0) {
+                const child = isobarGroup.children[0];
+                isobarGroup.remove(child);
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) child.material.dispose();
+            }
+
+            if (typeof pressureData === 'undefined' || !pressureData.isobars) return;
+
+            const positions = [];
+            const colors = [];
+            const isobarRadius = vectorLineRadius + 0.01;
+
+            pressureData.isobars.forEach(iso => {
+                const coords = iso.coords;
+                if (!coords || coords.length < 4) return;
+
+                const isLow = iso.level < 1013;
+                const isMajor = (iso.level % 20 === 0) || iso.level === 1000 || iso.level === 1020;
+
+                let r = isLow ? 0.95 : 0.60;
+                let g = isLow ? 0.45 : 0.85;
+                let b = isLow ? 0.45 : 1.00;
+                if (isMajor) {
+                    r = Math.min(1.0, r * 1.15);
+                    g = Math.min(1.0, g * 1.15);
+                    b = Math.min(1.0, b * 1.15);
+                }
+
+                for (let i = 0; i < coords.length; i += 4) {
+                    const lon1 = coords[i];
+                    const lat1 = coords[i + 1];
+                    const lon2 = coords[i + 2];
+                    const lat2 = coords[i + 3];
+
+                    if (Math.abs(lon1 - lon2) > 180) continue;
+
+                    const u1 = (lon1 + 180) / 360;
+                    const v1 = (90 - lat1) / 180;
+                    const px1 = - isobarRadius * Math.cos(u1 * Math.PI * 2) * Math.sin(v1 * Math.PI);
+                    const py1 = isobarRadius * Math.cos(v1 * Math.PI);
+                    const pz1 = isobarRadius * Math.sin(u1 * Math.PI * 2) * Math.sin(v1 * Math.PI);
+
+                    const u2 = (lon2 + 180) / 360;
+                    const v2 = (90 - lat2) / 180;
+                    const px2 = - isobarRadius * Math.cos(u2 * Math.PI * 2) * Math.sin(v2 * Math.PI);
+                    const py2 = isobarRadius * Math.cos(v2 * Math.PI);
+                    const pz2 = isobarRadius * Math.sin(u2 * Math.PI * 2) * Math.sin(v2 * Math.PI);
+
+                    positions.push(px1, py1, pz1, px2, py2, pz2);
+                    colors.push(r, g, b, r, g, b);
+                }
+            });
+
+            if (positions.length === 0) return;
+
+            const geom = new THREE.BufferGeometry();
+            geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+            const mat = new THREE.LineBasicMaterial({
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.65,
+                depthWrite: false
+            });
+
+            const mesh = new THREE.LineSegments(geom, mat);
+            isobarGroup.add(mesh);
+            isobarGroup.visible = overlayState.isobars && currentCelestialBody !== 'moon';
+        }
+        buildIsobar3DMesh();
+
+        function getPressureAtPoint(lat, lng) {
+            if (typeof pressureData === 'undefined' || !pressureData.grid) return null;
+            const yFloat = (90 - lat);
+            const xFloat = ((lng + 360) % 360);
+            const y0 = Math.max(0, Math.min(180, Math.floor(yFloat)));
+            const y1 = Math.min(180, y0 + 1);
+            const x0 = Math.floor(xFloat) % 360;
+            const x1 = (x0 + 1) % 360;
+            const wy = yFloat - y0;
+            const wx = xFloat - x0;
+            const v00 = pressureData.grid[y0 * 360 + x0];
+            const v10 = pressureData.grid[y0 * 360 + x1];
+            const v01 = pressureData.grid[y1 * 360 + x0];
+            const v11 = pressureData.grid[y1 * 360 + x1];
+            const p = (1 - wy) * ((1 - wx) * v00 + wx * v10) + wy * ((1 - wx) * v01 + wx * v11);
+            return Math.round((p + 900) * 10) / 10;
+        }
+
+        function toggleOverlay(type, forceState) {
+            if (forceState !== undefined) {
+                overlayState[type] = !!forceState;
+            } else {
+                overlayState[type] = !overlayState[type];
+            }
+
+            const isAct = overlayState[type];
+
+            // UI-Elemente synchronisieren
+            const chk = document.getElementById(`chk-overlay-${type}`);
+            if (chk) chk.checked = isAct;
+
+            const btnHt = document.getElementById('btn-overlay-ht');
+            const btnIsobars = document.getElementById('btn-overlay-isobars');
+
+            if (type === 'ht' && btnHt) {
+                btnHt.className = 'layer-toggle-btn overlay-pill' + (isAct ? ' active-ht' : '');
+            } else if (type === 'isobars' && btnIsobars) {
+                btnIsobars.className = 'layer-toggle-btn overlay-pill' + (isAct ? ' active' : '');
+            }
+
+            // 3D-Meshes steuern
+            if (type === 'isobars') {
+                if (isobarGroup) {
+                    isobarGroup.visible = isAct && currentCelestialBody !== 'moon';
+                }
+            } else if (type === 'wind') {
+                if (!isAct && screenWindCtx) {
+                    screenWindCtx.clearRect(0, 0, screenW, screenH);
+                }
+            } else if (type === 'borders') {
+                if (typeof lineMesh !== 'undefined' && lineMesh) lineMesh.visible = isAct && currentCelestialBody !== 'moon';
+                if (landBordersMesh) landBordersMesh.visible = isAct && currentCelestialBody !== 'moon';
+                if (statesMesh) statesMesh.visible = isAct && currentCelestialBody !== 'moon';
+                if (coastMesh50) coastMesh50.visible = isAct && currentCelestialBody !== 'moon';
+                if (coastMesh10) coastMesh10.visible = isAct && currentCelestialBody !== 'moon';
+            }
+
+            if (typeof renderCityLabels === 'function') {
+                renderCityLabels();
+            }
+        }
+        window.toggleOverlay = toggleOverlay;
+
+        function toggleOverlayMenu(forceOpen) {
+            const panel = document.getElementById('overlay-menu-panel');
+            const btn = document.getElementById('btn-overlay-menu');
+            if (!panel) return;
+            const willOpen = (forceOpen !== undefined) ? !!forceOpen : (panel.style.display === 'none');
+            panel.style.display = willOpen ? 'block' : 'none';
+            if (btn) {
+                btn.className = 'layer-toggle-btn overlay-pill' + (willOpen ? ' active-menu' : '');
+            }
+        }
+        window.toggleOverlayMenu = toggleOverlayMenu;
 
         function fetchNaturalEarthGeoJson(filename) {
             const primaryUrl = `https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/${filename}`;
@@ -10515,8 +10847,169 @@
                 urbanLineMesh.visible = urbanLineAlpha > 0.005;
             }
 
-            // Städte-Namen erst bei Zoom einblenden (ab dist < 165)
-            if (dist > 165 || citiesData.length === 0) return;
+            const cx = camera.position.x;
+            const cy = camera.position.y;
+            const cz = camera.position.z;
+            const horizonThreshold = (surfaceRadius / dist) - 0.02;
+            const placed = [];
+
+            cityCtx.save();
+
+            // =========================================================================
+            // OVERLAY: HOCH- & TIEFDRUCKGEBIETE (H / T Badges)
+            // =========================================================================
+            if (typeof overlayState !== 'undefined' && overlayState.ht && typeof pressureData !== 'undefined' && pressureData.centers) {
+                const nowMs = Date.now();
+                cityCtx.textBaseline = 'middle';
+
+                for (let i = 0; i < pressureData.centers.length; i++) {
+                    const c = pressureData.centers[i];
+                    const lonVal = (c.lon !== undefined ? c.lon : c.lng);
+                    const localV = latLngToSphereVertex(c.lat, lonVal, surfaceRadius);
+                    const worldV = localV.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
+                    const cosA = (worldV.x * cx + worldV.y * cy + worldV.z * cz) / (surfaceRadius * dist);
+                    if (cosA < horizonThreshold) continue;
+
+                    tempCityVec.copy(worldV).project(camera);
+                    if (tempCityVec.z > 1.0) continue;
+
+                    const sx = (tempCityVec.x * 0.5 + 0.5) * screenW;
+                    const sy = (-tempCityVec.y * 0.5 + 0.5) * screenH;
+                    if (sx < 25 || sx > screenW - 25 || sy < 25 || sy > screenH - 25) continue;
+
+                    const isHigh = c.type === 'H';
+                    const pulse = (Math.sin(nowMs * 0.0035 + i * 1.2) + 1) * 0.5;
+                    const auraR = 13 + pulse * 6;
+                    const mainColor = isHigh ? '#3b82f6' : '#ef4444';
+                    const glowColor = isHigh ? `rgba(59, 130, 246, ${0.20 + pulse * 0.20})` : `rgba(239, 68, 68, ${0.20 + pulse * 0.20})`;
+
+                    // 1. Pulsierende Aura
+                    cityCtx.beginPath();
+                    cityCtx.arc(sx, sy, auraR, 0, Math.PI * 2);
+                    cityCtx.fillStyle = glowColor;
+                    cityCtx.fill();
+
+                    // 2. Fester Markerkreis
+                    cityCtx.beginPath();
+                    cityCtx.arc(sx, sy, 11, 0, Math.PI * 2);
+                    cityCtx.fillStyle = mainColor;
+                    cityCtx.fill();
+                    cityCtx.strokeStyle = '#ffffff';
+                    cityCtx.lineWidth = 1.8;
+                    cityCtx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+                    cityCtx.shadowBlur = 4;
+                    cityCtx.stroke();
+                    cityCtx.shadowColor = 'transparent';
+
+                    // 3. 'H' oder 'T' Buchstabe
+                    cityCtx.fillStyle = '#ffffff';
+                    cityCtx.font = '800 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                    cityCtx.textAlign = 'center';
+                    cityCtx.fillText(c.type, sx, sy + 0.5);
+
+                    // 4. Luftdruck-Badge darunter (z.B. "1024 hPa")
+                    const pText = `${c.pressure} hPa`;
+                    cityCtx.font = '700 9.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                    const textW = cityCtx.measureText(pText).width;
+                    const bW = textW + 10;
+                    const bH = 16;
+                    const bX = sx - bW / 2;
+                    const bY = sy + 13;
+
+                    cityCtx.fillStyle = 'rgba(15, 23, 42, 0.90)';
+                    cityCtx.strokeStyle = mainColor;
+                    cityCtx.lineWidth = 1.2;
+                    cityCtx.beginPath();
+                    if (typeof cityCtx.roundRect === 'function') {
+                        cityCtx.roundRect(bX, bY, bW, bH, 8);
+                    } else {
+                        cityCtx.rect(bX, bY, bW, bH);
+                    }
+                    cityCtx.fill();
+                    cityCtx.stroke();
+
+                    cityCtx.fillStyle = '#f8fafc';
+                    cityCtx.fillText(pText, sx, bY + bH / 2);
+
+                    placed.push({ x: sx, y: sy + 10, spacingX: bW + 14, spacingY: 36 });
+                }
+            }
+
+            // =========================================================================
+            // OVERLAY: ISOBAREN-BESCHRIFTUNGEN (Luftdruck-Werte entlang der Linien)
+            // =========================================================================
+            if (typeof overlayState !== 'undefined' && overlayState.isobars && typeof pressureData !== 'undefined' && pressureData.isobars) {
+                cityCtx.font = '600 9.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                cityCtx.textAlign = 'center';
+                cityCtx.textBaseline = 'middle';
+
+                const isZoomedOut = dist > 210;
+                for (let i = 0; i < pressureData.isobars.length; i++) {
+                    const iso = pressureData.isobars[i];
+                    if (!iso.labels || iso.labels.length === 0) continue;
+                    // Bei weitem Zoom nur 8er-Schritte beschriften um Überladung zu verhindern
+                    if (isZoomedOut && (iso.level % 8 !== 0)) continue;
+
+                    const isLow = iso.level < 1013;
+                    const borderColor = isLow ? 'rgba(248, 113, 113, 0.85)' : 'rgba(96, 165, 250, 0.85)';
+                    const txt = `${iso.level}`;
+                    const textW = cityCtx.measureText(txt).width;
+                    const lW = textW + 8;
+                    const lH = 14;
+
+                    for (let j = 0; j < iso.labels.length; j++) {
+                        const lbl = iso.labels[j];
+                        const localV = latLngToSphereVertex(lbl.lat, lbl.lon, surfaceRadius);
+                        const worldV = localV.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
+                        const cosA = (worldV.x * cx + worldV.y * cy + worldV.z * cz) / (surfaceRadius * dist);
+                        if (cosA < horizonThreshold) continue;
+
+                        tempCityVec.copy(worldV).project(camera);
+                        if (tempCityVec.z > 1.0) continue;
+
+                        const sx = (tempCityVec.x * 0.5 + 0.5) * screenW;
+                        const sy = (-tempCityVec.y * 0.5 + 0.5) * screenH;
+                        if (sx < 25 || sx > screenW - 25 || sy < 25 || sy > screenH - 25) continue;
+
+                        // Kollisionsprüfung mit bereits platzierten Elementen
+                        let coll = false;
+                        for (let k = 0; k < placed.length; k++) {
+                            const p = placed[k];
+                            if (Math.abs(sx - p.x) < 32 && Math.abs(sy - p.y) < 18) {
+                                coll = true;
+                                break;
+                            }
+                        }
+                        if (coll) continue;
+
+                        const lX = sx - lW / 2;
+                        const lY = sy - lH / 2;
+
+                        cityCtx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+                        cityCtx.strokeStyle = borderColor;
+                        cityCtx.lineWidth = 1.0;
+                        cityCtx.beginPath();
+                        if (typeof cityCtx.roundRect === 'function') {
+                            cityCtx.roundRect(lX, lY, lW, lH, 5);
+                        } else {
+                            cityCtx.rect(lX, lY, lW, lH);
+                        }
+                        cityCtx.fill();
+                        cityCtx.stroke();
+
+                        cityCtx.fillStyle = '#f1f5f9';
+                        cityCtx.fillText(txt, sx, sy);
+
+                        placed.push({ x: sx, y: sy, spacingX: lW + 8, spacingY: lH + 8 });
+                    }
+                }
+            }
+
+            // Städte-Namen erst bei Zoom einblenden (ab dist < 165) und nur wenn overlayState.borders aktiv ist
+            if (dist > 165 || citiesData.length === 0 || (typeof overlayState !== 'undefined' && !overlayState.borders)) {
+                cityCtx.restore();
+                return;
+            }
 
             const fadeAlpha = Math.min((165 - dist) / 25, 0.85);
 
@@ -10550,16 +11043,8 @@
                 maxVisiblePlaces = 16;
             }
 
-            const cx = camera.position.x;
-            const cy = camera.position.y;
-            const cz = camera.position.z;
-            const horizonThreshold = (surfaceRadius / dist) - 0.02;
-
-            cityCtx.save();
             cityCtx.globalAlpha = fadeAlpha;
             cityCtx.textBaseline = 'middle';
-
-            const placed = [];
 
             // 1. PV-ANLAGE HOCHHEIM (Leuchtender Solar-Marker)
             if (dist < 210 && PV_SYSTEM_LOCATION.worldPos) {
@@ -12170,6 +12655,36 @@
             `;
         }
 
+        function showPressureCenterDetails(c) {
+            const isHigh = c.type === 'H';
+            const title = isHigh ? '🔵 Hochdruckgebiet (Antizyklone)' : '🔴 Tiefdruckgebiet (Zyklone)';
+            const accentColor = isHigh ? '#60a5fa' : '#f87171';
+            const desc = isHigh 
+                ? 'Absinkende, sich erwärmende Luftmassen verhindern Wolkenbildung. Typisch für heiteres, trockenes Wetter mit schwächeren Winden (im Uhrzeigersinn auf der Nordhalbkugel).'
+                : 'Aufsteigende feuchte Luftmassen kühlen ab und bilden dichte Wolkenbänder. Typisch für Niederschlag und stürmische Windfelder (gegen den Uhrzeigersinn auf der Nordhalbkugel).';
+            const latStr = `${Math.abs(c.lat).toFixed(1)}° ${c.lat >= 0 ? 'N' : 'S'}`;
+            const lonVal = (c.lon !== undefined ? c.lon : c.lng);
+            const lonStr = `${Math.abs(lonVal).toFixed(1)}° ${lonVal >= 0 ? 'E' : 'W'}`;
+
+            popupEl.innerHTML = `
+                <div style="font-size: 11px; color: ${accentColor}; font-weight: 700; margin-bottom: 3px; display: flex; align-items: center; gap: 4px;">
+                    <span>${isHigh ? '☀️' : '🌧️'}</span> ${title}
+                </div>
+                <div style="display: flex; align-items: baseline; gap: 6px; margin: 4px 0;">
+                    <strong style="font-size: 18px; color: #ffffff; text-shadow: 0 1px 4px rgba(0,0,0,0.6);">${c.pressure} hPa</strong>
+                    <span style="font-size: 10.5px; color: #94a3b8;">Kerndruck (MSLP)</span>
+                </div>
+                <div style="font-size: 10px; color: #cbd5e1; line-height: 1.35; margin: 4px 0 6px 0; max-width: 230px;">
+                    ${desc}
+                </div>
+                <div style="font-size: 9.5px; color: #64748b; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px;">
+                    📍 Zentrum: ${latStr}, ${lonStr}
+                </div>
+            `;
+            popupEl.style.display = 'block';
+            updatePopupPosition();
+        }
+
         function updatePopupContent() {
             if (!clickedPopupPoint) return;
 
@@ -12204,6 +12719,31 @@
                     `;
                 }
                 return;
+            }
+
+            // SONDERFALL: KLICK AUF HOCH- ODER TIEFDRUCKGEBIET (H / T)
+            if (typeof overlayState !== 'undefined' && overlayState.ht && typeof pressureData !== 'undefined' && pressureData.centers) {
+                let nearestCenter = null;
+                let minCenterDistSq = Infinity;
+                const cLat = clickedPopupPoint.lat;
+                const cLng = clickedPopupPoint.lng;
+                const cosL = Math.cos(cLat * Math.PI / 180);
+                for (let i = 0; i < pressureData.centers.length; i++) {
+                    const c = pressureData.centers[i];
+                    const cLon = (c.lon !== undefined ? c.lon : c.lng);
+                    const dLat = c.lat - cLat;
+                    let dLon = Math.abs(cLon - cLng);
+                    if (dLon > 180) dLon = 360 - dLon;
+                    const dSq = dLat * dLat + (dLon * cosL) * (dLon * cosL);
+                    if (dSq < minCenterDistSq) {
+                        minCenterDistSq = dSq;
+                        nearestCenter = c;
+                    }
+                }
+                if (nearestCenter && minCenterDistSq < 25.0) {
+                    showPressureCenterDetails(nearestCenter);
+                    return;
+                }
             }
 
             if (currentMode === 'topo' || currentMode === 'satellite') {
@@ -12273,18 +12813,22 @@
                 return;
             }
             const real = getInterpolatedData(clickedPopupPoint.lat, clickedPopupPoint.lng);
+            const pVal = getPressureAtPoint(clickedPopupPoint.lat, clickedPopupPoint.lng);
+            const pSuffix = (pVal !== null) ? ` <span style="font-size:11px; color:#94a3b8; font-weight:400; margin-left:4px;">• 🌀 ${pVal.toFixed(0)} hPa</span>` : '';
+
             let html = "";
             if (currentMode === 'temp') {
-                html = `${real.t.toFixed(1)} °C`;
+                html = `${real.t.toFixed(1)} °C${pSuffix}`;
             } else if (currentMode === 'solar') {
-                html = (solarClimSelection === 'live')
+                const sVal = (solarClimSelection === 'live')
                     ? `${real.solar.toFixed(0)} W/m²`
                     : `${real.solar.toFixed(2)} kWh/m²/Tag`;
+                html = `${sVal}${pSuffix}`;
             } else {
                 const speedKmh = Math.sqrt(real.u * real.u + real.v * real.v) * 3.6;
-                html = `${speedKmh.toFixed(1)} km/h`;
+                html = `${speedKmh.toFixed(1)} km/h${pSuffix}`;
             }
-            popupEl.innerText = html;
+            popupEl.innerHTML = html;
         }
 
         // Wisch- / Drag-Erkennung (Unterscheidung zwischen echtem Tippen und Globus-Verschieben)
@@ -13020,6 +13564,13 @@
                 if (typeof roadsMesh !== 'undefined' && roadsMesh) roadsMesh.visible = false;
                 if (typeof urbanFillMesh !== 'undefined' && urbanFillMesh) urbanFillMesh.visible = false;
                 if (typeof urbanLineMesh !== 'undefined' && urbanLineMesh) urbanLineMesh.visible = false;
+                if (typeof isobarGroup !== 'undefined' && isobarGroup) isobarGroup.visible = false;
+
+                // Wetter-Overlays & Pill-Buttons auf dem Mond ausblenden
+                const overlayPills = document.querySelectorAll('.overlay-pill, .overlay-divider');
+                overlayPills.forEach(p => p.style.display = 'none');
+                const overlayPanel = document.getElementById('overlay-menu-panel');
+                if (overlayPanel) overlayPanel.style.display = 'none';
 
                 // Partikel löschen
                 if (typeof screenWindCtx !== 'undefined' && screenWindCtx) {
@@ -13098,10 +13649,15 @@
                 }
 
                 // Vektor-Ebenen reaktivieren
-                if (typeof lineMesh !== 'undefined' && lineMesh) lineMesh.visible = true;
-                if (typeof landBordersMesh !== 'undefined' && landBordersMesh) landBordersMesh.visible = true;
-                if (typeof statesMesh !== 'undefined' && statesMesh) statesMesh.visible = true;
-                if (typeof coastMesh50 !== 'undefined' && coastMesh50) coastMesh50.visible = true;
+                if (typeof lineMesh !== 'undefined' && lineMesh) lineMesh.visible = (typeof overlayState !== 'undefined') ? overlayState.borders : true;
+                if (typeof landBordersMesh !== 'undefined' && landBordersMesh) landBordersMesh.visible = (typeof overlayState !== 'undefined') ? overlayState.borders : true;
+                if (typeof statesMesh !== 'undefined' && statesMesh) statesMesh.visible = (typeof overlayState !== 'undefined') ? overlayState.borders : true;
+                if (typeof coastMesh50 !== 'undefined' && coastMesh50) coastMesh50.visible = (typeof overlayState !== 'undefined') ? overlayState.borders : true;
+                if (typeof isobarGroup !== 'undefined' && isobarGroup) {
+                    isobarGroup.visible = (typeof overlayState !== 'undefined') ? overlayState.isobars : true;
+                }
+                const overlayPills = document.querySelectorAll('.overlay-pill, .overlay-divider');
+                overlayPills.forEach(p => p.style.display = '');
 
                 // Suchfeld zurücksetzen
                 if (searchInput) {
