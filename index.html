@@ -5419,12 +5419,17 @@
                     continue;
                 }
 
+                // Dynamische Windstärke: Schneller & längere Schweife bei Sturm, träge & kurz bei Windstille
+                const speed = Math.sqrt(u * u + v * v);
+                const speedBoost = Math.min(3.6, Math.max(0.35, Math.pow(speed / 8.0, 0.72)));
+                const effectiveStep = step * speedBoost;
+
                 let cosLat = Math.cos(p.lat * Math.PI / 180);
                 if (cosLat < 0.15) cosLat = 0.15;
 
                 // Wind bewegt den Partikel auf der Erdoberfläche weiter
-                const nextLat = p.lat + v * step;
-                const nextLng = p.lng + (u / cosLat) * step;
+                const nextLat = p.lat + v * effectiveStep;
+                const nextLng = p.lng + (u / cosLat) * effectiveStep;
 
                 // 2. Zielposition im 3D-Weltraum
                 const u1 = (nextLng + 180) / 360;
@@ -5447,7 +5452,7 @@
 
                 p.lat = nextLat;
                 p.lng = nextLng;
-                p.age += timeScale;
+                p.age += timeScale * (0.6 + speedBoost * 0.4);
             }
 
             screenWindCtx.stroke();
@@ -5770,31 +5775,64 @@
         const dynamicIsoMat = new THREE.LineBasicMaterial({
             vertexColors: true,
             transparent: true,
-            opacity: 0.72,
+            opacity: 0.82,
             depthWrite: false
         });
         const dynamicIsoMesh = new THREE.LineSegments(dynamicIsoGeom, dynamicIsoMat);
         isobarGroup.add(dynamicIsoMesh);
 
+        // Kontinuierliche Farbskala für Isobaren: Harmonischer, kontrastreicher Gradient von Tief- zu Hochdruck
+        // Garantiert exzellente Unterscheidbarkeit & Brillanz über allen Basisschichten (Temperatur, Topo, Ozeane, Wolken)
+        function getPressureColorRGB(level) {
+            const stops = [
+                { p: 976,  r: 1.00, g: 0.12, b: 0.58, hex: '#ff1f94' }, // Tiefstes Orkantief: Leuchtendes Neon-Magenta
+                { p: 988,  r: 1.00, g: 0.28, b: 0.40, hex: '#ff4766' }, // Starkes Tief: Karminrot/Pink
+                { p: 996,  r: 1.00, g: 0.50, b: 0.28, hex: '#ff8047' }, // Tief: Warmes Koralle
+                { p: 1004, r: 1.00, g: 0.74, b: 0.32, hex: '#ffbd52' }, // Leichtes Tief: Sonniges Bernstein / Gold
+                { p: 1012, r: 1.00, g: 0.94, b: 0.65, hex: '#fff0a6' }, // Normaldruck schwach tief: Strahlendes Champagner
+                { p: 1016, r: 0.76, g: 0.98, b: 0.82, hex: '#c2f9d1' }, // Normaldruck schwach hoch: Kühles Mint-Perlweiß
+                { p: 1022, r: 0.22, g: 0.92, b: 0.96, hex: '#38ebf5' }, // Leichtes Hoch: Elektrisches Aqua-Türkis
+                { p: 1028, r: 0.30, g: 0.76, b: 1.00, hex: '#4dc2ff' }, // Kräftiges Hoch: Helles Azur-/Himmelblau
+                { p: 1036, r: 0.45, g: 0.56, b: 1.00, hex: '#738fff' }  // Starkes Hochdruckgebiet: Königs-Irisblau
+            ];
+            if (level <= stops[0].p) return stops[0];
+            if (level >= stops[stops.length - 1].p) return stops[stops.length - 1];
+            for (let i = 0; i < stops.length - 1; i++) {
+                const s0 = stops[i], s1 = stops[i + 1];
+                if (level >= s0.p && level <= s1.p) {
+                    const t = (level - s0.p) / (s1.p - s0.p);
+                    const r = s0.r + (s1.r - s0.r) * t;
+                    const g = s0.g + (s1.g - s0.g) * t;
+                    const b = s0.b + (s1.b - s0.b) * t;
+                    const hexR = Math.round(r * 255).toString(16).padStart(2, '0');
+                    const hexG = Math.round(g * 255).toString(16).padStart(2, '0');
+                    const hexB = Math.round(b * 255).toString(16).padStart(2, '0');
+                    return { r, g, b, hex: `#${hexR}${hexG}${hexB}` };
+                }
+            }
+            return stops[4];
+        }
+
         const DYNAMIC_ISO_LEVELS = [
             976, 984, 988, 992, 996, 1000, 1004, 1008, 1012, 1016, 1020, 1024, 1028, 1032, 1036
         ];
         const ISO_COLORS = DYNAMIC_ISO_LEVELS.map(level => {
-            const isLow = level < 1013;
+            const baseCol = getPressureColorRGB(level);
             const isMajor = (level % 20 === 0) || level === 1000 || level === 1020;
-            let r = isLow ? 0.98 : 0.22;
-            let g = isLow ? 0.44 : 0.74;
-            let b = isLow ? 0.52 : 0.97;
+            let r = baseCol.r;
+            let g = baseCol.g;
+            let b = baseCol.b;
             if (isMajor) {
-                r = Math.min(1.0, r * 1.15);
-                g = Math.min(1.0, g * 1.15);
-                b = Math.min(1.0, b * 1.15);
+                r = Math.min(1.0, r * 1.12);
+                g = Math.min(1.0, g * 1.12);
+                b = Math.min(1.0, b * 1.12);
             }
-            return { r, g, b };
+            return { r, g, b, hex: baseCol.hex };
         });
 
         const dynamicBlendGrid = new Float32Array(360 * 181);
         const smoothBlendGrid = new Float32Array(360 * 181);
+        const smoothBlendGrid2 = new Float32Array(360 * 181);
         const segsPerLevel = new Uint32Array(DYNAMIC_ISO_LEVELS.length);
         let lastRenderedIsobarFrac = -9999;
 
@@ -5824,7 +5862,8 @@
                 dynamicBlendGrid[i] = (invAlpha * g0[i] + alpha * g1[i]) + 900;
             }
 
-            // Räumlicher 9-Punkt Gauß-Filter zur Glättung numerischer Orografie-Kanten & Eliminierung von Zacken
+            // 2-stufiger räumlicher Gauß-Filter zur vollständigen Glättung orografischer Zacken (z.B. Rocky Mountains)
+            // Pass 1: Beseitigt isolierte GFS-Reduktions-Rauschspitzen über Gebirgen
             for (let j = 0; j < NY; j++) {
                 const j0 = Math.max(0, j - 1);
                 const j1 = Math.min(NY - 1, j + 1);
@@ -5832,9 +5871,23 @@
                 for (let i = 0; i < NX; i++) {
                     const i0 = (i - 1 + NX) % NX;
                     const i1 = (i + 1) % NX;
-                    smoothBlendGrid[r + i] = 0.58 * dynamicBlendGrid[r + i]
-                        + 0.085 * (dynamicBlendGrid[r + i0] + dynamicBlendGrid[r + i1] + dynamicBlendGrid[r0 + i] + dynamicBlendGrid[r1 + i])
-                        + 0.020 * (dynamicBlendGrid[r0 + i0] + dynamicBlendGrid[r0 + i1] + dynamicBlendGrid[r1 + i0] + dynamicBlendGrid[r1 + i1]);
+                    smoothBlendGrid[r + i] = 0.40 * dynamicBlendGrid[r + i]
+                        + 0.11 * (dynamicBlendGrid[r + i0] + dynamicBlendGrid[r + i1] + dynamicBlendGrid[r0 + i] + dynamicBlendGrid[r1 + i])
+                        + 0.04 * (dynamicBlendGrid[r0 + i0] + dynamicBlendGrid[r0 + i1] + dynamicBlendGrid[r1 + i0] + dynamicBlendGrid[r1 + i1]);
+                }
+            }
+
+            // Pass 2: Weichmachende Konsistenz für perfekt geschwungene, runde Isobarenkurven
+            for (let j = 0; j < NY; j++) {
+                const j0 = Math.max(0, j - 1);
+                const j1 = Math.min(NY - 1, j + 1);
+                const r = j * NX, r0 = j0 * NX, r1 = j1 * NX;
+                for (let i = 0; i < NX; i++) {
+                    const i0 = (i - 1 + NX) % NX;
+                    const i1 = (i + 1) % NX;
+                    smoothBlendGrid2[r + i] = 0.50 * smoothBlendGrid[r + i]
+                        + 0.09 * (smoothBlendGrid[r + i0] + smoothBlendGrid[r + i1] + smoothBlendGrid[r0 + i] + smoothBlendGrid[r1 + i])
+                        + 0.035 * (smoothBlendGrid[r0 + i0] + smoothBlendGrid[r0 + i1] + smoothBlendGrid[r1 + i0] + smoothBlendGrid[r1 + i1]);
                 }
             }
 
@@ -5942,10 +5995,10 @@
 
                 for (let i = 0; i < NX; i++) {
                     const iNext = (i + 1) % NX;
-                    const v00 = smoothBlendGrid[row0 + i];
-                    const v10 = smoothBlendGrid[row0 + iNext];
-                    const v01 = smoothBlendGrid[row1 + i];
-                    const v11 = smoothBlendGrid[row1 + iNext];
+                    const v00 = smoothBlendGrid2[row0 + i];
+                    const v10 = smoothBlendGrid2[row0 + iNext];
+                    const v01 = smoothBlendGrid2[row1 + i];
+                    const v11 = smoothBlendGrid2[row1 + iNext];
 
                     let minV = v00 < v10 ? v00 : v10;
                     if (v01 < minV) minV = v01;
@@ -6002,7 +6055,7 @@
 
         function getPressureAtPoint(lat, lng) {
             const grid = (lastRenderedIsobarFrac !== -9999) 
-                ? smoothBlendGrid 
+                ? smoothBlendGrid2 
                 : (typeof pressureData !== 'undefined' ? (pressureData.grid || null) : null);
             if (!grid) return null;
             const yFloat = (90 - lat);
@@ -11544,7 +11597,7 @@
                     if (sx < 25 || sx > screenW - 25 || sy < 25 || sy > screenH - 25) continue;
 
                     const isHigh = c.type === 'H';
-                    const textColor = isHigh ? '#60a5fa' : '#f87171'; // Sanftes Blau / Sanftes Rot
+                    const textColor = c.pressure ? getPressureColorRGB(c.pressure).hex : (isHigh ? '#38ebf5' : '#ff4766');
 
                     // 1. Großes, markantes H oder T mit dunkler Kontur für optimale Lesbarkeit auf jedem Hintergrund
                     cityCtx.font = '900 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -11591,7 +11644,7 @@
                     if (isZoomedOut && (levelVal % 8 !== 0)) continue;
 
                     const lblList = item.labels ? item.labels : [item];
-                    const isLow = levelVal < 1013;
+                    const isobarCol = getPressureColorRGB(levelVal);
                     const txt = `${levelVal}`;
 
                     for (let j = 0; j < lblList.length; j++) {
@@ -11620,10 +11673,10 @@
                         if (coll) continue;
 
                         // Schlanke, dezente Typografie mit dunkler Kontur statt schwerem Kasten
-                        cityCtx.strokeStyle = 'rgba(15, 23, 42, 0.85)';
-                        cityCtx.lineWidth = 2.2;
+                        cityCtx.strokeStyle = 'rgba(10, 15, 26, 0.92)';
+                        cityCtx.lineWidth = 2.4;
                         cityCtx.strokeText(txt, sx, sy);
-                        cityCtx.fillStyle = isLow ? '#fca5a5' : '#93c5fd';
+                        cityCtx.fillStyle = isobarCol.hex;
                         cityCtx.fillText(txt, sx, sy);
 
                         placed.push({ x: sx, y: sy, spacingX: 24, spacingY: 14 });
