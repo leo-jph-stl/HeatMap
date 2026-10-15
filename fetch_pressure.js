@@ -158,7 +158,7 @@ function flattenPolyline(poly) {
     return flat;
 }
 
-function processStep(gridHpa) {
+function processStep(gridHpa, computeIsobars = false) {
     // 1. Detect High and Low pressure centers
     const rad = 4;
     const rawCenters = [];
@@ -198,6 +198,10 @@ function processStep(gridHpa) {
             return dDist < 12;
         });
         if (!tooClose) centers.push(c);
+    }
+
+    if (!computeIsobars) {
+        return { centers, isobars: [] };
     }
 
     // 2. Marching Squares for isobars (synoptic levels in 4 hPa steps)
@@ -354,14 +358,16 @@ async function run() {
             for (let s = 0; s < chunkCount; s++) {
                 const stepMeta = stepsMeta[c + s];
                 const gridSlice = new Int16Array(nums.slice(s * PTS_PER_STEP, (s + 1) * PTS_PER_STEP));
-                const processed = processStep(gridSlice);
+                const isLive = (stepMeta.hour === 0);
+                const processed = processStep(gridSlice, isLive);
 
-                if (stepMeta.hour === 0 || liveGrid === null) {
-                    const compactGrid = [];
-                    for (let i = 0; i < gridSlice.length; i++) {
-                        compactGrid.push(Math.max(0, Math.min(255, gridSlice[i] - 900)));
-                    }
-                    liveGrid = compactGrid;
+                const compactGrid = Buffer.alloc(PTS_PER_STEP);
+                for (let i = 0; i < gridSlice.length; i++) {
+                    compactGrid[i] = Math.max(0, Math.min(255, gridSlice[i] - 900));
+                }
+
+                if (isLive || liveGrid === null) {
+                    liveGrid = Array.from(compactGrid);
                 }
 
                 allSteps.push({
@@ -369,13 +375,14 @@ async function run() {
                     timestamp: stepMeta.timestamp,
                     timeMs: stepMeta.timeMs,
                     centers: processed.centers,
-                    isobars: processed.isobars
+                    isobars: isLive ? processed.isobars : undefined,
+                    gridB64: compactGrid.toString('base64')
                 });
             }
         }
 
         const liveStep = allSteps.find(s => s.hour === 0) || allSteps[8] || allSteps[0];
-        console.log(`Total processed steps: ${allSteps.length}. Live step has ${liveStep.centers.length} centers, ${liveStep.isobars.length} isobars.`);
+        console.log(`Total processed steps: ${allSteps.length}. Live step has ${liveStep.centers.length} centers, ${liveStep.isobars ? liveStep.isobars.length : 0} isobars.`);
 
         const outputData = {
             generatedAt: new Date().toISOString(),
@@ -384,7 +391,7 @@ async function run() {
             liveIndex: allSteps.indexOf(liveStep),
             grid: liveGrid,
             centers: liveStep.centers,
-            isobars: liveStep.isobars,
+            isobars: liveStep.isobars || [],
             steps: allSteps
         };
 

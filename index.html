@@ -5318,27 +5318,141 @@
 
         let activePressureCenters = (typeof pressureData !== 'undefined' && pressureData.centers) ? pressureData.centers : [];
         let activePressureIsobars = (typeof pressureData !== 'undefined' && pressureData.isobars) ? pressureData.isobars : [];
-        let currentPressureStepIdx = -1;
+        let activePressureLabels = [];
 
-        function buildIsobar3DMesh(customIsobars) {
-            while (isobarGroup.children.length > 0) {
-                const child = isobarGroup.children[0];
-                isobarGroup.remove(child);
-                if (child.geometry) child.geometry.dispose();
-                if (child.material) child.material.dispose();
+        // Kontinuierliche Interpolation von H/T-Druckzentren (sanft gleitende Bewegung)
+        function interpolateCenters(stepA, stepB, alpha) {
+            if (!stepA || !stepA.centers) return (stepB && stepB.centers) ? stepB.centers : [];
+            if (!stepB || !stepB.centers) return stepA.centers;
+
+            const c0List = stepA.centers;
+            const c1List = stepB.centers;
+            const matched1 = new Set();
+            const result = [];
+
+            for (let i = 0; i < c0List.length; i++) {
+                const c0 = c0List[i];
+                let bestDist = 20; // max tracking distance in degrees (~2200 km)
+                let bestC1 = null;
+                let bestJ = -1;
+
+                for (let j = 0; j < c1List.length; j++) {
+                    if (matched1.has(j)) continue;
+                    const c1 = c1List[j];
+                    if (c1.type !== c0.type) continue;
+                    const dLat = c1.lat - c0.lat;
+                    let dLon = Math.abs(c1.lon - c0.lon);
+                    if (dLon > 180) dLon = 360 - dLon;
+                    const d = Math.sqrt(dLat * dLat + (dLon * Math.cos(c0.lat * Math.PI / 180)) ** 2);
+                    if (d < bestDist) {
+                        bestDist = d;
+                        bestC1 = c1;
+                        bestJ = j;
+                    }
+                }
+
+                if (bestC1) {
+                    matched1.add(bestJ);
+                    let lonDiff = bestC1.lon - c0.lon;
+                    if (lonDiff > 180) lonDiff -= 360;
+                    if (lonDiff < -180) lonDiff += 360;
+                    result.push({
+                        type: c0.type,
+                        lat: parseFloat((c0.lat + alpha * (bestC1.lat - c0.lat)).toFixed(2)),
+                        lon: parseFloat((c0.lon + alpha * lonDiff).toFixed(2)),
+                        pressure: Math.round(c0.pressure + alpha * (bestC1.pressure - c0.pressure))
+                    });
+                } else {
+                    if (alpha < 0.6) result.push(c0);
+                }
             }
 
-            const isobars = customIsobars || (activePressureIsobars && activePressureIsobars.length > 0 ? activePressureIsobars : (typeof pressureData !== 'undefined' ? pressureData.isobars : null));
-            if (!isobars || isobars.length === 0) return;
+            if (alpha > 0.4) {
+                for (let j = 0; j < c1List.length; j++) {
+                    if (!matched1.has(j)) result.push(c1List[j]);
+                }
+            }
+            return result;
+        }
 
-            const positions = [];
-            const colors = [];
+        // Dekodierung der kompakten Base64-Raster aller 25 Zeitschritte
+        let decodedPressureGrids = null;
+        function getDecodedPressureGrids() {
+            if (!decodedPressureGrids && typeof pressureData !== 'undefined' && pressureData.steps) {
+                decodedPressureGrids = pressureData.steps.map(s => {
+                    if (s.grid && (Array.isArray(s.grid) || s.grid instanceof Uint8Array)) return new Uint8Array(s.grid);
+                    if (!s.gridB64) return null;
+                    const bin = atob(s.gridB64);
+                    const bytes = new Uint8Array(bin.length);
+                    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                    return bytes;
+                });
+            }
+            return decodedPressureGrids;
+        }
+
+        // Dynamisches, hochperformantes 3D-Isobaren-Mesh mit vorallokierten Typ-Puffern
+        const MAX_DYNAMIC_SEGS = 24000;
+        const dynamicIsoPositions = new Float32Array(MAX_DYNAMIC_SEGS * 6);
+        const dynamicIsoColors = new Float32Array(MAX_DYNAMIC_SEGS * 6);
+        const dynamicIsoGeom = new THREE.BufferGeometry();
+        const dynamicIsoPosAttr = new THREE.BufferAttribute(dynamicIsoPositions, 3);
+        const dynamicIsoColAttr = new THREE.BufferAttribute(dynamicIsoColors, 3);
+        dynamicIsoGeom.setAttribute('position', dynamicIsoPosAttr);
+        dynamicIsoGeom.setAttribute('color', dynamicIsoColAttr);
+        dynamicIsoGeom.setDrawRange(0, 0);
+
+        const dynamicIsoMat = new THREE.LineBasicMaterial({
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.72,
+            depthWrite: false
+        });
+        const dynamicIsoMesh = new THREE.LineSegments(dynamicIsoGeom, dynamicIsoMat);
+        isobarGroup.add(dynamicIsoMesh);
+
+        const DYNAMIC_ISO_LEVELS = [
+            976, 984, 988, 992, 996, 1000, 1004, 1008, 1012, 1016, 1020, 1024, 1028, 1032, 1036
+        ];
+        const dynamicBlendGrid = new Float32Array(360 * 181);
+        let lastRenderedIsobarFrac = -9999;
+
+        // Echtzeit-Berechnung kontinuierlich fließender Isobaren (Wellenbewegung ohne Sprünge)
+        function updateContinuousIsobars(clampedPFrac, idx0, idx1, alpha, force = false) {
+            if (!overlayState.isobars || currentCelestialBody === 'moon') {
+                dynamicIsoMesh.visible = false;
+                return;
+            }
+            dynamicIsoMesh.visible = true;
+
+            // Drosselung bei minimalen Sub-Frame-Schwankungen (< 0.02 ~ 3.6 Minuten Wetterzeit)
+            if (!force && Math.abs(clampedPFrac - lastRenderedIsobarFrac) < 0.02) {
+                return;
+            }
+            lastRenderedIsobarFrac = clampedPFrac;
+
+            const grids = getDecodedPressureGrids();
+            if (!grids) return;
+            const g0 = grids[idx0];
+            const g1 = grids[idx1];
+            if (!g0 || !g1) return;
+
+            const NX = 360, NY = 181;
+            const invAlpha = 1 - alpha;
+            for (let i = 0; i < NX * NY; i++) {
+                dynamicBlendGrid[i] = (invAlpha * g0[i] + alpha * g1[i]) + 900;
+            }
+
             const isobarRadius = vectorLineRadius + 0.012;
+            let segCount = 0;
+            let posIdx = 0;
+            let colIdx = 0;
+            const newLabels = [];
 
-            isobars.forEach(iso => {
-                const isLow = iso.level < 1013;
-                const isMajor = (iso.level % 20 === 0) || iso.level === 1000 || iso.level === 1020;
-
+            for (let lIdx = 0; lIdx < DYNAMIC_ISO_LEVELS.length; lIdx++) {
+                const level = DYNAMIC_ISO_LEVELS[lIdx];
+                const isLow = level < 1013;
+                const isMajor = (level % 20 === 0) || level === 1000 || level === 1020;
                 let r = isLow ? 0.98 : 0.22;
                 let g = isLow ? 0.44 : 0.74;
                 let b = isLow ? 0.52 : 0.97;
@@ -5348,64 +5462,131 @@
                     b = Math.min(1.0, b * 1.15);
                 }
 
-                function addSegment(lon1, lat1, lon2, lat2) {
-                    if (Math.abs(lon1 - lon2) > 180) return;
+                let segsForLevel = 0;
 
-                    const u1 = (lon1 + 180) / 360;
-                    const v1 = (90 - lat1) / 180;
-                    const px1 = - isobarRadius * Math.cos(u1 * Math.PI * 2) * Math.sin(v1 * Math.PI);
-                    const py1 = isobarRadius * Math.cos(v1 * Math.PI);
-                    const pz1 = isobarRadius * Math.sin(u1 * Math.PI * 2) * Math.sin(v1 * Math.PI);
+                for (let j = 0; j < NY - 1; j++) {
+                    const lat0 = 90 - j;
+                    const lat1 = 90 - (j + 1);
+                    const row0 = j * NX;
+                    const row1 = (j + 1) * NX;
 
-                    const u2 = (lon2 + 180) / 360;
-                    const v2 = (90 - lat2) / 180;
-                    const px2 = - isobarRadius * Math.cos(u2 * Math.PI * 2) * Math.sin(v2 * Math.PI);
-                    const py2 = isobarRadius * Math.cos(v2 * Math.PI);
-                    const pz2 = isobarRadius * Math.sin(u2 * Math.PI * 2) * Math.sin(v2 * Math.PI);
+                    for (let i = 0; i < NX; i++) {
+                        const iNext = (i + 1) % NX;
+                        const v00 = dynamicBlendGrid[row0 + i];
+                        const v10 = dynamicBlendGrid[row0 + iNext];
+                        const v01 = dynamicBlendGrid[row1 + i];
+                        const v11 = dynamicBlendGrid[row1 + iNext];
 
-                    positions.push(px1, py1, pz1, px2, py2, pz2);
-                    colors.push(r, g, b, r, g, b);
-                }
+                        let mask = 0;
+                        if (v00 >= level) mask |= 1;
+                        if (v10 >= level) mask |= 2;
+                        if (v11 >= level) mask |= 4;
+                        if (v01 >= level) mask |= 8;
+                        if (mask === 0 || mask === 15) continue;
 
-                // 1. Chained & smoothed Polylines (iso.lines)
-                if (iso.lines && Array.isArray(iso.lines)) {
-                    for (let l = 0; l < iso.lines.length; l++) {
-                        const poly = iso.lines[l];
-                        if (!poly || poly.length < 4) continue;
-                        for (let i = 0; i < poly.length - 2; i += 2) {
-                            addSegment(poly[i], poly[i + 1], poly[i + 2], poly[i + 3]);
+                        const lon0 = i > 180 ? i - 360 : i;
+                        let lon1 = (i + 1) > 180 ? (i + 1) - 360 : (i + 1);
+                        if (lon0 > 100 && lon1 < -100) lon1 += 360;
+
+                        const tTop = (level - v00) / (v10 - v00);
+                        const tBot = (level - v01) / (v11 - v01);
+                        const tLeft = (level - v00) / (v01 - v00);
+                        const tRight = (level - v10) / (v11 - v10);
+
+                        const topLon = lon0 + tTop * (lon1 - lon0);
+                        const botLon = lon0 + tBot * (lon1 - lon0);
+                        const leftLat = lat0 + tLeft * (lat1 - lat0);
+                        const rightLat = lat0 + tRight * (lat1 - lat0);
+
+                        function addSeg(lonA, latA, lonB, latB) {
+                            if (segCount >= MAX_DYNAMIC_SEGS) return;
+                            if (Math.abs(lonA - lonB) > 180) return;
+
+                            const u1 = (lonA + 180) / 360;
+                            const v1 = (90 - latA) / 180;
+                            const phi1 = v1 * Math.PI;
+                            const theta1 = u1 * Math.PI * 2;
+                            const sinPhi1 = Math.sin(phi1);
+                            const px1 = - isobarRadius * Math.cos(theta1) * sinPhi1;
+                            const py1 = isobarRadius * Math.cos(phi1);
+                            const pz1 = isobarRadius * Math.sin(theta1) * sinPhi1;
+
+                            const u2 = (lonB + 180) / 360;
+                            const v2 = (90 - latB) / 180;
+                            const phi2 = v2 * Math.PI;
+                            const theta2 = u2 * Math.PI * 2;
+                            const sinPhi2 = Math.sin(phi2);
+                            const px2 = - isobarRadius * Math.cos(theta2) * sinPhi2;
+                            const py2 = isobarRadius * Math.cos(phi2);
+                            const pz2 = isobarRadius * Math.sin(theta2) * sinPhi2;
+
+                            dynamicIsoPositions[posIdx++] = px1;
+                            dynamicIsoPositions[posIdx++] = py1;
+                            dynamicIsoPositions[posIdx++] = pz1;
+                            dynamicIsoPositions[posIdx++] = px2;
+                            dynamicIsoPositions[posIdx++] = py2;
+                            dynamicIsoPositions[posIdx++] = pz2;
+
+                            dynamicIsoColors[colIdx++] = r;
+                            dynamicIsoColors[colIdx++] = g;
+                            dynamicIsoColors[colIdx++] = b;
+                            dynamicIsoColors[colIdx++] = r;
+                            dynamicIsoColors[colIdx++] = g;
+                            dynamicIsoColors[colIdx++] = b;
+
+                            segCount++;
+                            segsForLevel++;
+
+                            // Periodisch Isobaren-Beschriftungspositionen entlang der Linie erfassen
+                            if (segsForLevel % 120 === 60) {
+                                newLabels.push({
+                                    level,
+                                    lat: (latA + latB) * 0.5,
+                                    lon: (lonA + lonB) * 0.5
+                                });
+                            }
+                        }
+
+                        switch (mask) {
+                            case 1: case 14: addSeg(lon0, leftLat, topLon, lat0); break;
+                            case 2: case 13: addSeg(topLon, lat0, lon1, rightLat); break;
+                            case 3: case 12: addSeg(lon0, leftLat, lon1, rightLat); break;
+                            case 4: case 11: addSeg(botLon, lat1, lon1, rightLat); break;
+                            case 5:
+                                addSeg(lon0, leftLat, topLon, lat0);
+                                addSeg(botLon, lat1, lon1, rightLat);
+                                break;
+                            case 6: case 9:  addSeg(topLon, lat0, botLon, lat1); break;
+                            case 7: case 8:  addSeg(lon0, leftLat, botLon, lat1); break;
+                            case 10:
+                                addSeg(topLon, lat0, lon1, rightLat);
+                                addSeg(lon0, leftLat, botLon, lat1);
+                                break;
                         }
                     }
-                } else if (iso.coords && Array.isArray(iso.coords)) {
-                    // 2. Fallback: Flat coords segments
-                    const coords = iso.coords;
-                    for (let i = 0; i < coords.length; i += 4) {
-                        addSegment(coords[i], coords[i + 1], coords[i + 2], coords[i + 3]);
-                    }
                 }
-            });
+            }
 
-            if (positions.length === 0) return;
+            dynamicIsoGeom.setDrawRange(0, segCount * 2);
+            dynamicIsoPosAttr.needsUpdate = true;
+            dynamicIsoColAttr.needsUpdate = true;
+            activePressureLabels = newLabels;
+        }
 
-            const geom = new THREE.BufferGeometry();
-            geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-            geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-
-            const mat = new THREE.LineBasicMaterial({
-                vertexColors: true,
-                transparent: true,
-                opacity: 0.70,
-                depthWrite: false
-            });
-
-            const mesh = new THREE.LineSegments(geom, mat);
-            isobarGroup.add(mesh);
-            isobarGroup.visible = overlayState.isobars && currentCelestialBody !== 'moon';
+        function buildIsobar3DMesh(customIsobars) {
+            // Statischer Fallback für den Initialstart falls Grids noch laden
+            if (typeof pressureData !== 'undefined' && pressureData.steps && pressureData.steps.length > 0) {
+                const liveIdx = pressureData.liveIndex || 0;
+                updateContinuousIsobars(liveIdx, liveIdx, liveIdx, 0, true);
+            }
         }
         buildIsobar3DMesh();
 
         function getPressureAtPoint(lat, lng) {
-            if (typeof pressureData === 'undefined' || !pressureData.grid) return null;
+            const grid = (lastRenderedIsobarFrac !== -9999) 
+                ? dynamicBlendGrid 
+                : (typeof pressureData !== 'undefined' ? (pressureData.grid || null) : null);
+            if (!grid) return null;
             const yFloat = (90 - lat);
             const xFloat = ((lng + 360) % 360);
             const y0 = Math.max(0, Math.min(180, Math.floor(yFloat)));
@@ -5414,12 +5595,13 @@
             const x1 = (x0 + 1) % 360;
             const wy = yFloat - y0;
             const wx = xFloat - x0;
-            const v00 = pressureData.grid[y0 * 360 + x0];
-            const v10 = pressureData.grid[y0 * 360 + x1];
-            const v01 = pressureData.grid[y1 * 360 + x0];
-            const v11 = pressureData.grid[y1 * 360 + x1];
+            let v00 = grid[y0 * 360 + x0];
+            let v10 = grid[y0 * 360 + x1];
+            let v01 = grid[y1 * 360 + x0];
+            let v11 = grid[y1 * 360 + x1];
+            if (v00 < 400) { v00 += 900; v10 += 900; v01 += 900; v11 += 900; }
             const p = (1 - wy) * ((1 - wx) * v00 + wx * v10) + wy * ((1 - wx) * v01 + wx * v11);
-            return Math.round((p + 900) * 10) / 10;
+            return Math.round(p * 10) / 10;
         }
 
         function toggleOverlay(type, forceState) {
@@ -5448,6 +5630,9 @@
             if (type === 'isobars') {
                 if (isobarGroup) {
                     isobarGroup.visible = isAct && currentCelestialBody !== 'moon';
+                }
+                if (isAct && typeof updateActiveData === 'function') {
+                    updateActiveData();
                 }
             } else if (type === 'wind') {
                 if (!isAct && screenWindCtx) {
@@ -10955,9 +11140,11 @@
             // =========================================================================
             // OVERLAY: ISOBAREN-BESCHRIFTUNGEN (Luftdruck-Werte entlang der Linien, ohne schwere Kästen)
             // =========================================================================
-            const isobarsToRender = (activePressureIsobars && activePressureIsobars.length > 0)
-                ? activePressureIsobars
-                : ((typeof pressureData !== 'undefined' && pressureData.isobars) ? pressureData.isobars : []);
+            const isobarsToRender = (activePressureLabels && activePressureLabels.length > 0)
+                ? activePressureLabels
+                : ((activePressureIsobars && activePressureIsobars.length > 0)
+                    ? activePressureIsobars
+                    : ((typeof pressureData !== 'undefined' && pressureData.isobars) ? pressureData.isobars : []));
 
             if (typeof overlayState !== 'undefined' && overlayState.isobars && isobarsToRender.length > 0) {
                 cityCtx.font = '600 9.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -10967,16 +11154,17 @@
 
                 const isZoomedOut = dist > 210;
                 for (let i = 0; i < isobarsToRender.length; i++) {
-                    const iso = isobarsToRender[i];
-                    if (!iso.labels || iso.labels.length === 0) continue;
+                    const item = isobarsToRender[i];
+                    const levelVal = item.level;
                     // Bei weitem Zoom nur 8er-Schritte beschriften um Überladung zu verhindern
-                    if (isZoomedOut && (iso.level % 8 !== 0)) continue;
+                    if (isZoomedOut && (levelVal % 8 !== 0)) continue;
 
-                    const isLow = iso.level < 1013;
-                    const txt = `${iso.level}`;
+                    const lblList = item.labels ? item.labels : [item];
+                    const isLow = levelVal < 1013;
+                    const txt = `${levelVal}`;
 
-                    for (let j = 0; j < iso.labels.length; j++) {
-                        const lbl = iso.labels[j];
+                    for (let j = 0; j < lblList.length; j++) {
+                        const lbl = lblList[j];
                         const localV = latLngToSphereVertex(lbl.lat, lbl.lon, surfaceRadius);
                         const worldV = localV.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
                         const cosA = (worldV.x * cx + worldV.y * cy + worldV.z * cz) / (surfaceRadius * dist);
@@ -13306,27 +13494,22 @@
                 cloudBlend = clamped - cloudIdx0;
             }
 
-            // Dynamische Aktualisierung von Luftdruck (H/T Zentren & Isobaren) entlang der Zeitleiste
+            // Dynamische, stufenlose Aktualisierung von Luftdruck (H/T Zentren & fließende Isobaren)
             if (typeof pressureData !== 'undefined' && pressureData.steps && pressureData.steps.length > 0) {
-                let bestStep = pressureData.steps[0];
-                let bestIdx = 0;
-                let minDiff = Math.abs(bestStep.hour - currentHourOffset);
-                for (let i = 1; i < pressureData.steps.length; i++) {
-                    const s = pressureData.steps[i];
-                    const diff = Math.abs(s.hour - currentHourOffset);
-                    if (diff < minDiff) {
-                        minDiff = diff;
-                        bestStep = s;
-                        bestIdx = i;
-                    }
-                }
-                if (currentPressureStepIdx !== bestIdx) {
-                    currentPressureStepIdx = bestIdx;
-                    activePressureCenters = bestStep.centers || [];
-                    activePressureIsobars = bestStep.isobars || [];
-                    if (typeof overlayState !== 'undefined' && overlayState.isobars) {
-                        buildIsobar3DMesh(activePressureIsobars);
-                    }
+                const maxPIdx = pressureData.steps.length - 1;
+                const pStartHour = (pressureData.steps[0].hour !== undefined) ? pressureData.steps[0].hour : -24;
+                const pFrac = (currentHourOffset - pStartHour) / 3;
+                const clampedPFrac = Math.max(0, Math.min(maxPIdx, pFrac));
+                const pIdx0 = Math.floor(clampedPFrac);
+                const pIdx1 = Math.min(maxPIdx, pIdx0 + 1);
+                const pAlpha = clampedPFrac - pIdx0;
+
+                // 1. Sanft gleitende Hoch- & Tiefdruckzentren
+                activePressureCenters = interpolateCenters(pressureData.steps[pIdx0], pressureData.steps[pIdx1], pAlpha);
+
+                // 2. Ununterbrochen fließende Wellenbewegung der Isobaren
+                if (typeof updateContinuousIsobars === 'function') {
+                    updateContinuousIsobars(clampedPFrac, pIdx0, pIdx1, pAlpha);
                 }
             }
 
