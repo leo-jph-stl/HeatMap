@@ -5280,16 +5280,12 @@
                 // Beim Drehen/Verschieben/Zoomen altes Bild sofort säubern -> Partikel bleiben 1:1 fest an der Geographie verankert
                 screenWindCtx.clearRect(0, 0, screenW, screenH);
             } else {
-                // Im Stillstand sanfte, elegante Schweife fließen lassen
+                // Im Stillstand lange, geschwungene Schweife fließen lassen (0.960 für exzellente Schweiflänge bei Sturm)
                 screenWindCtx.globalCompositeOperation = 'destination-in';
-                screenWindCtx.fillStyle = 'rgba(0, 0, 0, 0.935)'; 
+                screenWindCtx.fillStyle = 'rgba(0, 0, 0, 0.960)'; 
                 screenWindCtx.fillRect(0, 0, screenW, screenH);
                 screenWindCtx.globalCompositeOperation = 'source-over';
             }
-            
-            screenWindCtx.beginPath();
-            screenWindCtx.strokeStyle = 'rgba(255, 255, 255, 0.65)'; // Klare, elegante Sichtbarkeit
-            screenWindCtx.lineWidth = 1.05;
 
             // Kamera-Parameter für schnelles analytisches Raycasting beim Partikel-Spawnen
             const m = camera.matrixWorld.elements;
@@ -5351,9 +5347,6 @@
             }
 
             // ANTI-CLUSTER BEIM HERAUSZOOMEN:
-            // Wenn herausgezoomt wird (Kameradistanz wächst), würden zuvor im Nahbereich platzierte Partikel
-            // zu einem dichten weißen Kasten zusammengedrückt. Daher werden Partikel bei Zoom-Änderung
-            // gleichmäßig auf das gesamte neu sichtbare Bildfeld re-verteilt!
             if (zoomRatio > 0.02) {
                 for (let i = 0; i < particleCount; i++) {
                     respawnOnScreen(particles[i]);
@@ -5370,9 +5363,12 @@
             }
             lastWindDist = dist;
 
-            // Geschwindigkeitsskalierung: Bei näherem Zoom wird der geographische Schritt adaptiv skaliert,
-            // sodass die optische Strichlänge auf dem Bildschirm immer perfekt gleichmäßig bleibt!
-            const step = (h / earthRadius) * 0.0016 * timeScale;
+            // Dynamische Schrittweite: Basis-Schritt 0.015 sorgt für sofort sichtbare, rasante Dynamik in Sturmfeldern
+            const step = (h / earthRadius) * 0.015 * timeScale;
+
+            const pathCalm = new Path2D();
+            const pathMed = new Path2D();
+            const pathStorm = new Path2D();
 
             for (let i = 0; i < particleCount; i++) {
                 const p = particles[i];
@@ -5419,9 +5415,13 @@
                     continue;
                 }
 
-                // Dynamische Windstärke: Schneller & längere Schweife bei Sturm, träge & kurz bei Windstille
+                // Dynamische Windstärke:
+                // - Sturmfelder & Jetstream (> 15 m/s): Rasend schnelle, lang geschwungene Wirbelschweife
+                // - Normale Winde (5 - 15 m/s): Harmonisch fließende Vektorbahnen
+                // - Windstille Hochdruckgebiete (< 5 m/s): Träge Kriechbewegung mit winzigen, dezenten Spuren
                 const speed = Math.sqrt(u * u + v * v);
-                const speedBoost = Math.min(3.6, Math.max(0.35, Math.pow(speed / 8.0, 0.72)));
+                const speedFactor = Math.pow(Math.max(0.1, speed) / 7.5, 0.85);
+                const speedBoost = Math.min(4.5, Math.max(0.20, speedFactor));
                 const effectiveStep = step * speedBoost;
 
                 let cosLat = Math.cos(p.lat * Math.PI / 180);
@@ -5447,15 +5447,37 @@
                 const sx1 = (tempVec1.x * 0.5 + 0.5) * screenW;
                 const sy1 = (-tempVec1.y * 0.5 + 0.5) * screenH;
 
-                screenWindCtx.moveTo(sx0, sy0);
-                screenWindCtx.lineTo(sx1, sy1);
+                // Segment je nach Windstärke in die passende Pfad-Hierarchie einfügen
+                if (speed < 5.0) {
+                    pathCalm.moveTo(sx0, sy0);
+                    pathCalm.lineTo(sx1, sy1);
+                } else if (speed < 14.0) {
+                    pathMed.moveTo(sx0, sy0);
+                    pathMed.lineTo(sx1, sy1);
+                } else {
+                    pathStorm.moveTo(sx0, sy0);
+                    pathStorm.lineTo(sx1, sy1);
+                }
 
                 p.lat = nextLat;
                 p.lng = nextLng;
-                p.age += timeScale * (0.6 + speedBoost * 0.4);
+                p.age += timeScale;
             }
 
-            screenWindCtx.stroke();
+            // 1. Ruhige, schwache Winde: Dezent, dünn und unaufdringlich
+            screenWindCtx.strokeStyle = 'rgba(255, 255, 255, 0.40)';
+            screenWindCtx.lineWidth = 0.85;
+            screenWindCtx.stroke(pathCalm);
+
+            // 2. Mäßige bis frische Winde: Scharfe, saubere Vektorbahnen
+            screenWindCtx.strokeStyle = 'rgba(255, 255, 255, 0.68)';
+            screenWindCtx.lineWidth = 1.25;
+            screenWindCtx.stroke(pathMed);
+
+            // 3. Sturmfelder & Jetstream: Dick, strahlend hellweiß und weithin sichtbar
+            screenWindCtx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+            screenWindCtx.lineWidth = 1.80;
+            screenWindCtx.stroke(pathStorm);
         }
 
         const clock = new THREE.Clock();
