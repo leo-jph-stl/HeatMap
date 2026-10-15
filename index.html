@@ -5781,53 +5781,14 @@
         const dynamicIsoMesh = new THREE.LineSegments(dynamicIsoGeom, dynamicIsoMat);
         isobarGroup.add(dynamicIsoMesh);
 
-        // Kontinuierliche Farbskala für Isobaren: Harmonischer, kontrastreicher Gradient von Tief- zu Hochdruck
-        // Garantiert exzellente Unterscheidbarkeit & Brillanz über allen Basisschichten (Temperatur, Topo, Ozeane, Wolken)
-        function getPressureColorRGB(level) {
-            const stops = [
-                { p: 976,  r: 1.00, g: 0.12, b: 0.58, hex: '#ff1f94' }, // Tiefstes Orkantief: Leuchtendes Neon-Magenta
-                { p: 988,  r: 1.00, g: 0.28, b: 0.40, hex: '#ff4766' }, // Starkes Tief: Karminrot/Pink
-                { p: 996,  r: 1.00, g: 0.50, b: 0.28, hex: '#ff8047' }, // Tief: Warmes Koralle
-                { p: 1004, r: 1.00, g: 0.74, b: 0.32, hex: '#ffbd52' }, // Leichtes Tief: Sonniges Bernstein / Gold
-                { p: 1012, r: 1.00, g: 0.94, b: 0.65, hex: '#fff0a6' }, // Normaldruck schwach tief: Strahlendes Champagner
-                { p: 1016, r: 0.76, g: 0.98, b: 0.82, hex: '#c2f9d1' }, // Normaldruck schwach hoch: Kühles Mint-Perlweiß
-                { p: 1022, r: 0.22, g: 0.92, b: 0.96, hex: '#38ebf5' }, // Leichtes Hoch: Elektrisches Aqua-Türkis
-                { p: 1028, r: 0.30, g: 0.76, b: 1.00, hex: '#4dc2ff' }, // Kräftiges Hoch: Helles Azur-/Himmelblau
-                { p: 1036, r: 0.45, g: 0.56, b: 1.00, hex: '#738fff' }  // Starkes Hochdruckgebiet: Königs-Irisblau
-            ];
-            if (level <= stops[0].p) return stops[0];
-            if (level >= stops[stops.length - 1].p) return stops[stops.length - 1];
-            for (let i = 0; i < stops.length - 1; i++) {
-                const s0 = stops[i], s1 = stops[i + 1];
-                if (level >= s0.p && level <= s1.p) {
-                    const t = (level - s0.p) / (s1.p - s0.p);
-                    const r = s0.r + (s1.r - s0.r) * t;
-                    const g = s0.g + (s1.g - s0.g) * t;
-                    const b = s0.b + (s1.b - s0.b) * t;
-                    const hexR = Math.round(r * 255).toString(16).padStart(2, '0');
-                    const hexG = Math.round(g * 255).toString(16).padStart(2, '0');
-                    const hexB = Math.round(b * 255).toString(16).padStart(2, '0');
-                    return { r, g, b, hex: `#${hexR}${hexG}${hexB}` };
-                }
-            }
-            return stops[4];
-        }
-
         const DYNAMIC_ISO_LEVELS = [
             976, 984, 988, 992, 996, 1000, 1004, 1008, 1012, 1016, 1020, 1024, 1028, 1032, 1036
         ];
+        // Einheitlich weiße Isobaren (Barometrische Linien) für ein elegantes, ruhiges und klares Gesamtbild
         const ISO_COLORS = DYNAMIC_ISO_LEVELS.map(level => {
-            const baseCol = getPressureColorRGB(level);
             const isMajor = (level % 20 === 0) || level === 1000 || level === 1020;
-            let r = baseCol.r;
-            let g = baseCol.g;
-            let b = baseCol.b;
-            if (isMajor) {
-                r = Math.min(1.0, r * 1.12);
-                g = Math.min(1.0, g * 1.12);
-                b = Math.min(1.0, b * 1.12);
-            }
-            return { r, g, b, hex: baseCol.hex };
+            const val = isMajor ? 1.0 : 0.88;
+            return { r: val, g: val, b: val, hex: '#ffffff' };
         });
 
         const dynamicBlendGrid = new Float32Array(360 * 181);
@@ -11597,7 +11558,7 @@
                     if (sx < 25 || sx > screenW - 25 || sy < 25 || sy > screenH - 25) continue;
 
                     const isHigh = c.type === 'H';
-                    const textColor = c.pressure ? getPressureColorRGB(c.pressure).hex : (isHigh ? '#38ebf5' : '#ff4766');
+                    const textColor = isHigh ? '#60a5fa' : '#f87171'; // Sanftes Blau / Sanftes Rot
 
                     // 1. Großes, markantes H oder T mit dunkler Kontur für optimale Lesbarkeit auf jedem Hintergrund
                     cityCtx.font = '900 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -11644,7 +11605,6 @@
                     if (isZoomedOut && (levelVal % 8 !== 0)) continue;
 
                     const lblList = item.labels ? item.labels : [item];
-                    const isobarCol = getPressureColorRGB(levelVal);
                     const txt = `${levelVal}`;
 
                     for (let j = 0; j < lblList.length; j++) {
@@ -11672,11 +11632,11 @@
                         }
                         if (coll) continue;
 
-                        // Schlanke, dezente Typografie mit dunkler Kontur statt schwerem Kasten
+                        // Schlanke, dezente Typografie mit dunkler Kontur: Einheitlich weiß
                         cityCtx.strokeStyle = 'rgba(10, 15, 26, 0.92)';
                         cityCtx.lineWidth = 2.4;
                         cityCtx.strokeText(txt, sx, sy);
-                        cityCtx.fillStyle = isobarCol.hex;
+                        cityCtx.fillStyle = '#ffffff';
                         cityCtx.fillText(txt, sx, sy);
 
                         placed.push({ x: sx, y: sy, spacingX: 24, spacingY: 14 });
