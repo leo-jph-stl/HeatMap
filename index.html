@@ -227,11 +227,23 @@
             color: #f1f5f9;
             border-color: rgba(255, 255, 255, 0.4);
         }
+        .layer-toggle-btn.active-clouds {
+            background: rgba(224, 231, 255, 0.20);
+            border-color: rgba(199, 210, 254, 0.6);
+            color: #e0e7ff;
+            box-shadow: 0 0 10px rgba(199, 210, 254, 0.25);
+        }
         .layer-toggle-btn.overlay-pill.active {
             background: rgba(14, 165, 233, 0.18);
             border-color: rgba(56, 189, 248, 0.6);
             color: #38bdf8;
             box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+        }
+        .layer-toggle-btn.overlay-pill.active-clouds {
+            background: rgba(224, 231, 255, 0.18);
+            border-color: rgba(199, 210, 254, 0.6);
+            color: #e0e7ff;
+            box-shadow: 0 0 10px rgba(199, 210, 254, 0.25);
         }
         .layer-toggle-btn.overlay-pill.active-ht {
             background: rgba(239, 68, 68, 0.16);
@@ -2618,12 +2630,14 @@
         <div id="layer-toggles-visible">
             <button id="btn-temp-vis" class="layer-toggle-btn active" onclick="switchLayer('temp')">🌡️ Temperatur</button>
             <button id="btn-solar-vis" class="layer-toggle-btn" onclick="switchLayer('solar')">☀️ Einstrahlung</button>
+            <button id="btn-clouds-vis" class="layer-toggle-btn" onclick="switchLayer('clouds')" title="Globale Wolkendecke &amp; Wolkenwassergehalt">☁️ Wolken</button>
             <button id="btn-topo-vis" class="layer-toggle-btn" onclick="switchLayer('topo')">⛰️ Topographie</button>
             <button id="btn-satellite-vis" class="layer-toggle-btn" onclick="switchLayer('satellite')">🛰️ Satellit</button>
             <button id="btn-moon-vis" class="layer-toggle-btn" onclick="toggleMoonEarth()" title="Detaillierte 3D Mondkarte &amp; Apollo-Landestellen">🌙 Mond</button>
             <button id="btn-route-vis" class="layer-toggle-btn" onclick="toggleRoutePlanner()" title="3D-Routenplaner &amp; Höhenprofil öffnen">🧭 Route</button>
             <button id="btn-area-vis" class="layer-toggle-btn" onclick="toggleAreaMeasure()" title="3D-Flächenmessung &amp; Formbestimmung">📐 Fläche</button>
             <div class="overlay-divider"></div>
+            <button id="btn-overlay-clouds" class="layer-toggle-btn overlay-pill active-clouds" onclick="toggleOverlay('clouds')" title="Wolken-Animation (Wolkendecke bei Tag &amp; Nacht) ein-/ausblenden">☁️ Wolken</button>
             <button id="btn-overlay-ht" class="layer-toggle-btn overlay-pill active-ht" onclick="toggleOverlay('ht')" title="Hoch- &amp; Tiefdruckgebiete (H/T) ein-/ausblenden">🔴🔵 Hoch/Tief</button>
             <button id="btn-overlay-isobars" class="layer-toggle-btn overlay-pill active" onclick="toggleOverlay('isobars')" title="Isobaren (Luftdruck-Höhenlinien in hPa) ein-/ausblenden">🌀 Isobaren</button>
             <button id="btn-overlay-menu" class="layer-toggle-btn overlay-pill" onclick="toggleOverlayMenu()" title="Zusätzliche Wetter-Ebenen &amp; Overlays anpassen">🥞 Ebenen ▾</button>
@@ -2663,13 +2677,20 @@
             </div>
             <div class="overlay-menu-body">
                 <label class="overlay-checkbox-row">
+                    <input type="checkbox" id="chk-overlay-clouds" checked onchange="toggleOverlay('clouds', this.checked)">
+                    <span class="overlay-icon">☁️</span>
+                    <div class="overlay-text">
+                        <strong>Wolken-Animation (Wolkendecke)</strong>
+                        <small>Echtzeit-Bewölkung &amp; Wolkenwassergehalt bei Tag &amp; Nacht</small>
+                    </div>
+                </label>
+                <label class="overlay-checkbox-row">
                     <input type="checkbox" id="chk-overlay-ht" checked onchange="toggleOverlay('ht', this.checked)">
                     <span class="overlay-icon">🔴🔵</span>
                     <div class="overlay-text">
                         <strong>Hoch- &amp; Tiefdruckgebiete (H / T)</strong>
                         <small>Zentren &amp; Kerndruck in hPa (Zyklonen &amp; Antizyklonen)</small>
                     </div>
-                </label>
                 <label class="overlay-checkbox-row">
                     <input type="checkbox" id="chk-overlay-isobars" checked onchange="toggleOverlay('isobars', this.checked)">
                     <span class="overlay-icon">🌀</span>
@@ -2738,6 +2759,7 @@
         let activeSolar = null;
         let activeTempIdx0 = 0, activeTempIdx1 = 0, activeTempBlend = 0;
         let activeSolarIdx0 = 0, activeSolarIdx1 = 0, activeSolarBlend = 0;
+        let activeCloudIdx0 = 0, activeCloudIdx1 = 0, activeCloudBlend = 0;
         let currentSolarFetchId = 0;
         let solarClimSelection = 'live'; // 'live' | 'JAN'..'DEC' | 'ANN'
         
@@ -2852,7 +2874,20 @@
             } else if (activeSolar) {
                 solar = sampleGridScalar(activeSolar, lat, lon0360, true, 0);
             }
-            return { u, v, t, solar };
+
+            let cloud = 0;
+            if (typeof cloudData !== 'undefined' && cloudData.length > 0) {
+                const s0 = cloudData[activeCloudIdx0] || cloudData[0];
+                const s1 = cloudData[activeCloudIdx1] || cloudData[0];
+                const c0 = sampleGridScalar(s0, lat, lon0360, true, 0);
+                if (s0 !== s1 && activeCloudBlend > 0) {
+                    const c1 = sampleGridScalar(s1, lat, lon0360, true, 0);
+                    cloud = c0 * (1 - activeCloudBlend) + c1 * activeCloudBlend;
+                } else {
+                    cloud = c0;
+                }
+            }
+            return { u, v, t, solar, cloud };
         }
 
         // THREE.JS SETUP
@@ -3209,6 +3244,10 @@
         const colorRampTempTex = createColorRampTexture(colorScaleTemp, minTempRange, maxTempRange, 2048);
         const colorRampWindTex = createColorRampTexture(kmh => colorScaleWind(kmh / 3.6), 0.0, maxWindKmh, 2048);
         const colorRampSolarTex = createColorRampTexture(colorScaleSolar, minSolarRange, maxSolarRange, 2048);
+        const colorScaleCloud = d3.scaleLinear()
+            .domain([0.0, 0.04, 0.15, 0.35, 0.60, 0.80])
+            .range(["#0b132b", "#1c2541", "#3a506b", "#5bc0be", "#f0f4f8", "#ffffff"]);
+        const colorRampCloudTex = createColorRampTexture(colorScaleCloud, minCloudRange, maxCloudRange, 2048);
 
         // HYPSOMETRISCHE FARBSKALA (Exakt kalibriert nach topographic-map.com)
         // Definiert die relative Farbprogression von 0% (tiefste sichtbare Stelle) bis 100% (höchster sichtbarer Gipfel)
@@ -3584,6 +3623,100 @@
         const hillshadeGroup = new THREE.Group();
         hillshadeGroup.rotation.y = -Math.PI / 2;
         scene.add(hillshadeGroup);
+
+        // BERECHNUNG DES SOLAR-VEKTORS (Subsolar-Punkt für Tag-/Nacht-Beleuchtung)
+        function computeSunDirection(hourOffset) {
+            const targetMs = Date.now() + hourOffset * 3600000;
+            const d = new Date(targetMs);
+            const startOfYear = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+            const dayOfYear = (targetMs - startOfYear.getTime()) / 86400000;
+            const declination = -23.44 * (Math.PI / 180) * Math.cos(2 * Math.PI * (dayOfYear + 10) / 365.25);
+            const utcHours = d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
+            const subsolarLon = -(utcHours - 12) * 15;
+            const subsolarLat = declination * 180 / Math.PI;
+
+            const u = (subsolarLon + 180) / 360;
+            const v = (90 - subsolarLat) / 180;
+            const phi = v * Math.PI;
+            const theta = u * Math.PI * 2;
+            const x = - Math.cos(theta) * Math.sin(phi);
+            const y = Math.cos(phi);
+            const z = Math.sin(theta) * Math.sin(phi);
+            return new THREE.Vector3(x, y, z).normalize();
+        }
+
+        // DYNAMISCHE 3D WOLKENDECKE (Tag- & Nacht-Wolkenanimation)
+        // =========================================================================
+        const cloudGeometry = new THREE.SphereGeometry(surfaceRadius + 0.007, 128, 128);
+        const cloudMaterial = new THREE.ShaderMaterial({
+            vertexShader: `
+                varying vec2 vUv;
+                varying vec3 vNormal;
+                void main() {
+                    vUv = uv;
+                    vNormal = normal;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                precision highp float;
+                uniform sampler2D u_cloudA;
+                uniform sampler2D u_cloudB;
+                uniform float u_blend;
+                uniform float u_cloudMax;
+                uniform float u_opacity;
+                uniform vec3 u_sunDirection;
+                varying vec2 vUv;
+                varying vec3 vNormal;
+
+                void main() {
+                    float cA = texture2D(u_cloudA, vUv).r;
+                    float cB = texture2D(u_cloudB, vUv).r;
+                    float cloud = clamp(mix(cA, cB, u_blend) / u_cloudMax, 0.0, 1.0);
+
+                    // Reiner Himmel ohne Bewölkung -> Pixel verwerfen für maximale Performance
+                    if (cloud < 0.012) {
+                        discard;
+                    }
+
+                    // Sonnen-Höhenwinkel (Tag / Dämmerung / Nacht)
+                    float sunDot = dot(normalize(vNormal), u_sunDirection);
+                    float dayFactor = smoothstep(-0.06, 0.12, sunDot);
+
+                    // 1. Tag-Wolken: Natürliches, helles Weiß mit feiner Wolkendichte-Tönung
+                    vec3 dayCloud = mix(vec3(0.92, 0.94, 0.98), vec3(1.0, 1.0, 1.0), smoothstep(0.08, 0.6, cloud));
+
+                    // 2. Abend-/Morgendämmerung: Warmer Pfirsich-/Goldton an der Wolkenkante am Terminator
+                    float twilight = (1.0 - abs(sunDot) / 0.12) * step(abs(sunDot), 0.12);
+                    vec3 sunsetCloud = vec3(1.0, 0.74, 0.60);
+                    dayCloud = mix(dayCloud, sunsetCloud, twilight * 0.40);
+
+                    // 3. Nacht-Wolken: Dezenter Silber-/Schieferton
+                    vec3 nightCloud = vec3(0.46, 0.49, 0.55);
+
+                    vec3 finalCol = mix(nightCloud, dayCloud, dayFactor);
+
+                    // Transparenz-Progression: Dünner Dunst dezent, dichte Fronten/Zellen deckend
+                    float alpha = smoothstep(0.012, 0.50, cloud) * u_opacity;
+
+                    gl_FragColor = vec4(finalCol, alpha);
+                }
+            `,
+            uniforms: {
+                u_cloudA: { value: (cloudTextures && cloudTextures[0]) ? cloudTextures[0] : null },
+                u_cloudB: { value: (cloudTextures && cloudTextures[0]) ? cloudTextures[0] : null },
+                u_blend: { value: 0.0 },
+                u_cloudMax: { value: useFloat ? maxCloudRange : 1.0 },
+                u_opacity: { value: 0.88 },
+                u_sunDirection: { value: new THREE.Vector3(1, 0, 0) }
+            },
+            transparent: true,
+            depthWrite: false
+        });
+        const cloudMesh = new THREE.Mesh(cloudGeometry, cloudMaterial);
+        cloudMesh.rotation.y = -Math.PI / 2;
+        cloudMesh.renderOrder = 2; // Liegt über Basiskarte/Relief (1), unter Grenzen/Vektoren (3)
+        scene.add(cloudMesh);
 
         function lon2tile(lon, zoom) {
             return Math.floor((lon + 180) / 360 * Math.pow(2, zoom));
@@ -5310,6 +5443,7 @@
         scene.add(isobarGroup);
 
         const overlayState = {
+            clouds: true,   // Wolkendecke & Zugbahn (Tag & Nacht)
             ht: true,       // Hoch- & Tiefdruckgebiete (H / T)
             isobars: true,  // Luftdruck-Isobaren
             wind: true,     // Windströmungs-Partikel
@@ -5617,17 +5751,27 @@
             const chk = document.getElementById(`chk-overlay-${type}`);
             if (chk) chk.checked = isAct;
 
+            const btnClouds = document.getElementById('btn-overlay-clouds');
             const btnHt = document.getElementById('btn-overlay-ht');
             const btnIsobars = document.getElementById('btn-overlay-isobars');
 
-            if (type === 'ht' && btnHt) {
+            if (type === 'clouds' && btnClouds) {
+                btnClouds.className = 'layer-toggle-btn overlay-pill' + (isAct ? ' active-clouds' : '');
+            } else if (type === 'ht' && btnHt) {
                 btnHt.className = 'layer-toggle-btn overlay-pill' + (isAct ? ' active-ht' : '');
             } else if (type === 'isobars' && btnIsobars) {
                 btnIsobars.className = 'layer-toggle-btn overlay-pill' + (isAct ? ' active' : '');
             }
 
             // 3D-Meshes steuern
-            if (type === 'isobars') {
+            if (type === 'clouds') {
+                if (typeof cloudMesh !== 'undefined' && cloudMesh) {
+                    cloudMesh.visible = isAct && currentCelestialBody !== 'moon';
+                }
+                if (isAct && typeof updateActiveData === 'function') {
+                    updateActiveData();
+                }
+            } else if (type === 'isobars') {
                 if (isobarGroup) {
                     isobarGroup.visible = isAct && currentCelestialBody !== 'moon';
                 }
@@ -13023,6 +13167,10 @@
                     ? `${real.solar.toFixed(0)} W/m²`
                     : `${real.solar.toFixed(2)} kWh/m²/Tag`;
                 html = `${sVal}${pSuffix}`;
+            } else if (currentMode === 'clouds') {
+                const cVal = (real.cloud !== undefined) ? real.cloud : 0;
+                const pct = Math.round(Math.min(100, Math.max(0, (cVal / 0.8) * 100)));
+                html = `☁️ ${pct}% (${cVal.toFixed(2)} kg/m²)${pSuffix}`;
             } else {
                 const speedKmh = Math.sqrt(real.u * real.u + real.v * real.v) * 3.6;
                 html = `${speedKmh.toFixed(1)} km/h${pSuffix}`;
@@ -13492,6 +13640,9 @@
                 cloudIdx0 = Math.floor(clamped);
                 cloudIdx1 = Math.min(maxI, cloudIdx0 + 1);
                 cloudBlend = clamped - cloudIdx0;
+                activeCloudIdx0 = cloudIdx0;
+                activeCloudIdx1 = cloudIdx1;
+                activeCloudBlend = cloudBlend;
             }
 
             // Dynamische, stufenlose Aktualisierung von Luftdruck (H/T Zentren & fließende Isobaren)
@@ -13510,6 +13661,19 @@
                 // 2. Ununterbrochen fließende Wellenbewegung der Isobaren
                 if (typeof updateContinuousIsobars === 'function') {
                     updateContinuousIsobars(clampedPFrac, pIdx0, pIdx1, pAlpha);
+                }
+            }
+
+            // Stufenlose Aktualisierung der 3D-Wolkendecke bei Tag & Nacht
+            if (typeof cloudMesh !== 'undefined' && cloudMesh) {
+                cloudMesh.visible = overlayState.clouds && currentCelestialBody !== 'moon';
+                if (cloudMesh.visible && typeof cloudTextures !== 'undefined' && cloudTextures.length > 0) {
+                    if (cloudTextures[cloudIdx0] && cloudTextures[cloudIdx1]) {
+                        cloudMaterial.uniforms.u_cloudA.value = cloudTextures[cloudIdx0];
+                        cloudMaterial.uniforms.u_cloudB.value = cloudTextures[cloudIdx1];
+                        cloudMaterial.uniforms.u_blend.value = cloudBlend;
+                        cloudMaterial.uniforms.u_sunDirection.value = computeSunDirection(currentHourOffset);
+                    }
                 }
             }
 
@@ -13538,6 +13702,9 @@
                         showNightClouds = true;
                     }
                 }
+            } else if (currentMode === 'clouds') {
+                if (typeof ensureSolarTextures === 'function') ensureSolarTextures();
+                texA = cloudTextures[cloudIdx0]; texB = cloudTextures[cloudIdx1]; blend = cloudBlend;
             }
             dataMaterial.uniforms.u_showNightClouds.value = showNightClouds ? 1.0 : 0.0;
             if (texA && texB) {
@@ -13599,11 +13766,13 @@
 
             const btnTempVis = document.getElementById('btn-temp-vis');
             const btnSolarVis = document.getElementById('btn-solar-vis');
+            const btnCloudsVis = document.getElementById('btn-clouds-vis');
             const btnTopoVis = document.getElementById('btn-topo-vis');
             const btnSatelliteVis = document.getElementById('btn-satellite-vis');
             const btnMoonVis = document.getElementById('btn-moon-vis');
             if (btnTempVis) btnTempVis.className = 'layer-toggle-btn' + (mode === 'temp' ? ' active' : '');
             if (btnSolarVis) btnSolarVis.className = 'layer-toggle-btn' + (mode === 'solar' ? ' active-solar' : '');
+            if (btnCloudsVis) btnCloudsVis.className = 'layer-toggle-btn' + (mode === 'clouds' ? ' active-clouds' : '');
             if (btnTopoVis) btnTopoVis.className = 'layer-toggle-btn' + (mode === 'topo' ? ' active-topo' : '');
             if (btnSatelliteVis) btnSatelliteVis.className = 'layer-toggle-btn' + (mode === 'satellite' ? ' active-satellite' : '');
             if (btnMoonVis) btnMoonVis.className = 'layer-toggle-btn';
@@ -13679,6 +13848,16 @@
                     document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #440154 0%, #482878 5.5%, #3e4989 11.1%, #31688e 16.6%, #26828e 22.2%, #1f9e89 27.8%, #35b779 33.4%, #6ece58 38.9%, #b5de2b 44.5%, #fde725 50%, #fab942 58.2%, #f28f3a 65.5%, #dd5f34 72.7%, #b8392f 80%, #d9a76a 87.3%, #ecd9b8 93.6%, #ffffff 100%)';
                     dataMaterial.uniforms.u_colorRamp.value = colorRampSolarTex;
                     applySolarRangeAndLegend();
+                } else if (mode === 'clouds') {
+                    if (typeof ensureSolarTextures === 'function') ensureSolarTextures();
+                    document.getElementById('legend-min').innerText = '0% (Klar)';
+                    document.getElementById('legend-max').innerText = '100% (Bedeckt)';
+                    document.getElementById('legend-bar').style.background = 'linear-gradient(to right, #0b132b 0%, #1c2541 15%, #3a506b 35%, #5bc0be 55%, #e0e1dd 75%, #ffffff 90%, #b8c0ff 100%)';
+                    document.getElementById('timeLabel').innerText = 'Live Wolkendecke & Bewölkungs-Animation (3D Globus)';
+                    dataMaterial.uniforms.u_colorRamp.value = colorRampCloudTex;
+                    dataMaterial.uniforms.u_minVal.value = useFloat ? minCloudRange : 0.0;
+                    dataMaterial.uniforms.u_maxVal.value = useFloat ? maxCloudRange : 1.0;
+                    if (dataMaterial.uniforms.u_texSize) dataMaterial.uniforms.u_texSize.value.set(1440.0, 721.0);
                 } else {
                     document.getElementById('legend-min').innerText = '0 km/h';
                     document.getElementById('legend-max').innerText = '100+ km/h';
@@ -13725,6 +13904,7 @@
             const earthButtons = [
                 document.getElementById('btn-temp-vis'),
                 document.getElementById('btn-solar-vis'),
+                document.getElementById('btn-clouds-vis'),
                 document.getElementById('btn-topo-vis'),
                 document.getElementById('btn-satellite-vis'),
                 document.getElementById('btn-route-vis'),
@@ -13761,7 +13941,7 @@
                 // Alle irdischen Ebenen-Buttons deaktivieren
                 const allVisBtns = document.querySelectorAll('.layer-toggle-btn');
                 allVisBtns.forEach(b => {
-                    b.classList.remove('active', 'active-solar', 'active-topo', 'active-satellite');
+                    b.classList.remove('active', 'active-solar', 'active-clouds', 'active-topo', 'active-satellite');
                 });
                 if (btnMoonVis) {
                     btnMoonVis.className = 'layer-toggle-btn active-moon';
@@ -13783,6 +13963,7 @@
                 if (typeof urbanFillMesh !== 'undefined' && urbanFillMesh) urbanFillMesh.visible = false;
                 if (typeof urbanLineMesh !== 'undefined' && urbanLineMesh) urbanLineMesh.visible = false;
                 if (typeof isobarGroup !== 'undefined' && isobarGroup) isobarGroup.visible = false;
+                if (typeof cloudMesh !== 'undefined' && cloudMesh) cloudMesh.visible = false;
 
                 // Wetter-Overlays & Pill-Buttons auf dem Mond ausblenden
                 const overlayPills = document.querySelectorAll('.overlay-pill, .overlay-divider');
@@ -13873,6 +14054,9 @@
                 if (typeof coastMesh50 !== 'undefined' && coastMesh50) coastMesh50.visible = (typeof overlayState !== 'undefined') ? overlayState.borders : true;
                 if (typeof isobarGroup !== 'undefined' && isobarGroup) {
                     isobarGroup.visible = (typeof overlayState !== 'undefined') ? overlayState.isobars : true;
+                }
+                if (typeof cloudMesh !== 'undefined' && cloudMesh) {
+                    cloudMesh.visible = (typeof overlayState !== 'undefined') ? overlayState.clouds : true;
                 }
                 const overlayPills = document.querySelectorAll('.overlay-pill, .overlay-divider');
                 overlayPills.forEach(p => p.style.display = '');
