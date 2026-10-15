@@ -348,7 +348,7 @@ async function run() {
             if (parts.length < 2) throw new Error(`Parse error in chunk ${c}`);
             const dataBlock = parts[1].split('Pressure_reduced_to_MSL_msl.time')[0];
 
-            const regex = /\d+\.\d+/g;
+            const regex = /[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?/g;
             let match;
             const nums = [];
             while ((match = regex.exec(dataBlock)) !== null) {
@@ -357,7 +357,15 @@ async function run() {
 
             for (let s = 0; s < chunkCount; s++) {
                 const stepMeta = stepsMeta[c + s];
-                const gridSlice = new Int16Array(nums.slice(s * PTS_PER_STEP, (s + 1) * PTS_PER_STEP));
+                const rawSlice = nums.slice(s * PTS_PER_STEP, (s + 1) * PTS_PER_STEP);
+                const gridSlice = new Int16Array(PTS_PER_STEP);
+                if (rawSlice.length === PTS_PER_STEP) {
+                    for (let i = 0; i < PTS_PER_STEP; i++) gridSlice[i] = rawSlice[i];
+                } else if (allSteps.length > 0) {
+                    console.warn(`Warning: Incomplete slice for step ${stepMeta.timestamp}, falling back to previous step.`);
+                    const prevB64 = Buffer.from(allSteps[allSteps.length - 1].gridB64, 'base64');
+                    for (let i = 0; i < PTS_PER_STEP; i++) gridSlice[i] = prevB64[i] + 900;
+                }
                 const isLive = (stepMeta.hour === 0);
                 const processed = processStep(gridSlice, isLive);
 

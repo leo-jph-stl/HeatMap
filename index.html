@@ -5745,7 +5745,7 @@
             return result;
         }
 
-        // Dekodierung der kompakten Base64-Raster aller 25 Zeitschritte
+        // Dekodierung der kompakten Base64-Raster aller 25 Zeitschritte mit robuster Auto-Healing Validierung
         let decodedPressureGrids = null;
         function getDecodedPressureGrids() {
             if (!decodedPressureGrids && typeof pressureData !== 'undefined' && pressureData.steps) {
@@ -5757,6 +5757,46 @@
                     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
                     return bytes;
                 });
+
+                // Auto-Healing: Schützt vor unvollständigen/fehlerhaften 0-Byte Zeitschritten im Wetterdatensatz
+                const len = decodedPressureGrids.length;
+                for (let k = 0; k < len; k++) {
+                    const g = decodedPressureGrids[k];
+                    let isCorrupt = !g || g.length !== 360 * 181;
+                    if (!isCorrupt) {
+                        let zeroCount = 0;
+                        for (let s = 0; s < 400; s++) {
+                            const sampleIdx = (s * 163) % g.length;
+                            if (g[sampleIdx] === 0) zeroCount++;
+                        }
+                        if (zeroCount > 360) isCorrupt = true; // >90% Null-Werte = defekter Zeitschritt
+                    }
+
+                    if (isCorrupt) {
+                        let prev = null, next = null;
+                        for (let p = k - 1; p >= 0; p--) {
+                            if (decodedPressureGrids[p] && decodedPressureGrids[p].length === 360 * 181) {
+                                prev = decodedPressureGrids[p];
+                                break;
+                            }
+                        }
+                        for (let n = k + 1; n < len; n++) {
+                            if (decodedPressureGrids[n] && decodedPressureGrids[n].length === 360 * 181) {
+                                next = decodedPressureGrids[n];
+                                break;
+                            }
+                        }
+                        if (prev && next) {
+                            const healed = new Uint8Array(prev.length);
+                            for (let i = 0; i < prev.length; i++) healed[i] = Math.round((prev[i] + next[i]) * 0.5);
+                            decodedPressureGrids[k] = healed;
+                        } else if (prev) {
+                            decodedPressureGrids[k] = new Uint8Array(prev);
+                        } else if (next) {
+                            decodedPressureGrids[k] = new Uint8Array(next);
+                        }
+                    }
+                }
             }
             return decodedPressureGrids;
         }
@@ -5795,6 +5835,11 @@
         const smoothBlendGrid = new Float32Array(360 * 181);
         const smoothBlendGrid2 = new Float32Array(360 * 181);
         const segsPerLevel = new Uint32Array(DYNAMIC_ISO_LEVELS.length);
+        const NUM_ISO_SECTORS = 70; // 7 Breitengrad-Zonen x 10 Längengrad-Zonen
+        const totalIsoSectorSlots = DYNAMIC_ISO_LEVELS.length * NUM_ISO_SECTORS;
+        const isoCandDist = new Float32Array(totalIsoSectorSlots);
+        const isoCandLat = new Float32Array(totalIsoSectorSlots);
+        const isoCandLon = new Float32Array(totalIsoSectorSlots);
         let lastRenderedIsobarFrac = -9999;
 
         // Echtzeit-Berechnung kontinuierlich fließender, organisch geglätteter Isobaren (Sub-Zellen Marching Squares)
@@ -5858,6 +5903,7 @@
             let colIdx = 0;
             const newLabels = [];
             segsPerLevel.fill(0);
+            isoCandDist.fill(999999);
 
             let curR = 1, curG = 1, curB = 1, curLIdx = 0;
 
@@ -5900,13 +5946,25 @@
                 segCount++;
                 segsPerLevel[curLIdx]++;
 
-                // Regelmäßige Platzierung von Isobaren-Beschriftungen entlang der fließenden Kurve
-                if (segsPerLevel[curLIdx] % 220 === 110) {
-                    newLabels.push({
-                        level: DYNAMIC_ISO_LEVELS[curLIdx],
-                        lat: (latA + latB) * 0.5,
-                        lon: (lonA + lonB) * 0.5
-                    });
+                // Geographisch verankerte Sektor-Kandidaten zur stabilen, ruhigen Beschriftung (verhindert Springen)
+                const midLat = (latA + latB) * 0.5;
+                const midLon = (lonA + lonB) * 0.5;
+                const sLat = Math.min(6, Math.max(0, Math.floor((midLat + 90) / 26)));
+                const sLon = Math.min(9, Math.max(0, Math.floor(((midLon + 180) % 360) / 36)));
+                const sIdx = (curLIdx * 70) + (sLat * 10 + sLon);
+
+                const cLat = sLat * 26 - 77;
+                const cLon = sLon * 36 - 162;
+                const dLat = midLat - cLat;
+                let dLon = midLon - cLon;
+                if (dLon > 180) dLon -= 360;
+                if (dLon < -180) dLon += 360;
+                const dSq = dLat * dLat + dLon * dLon;
+
+                if (dSq < isoCandDist[sIdx]) {
+                    isoCandDist[sIdx] = dSq;
+                    isoCandLat[sIdx] = midLat;
+                    isoCandLon[sIdx] = midLon;
                 }
             }
 
@@ -5995,6 +6053,20 @@
                         marchSubQuad(vtMid, v10, vrMid, vMid, lonMid, lon1, lat0, latMid, level);
                         marchSubQuad(vlMid, vMid, vbMid, v01, lon0, lonMid, latMid, lat1, level);
                         marchSubQuad(vMid, vrMid, v11, vbMid, lonMid, lon1, latMid, lat1, level);
+                    }
+                }
+            }
+
+            // Stabile, ortsfeste Labels sammeln (gleiten sanft mit den Isobaren, springen niemals)
+            for (let lIdx = 0; lIdx < DYNAMIC_ISO_LEVELS.length; lIdx++) {
+                for (let s = 0; s < 70; s++) {
+                    const idx = lIdx * 70 + s;
+                    if (isoCandDist[idx] < 360) {
+                        newLabels.push({
+                            level: DYNAMIC_ISO_LEVELS[lIdx],
+                            lat: isoCandLat[idx],
+                            lon: isoCandLon[idx]
+                        });
                     }
                 }
             }
