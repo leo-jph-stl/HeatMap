@@ -6519,7 +6519,8 @@
         function interpSolarAtTime(tMs) {
             if (typeof solarData === 'undefined' || !solarData.length) return null;
             const loc = (typeof getActivePvLocation === 'function') ? getActivePvLocation() : PV_SYSTEM_LOCATION;
-            const lat = loc.lat, lng = loc.lng;
+            const lat = (loc && typeof loc.lat === 'number') ? loc.lat : 50.008;
+            const lng = (loc && typeof loc.lng === 'number') ? loc.lng : 8.350;
             if (tMs <= solarData[0].timeMs) return Math.max(0, getTempAtStep(solarData[0], lat, lng));
             for (let i = 0; i < solarData.length - 1; i++) {
                 const a = solarData[i], b = solarData[i + 1];
@@ -6546,16 +6547,14 @@
         // die Anlage selbst zeigt am zuverlässigsten (über ihre reale Antwort auf reale Einstrahlung),
         // wie viel kW sie liefert - inklusive Ausrichtung, Verschattung, Verschmutzung und Degradation,
         // die ein generischer Schätzwert nicht kennt.
-        //
-        // Bevorzugte Quelle ist das von log_pv_forecast.js über Wochen/Monate angesammelte Log (siehe
-        // pvForecastLog) - robuster als nur der letzte Tag, weil es mehr Wetterlagen abdeckt. Solange
-        // dieses Log noch zu jung ist (frisch installiertes Feature, oder Backend-Log noch nicht
-        // nachgeladen), fällt die Funktion auf die letzten 24h der gerade geladenen Live-Historie zurück,
-        // damit die Prognose von Anfang an funktioniert und sich mit der Zeit von selbst verbessert.
         function computePvForecast(plantKey = null) {
             const activePlant = plantKey || (currentActivePvPlant === 'zun' ? 'zun' : 'foxess');
             const targetLive = (activePlant === 'zun') ? livePvDataZun : livePvDataFoxess;
             const targetLoc = (activePlant === 'zun') ? ZUN_PV_SYSTEM_LOCATION : PV_SYSTEM_LOCATION;
+            const defaultLat = (activePlant === 'zun') ? 50.045 : 50.008;
+            const defaultLng = (activePlant === 'zun') ? 8.436 : 8.350;
+            const plantLat = (targetLoc && typeof targetLoc.lat === 'number') ? targetLoc.lat : defaultLat;
+            const plantLng = (targetLoc && typeof targetLoc.lng === 'number') ? targetLoc.lng : defaultLng;
 
             let actual = [];
             if (pvChartState) {
@@ -6574,8 +6573,12 @@
 
             const now = Date.now();
             const pickCalibPairs = (pairs) => {
-                let filtered = pairs.filter(pr => pr.ghi >= 50 && pr.ghi <= 700);
-                if (filtered.length < 5) filtered = pairs.filter(pr => pr.ghi >= 30);
+                // Nur echte Sonnenstunden mit nennenswerter Erzeugung berücksichtigen
+                // Verhindert, dass Nacht-/Dämmerungspunkte (pv=0 bei Reststrahlung) den Wirkungsgrad auf 0 verzerren
+                let filtered = pairs.filter(pr => pr.ghi >= 50 && pr.pv >= 0.08 && (pr.pv / pr.ghi) >= 0.003 && (pr.pv / pr.ghi) <= 0.045);
+                if (filtered.length < 5) {
+                    filtered = pairs.filter(pr => pr.ghi >= 35 && pr.pv >= 0.05 && (pr.pv / pr.ghi) >= 0.002);
+                }
                 return filtered;
             };
 
@@ -6592,6 +6595,12 @@
                     livePairs.push({ pv: p.pv, ghi });
                 }
                 calibPairs = pickCalibPairs(livePairs);
+                if (calibPairs.length < 5) {
+                    const fullPairs = actual.filter(p => p.t <= now).map(p => ({ pv: p.pv, ghi: interpSolarAtTime(p.t) })).filter(pr => pr.ghi !== null);
+                    calibPairs = pickCalibPairs(fullPairs);
+                    calibSource = 'hist';
+                    calibDays = 3;
+                }
             } else {
                 const logWindowStart = now - PV_FORECAST_LOG_MAX_AGE_MS;
                 const logPairs = (typeof pvForecastLog !== 'undefined' ? pvForecastLog : [])
@@ -6615,22 +6624,45 @@
                     calibSource = '24h';
                     calibDays = 1;
                 }
+
+                if (calibPairs.length < 5) {
+                    // Fallback auf die gesamte verfügbare Historie (bis zu 3 Tage), falls im letzten 24h-Fenster keine Tag-Werte lagen
+                    const fullPairs = [];
+                    for (const p of actual) {
+                        if (p.t > now) continue;
+                        const ghi = interpSolarAtTime(p.t);
+                        if (ghi !== null) fullPairs.push({ pv: p.pv, ghi });
+                    }
+                    calibPairs = pickCalibPairs(fullPairs);
+                    calibSource = '3d-hist';
+                    calibDays = 3;
+                }
             }
-            if (calibPairs.length < 5) return null;
 
-            const ratios = calibPairs.map(pr => pr.pv / pr.ghi).sort((a, b) => a - b);
-            const mid = Math.floor(ratios.length / 2);
-            const medianRatio = ratios.length % 2 ? ratios[mid] : (ratios[mid - 1] + ratios[mid]) / 2;
-            if (!(medianRatio > 0)) return null;
+            const maxHistPv = Math.max(1, ...actual.map(p => p.pv), (targetLive && typeof targetLive.solar_power === 'number') ? targetLive.solar_power : 0);
+            let medianRatio = 0;
 
-            const capKw = Math.max(1, ...actual.map(p => p.pv), targetLive && typeof targetLive.solar_power === 'number' ? targetLive.solar_power : 0) * 1.05;
+            if (calibPairs.length >= 5) {
+                const ratios = calibPairs.map(pr => pr.pv / pr.ghi).sort((a, b) => a - b);
+                const mid = Math.floor(ratios.length / 2);
+                medianRatio = ratios.length % 2 ? ratios[mid] : (ratios[mid - 1] + ratios[mid]) / 2;
+            }
+            // Robuster Sicherheitsanker: wenn Datenlücken vorhanden sind, physikalischen Nenn-Faktor ansetzen
+            if (!(medianRatio > 0.003)) {
+                medianRatio = maxHistPv > 2 ? (maxHistPv / 750) : 0.015;
+            }
+
+            const capKw = maxHistPv * 1.05;
             const lastAvailable = solarData[solarData.length - 1].timeMs;
             const nowGhi = interpSolarAtTime(now);
-            const nowPv = (targetLive && typeof targetLive.solar_power === 'number') ? targetLive.solar_power : Math.min(capKw, (nowGhi || 0) * medianRatio);
+            const nowPv = (targetLive && typeof targetLive.solar_power === 'number' && targetLive.solar_power > 0)
+                ? targetLive.solar_power
+                : Math.min(capKw, (nowGhi || 0) * medianRatio);
+
             const points = [{ t: now, pv: Math.max(0, nowPv) }];
             for (const step of solarData) {
                 if (step.timeMs <= now || step.timeMs > lastAvailable) continue;
-                const ghi = Math.max(0, getTempAtStep(step, targetLoc.lat || PV_SYSTEM_LOCATION.lat, targetLoc.lng || PV_SYSTEM_LOCATION.lng));
+                const ghi = Math.max(0, getTempAtStep(step, plantLat, plantLng));
                 points.push({ t: step.timeMs, pv: Math.min(capKw, ghi * medianRatio) });
             }
             if (points.length < 2) return null;
