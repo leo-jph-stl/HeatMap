@@ -5711,7 +5711,7 @@
         }
 
         // Dynamisches, hochperformantes 3D-Isobaren-Mesh mit vorallokierten Typ-Puffern
-        const MAX_DYNAMIC_SEGS = 24000;
+        const MAX_DYNAMIC_SEGS = 65000;
         const dynamicIsoPositions = new Float32Array(MAX_DYNAMIC_SEGS * 6);
         const dynamicIsoColors = new Float32Array(MAX_DYNAMIC_SEGS * 6);
         const dynamicIsoGeom = new THREE.BufferGeometry();
@@ -5733,10 +5733,26 @@
         const DYNAMIC_ISO_LEVELS = [
             976, 984, 988, 992, 996, 1000, 1004, 1008, 1012, 1016, 1020, 1024, 1028, 1032, 1036
         ];
+        const ISO_COLORS = DYNAMIC_ISO_LEVELS.map(level => {
+            const isLow = level < 1013;
+            const isMajor = (level % 20 === 0) || level === 1000 || level === 1020;
+            let r = isLow ? 0.98 : 0.22;
+            let g = isLow ? 0.44 : 0.74;
+            let b = isLow ? 0.52 : 0.97;
+            if (isMajor) {
+                r = Math.min(1.0, r * 1.15);
+                g = Math.min(1.0, g * 1.15);
+                b = Math.min(1.0, b * 1.15);
+            }
+            return { r, g, b };
+        });
+
         const dynamicBlendGrid = new Float32Array(360 * 181);
+        const smoothBlendGrid = new Float32Array(360 * 181);
+        const segsPerLevel = new Uint32Array(DYNAMIC_ISO_LEVELS.length);
         let lastRenderedIsobarFrac = -9999;
 
-        // Echtzeit-Berechnung kontinuierlich fließender Isobaren (Wellenbewegung ohne Sprünge)
+        // Echtzeit-Berechnung kontinuierlich fließender, organisch geglätteter Isobaren (Sub-Zellen Marching Squares)
         function updateContinuousIsobars(clampedPFrac, idx0, idx1, alpha, force = false) {
             if (!overlayState.isobars || currentCelestialBody === 'moon') {
                 dynamicIsoMesh.visible = false;
@@ -5762,126 +5778,163 @@
                 dynamicBlendGrid[i] = (invAlpha * g0[i] + alpha * g1[i]) + 900;
             }
 
+            // Räumlicher 9-Punkt Gauß-Filter zur Glättung numerischer Orografie-Kanten & Eliminierung von Zacken
+            for (let j = 0; j < NY; j++) {
+                const j0 = Math.max(0, j - 1);
+                const j1 = Math.min(NY - 1, j + 1);
+                const r = j * NX, r0 = j0 * NX, r1 = j1 * NX;
+                for (let i = 0; i < NX; i++) {
+                    const i0 = (i - 1 + NX) % NX;
+                    const i1 = (i + 1) % NX;
+                    smoothBlendGrid[r + i] = 0.58 * dynamicBlendGrid[r + i]
+                        + 0.085 * (dynamicBlendGrid[r + i0] + dynamicBlendGrid[r + i1] + dynamicBlendGrid[r0 + i] + dynamicBlendGrid[r1 + i])
+                        + 0.020 * (dynamicBlendGrid[r0 + i0] + dynamicBlendGrid[r0 + i1] + dynamicBlendGrid[r1 + i0] + dynamicBlendGrid[r1 + i1]);
+                }
+            }
+
             const isobarRadius = vectorLineRadius + 0.012;
             let segCount = 0;
             let posIdx = 0;
             let colIdx = 0;
             const newLabels = [];
+            segsPerLevel.fill(0);
 
-            for (let lIdx = 0; lIdx < DYNAMIC_ISO_LEVELS.length; lIdx++) {
-                const level = DYNAMIC_ISO_LEVELS[lIdx];
-                const isLow = level < 1013;
-                const isMajor = (level % 20 === 0) || level === 1000 || level === 1020;
-                let r = isLow ? 0.98 : 0.22;
-                let g = isLow ? 0.44 : 0.74;
-                let b = isLow ? 0.52 : 0.97;
-                if (isMajor) {
-                    r = Math.min(1.0, r * 1.15);
-                    g = Math.min(1.0, g * 1.15);
-                    b = Math.min(1.0, b * 1.15);
+            let curR = 1, curG = 1, curB = 1, curLIdx = 0;
+
+            function addSeg(lonA, latA, lonB, latB) {
+                if (segCount >= MAX_DYNAMIC_SEGS) return;
+                if (Math.abs(lonA - lonB) > 180) return;
+
+                const u1 = (lonA + 180) * 0.002777777777777778; // / 360
+                const v1 = (90 - latA) * 0.005555555555555556;   // / 180
+                const phi1 = v1 * 3.141592653589793;
+                const theta1 = u1 * 6.283185307179586;
+                const sinPhi1 = Math.sin(phi1);
+                const px1 = - isobarRadius * Math.cos(theta1) * sinPhi1;
+                const py1 = isobarRadius * Math.cos(phi1);
+                const pz1 = isobarRadius * Math.sin(theta1) * sinPhi1;
+
+                const u2 = (lonB + 180) * 0.002777777777777778;
+                const v2 = (90 - latB) * 0.005555555555555556;
+                const phi2 = v2 * 3.141592653589793;
+                const theta2 = u2 * 6.283185307179586;
+                const sinPhi2 = Math.sin(phi2);
+                const px2 = - isobarRadius * Math.cos(theta2) * sinPhi2;
+                const py2 = isobarRadius * Math.cos(phi2);
+                const pz2 = isobarRadius * Math.sin(theta2) * sinPhi2;
+
+                dynamicIsoPositions[posIdx++] = px1;
+                dynamicIsoPositions[posIdx++] = py1;
+                dynamicIsoPositions[posIdx++] = pz1;
+                dynamicIsoPositions[posIdx++] = px2;
+                dynamicIsoPositions[posIdx++] = py2;
+                dynamicIsoPositions[posIdx++] = pz2;
+
+                dynamicIsoColors[colIdx++] = curR;
+                dynamicIsoColors[colIdx++] = curG;
+                dynamicIsoColors[colIdx++] = curB;
+                dynamicIsoColors[colIdx++] = curR;
+                dynamicIsoColors[colIdx++] = curG;
+                dynamicIsoColors[colIdx++] = curB;
+
+                segCount++;
+                segsPerLevel[curLIdx]++;
+
+                // Regelmäßige Platzierung von Isobaren-Beschriftungen entlang der fließenden Kurve
+                if (segsPerLevel[curLIdx] % 220 === 110) {
+                    newLabels.push({
+                        level: DYNAMIC_ISO_LEVELS[curLIdx],
+                        lat: (latA + latB) * 0.5,
+                        lon: (lonA + lonB) * 0.5
+                    });
                 }
+            }
 
-                let segsForLevel = 0;
+            function marchSubQuad(q00, q10, q11, q01, qLon0, qLon1, qLat0, qLat1, level) {
+                let mask = 0;
+                if (q00 >= level) mask |= 1;
+                if (q10 >= level) mask |= 2;
+                if (q11 >= level) mask |= 4;
+                if (q01 >= level) mask |= 8;
+                if (mask === 0 || mask === 15) return;
 
-                for (let j = 0; j < NY - 1; j++) {
-                    const lat0 = 90 - j;
-                    const lat1 = 90 - (j + 1);
-                    const row0 = j * NX;
-                    const row1 = (j + 1) * NX;
+                const tTop = (level - q00) / (q10 - q00);
+                const tBot = (level - q01) / (q11 - q01);
+                const tLeft = (level - q00) / (q01 - q00);
+                const tRight = (level - q10) / (q11 - q10);
 
-                    for (let i = 0; i < NX; i++) {
-                        const iNext = (i + 1) % NX;
-                        const v00 = dynamicBlendGrid[row0 + i];
-                        const v10 = dynamicBlendGrid[row0 + iNext];
-                        const v01 = dynamicBlendGrid[row1 + i];
-                        const v11 = dynamicBlendGrid[row1 + iNext];
+                const topLon = qLon0 + tTop * (qLon1 - qLon0);
+                const botLon = qLon0 + tBot * (qLon1 - qLon0);
+                const leftLat = qLat0 + tLeft * (qLat1 - qLat0);
+                const rightLat = qLat0 + tRight * (qLat1 - qLat0);
 
-                        let mask = 0;
-                        if (v00 >= level) mask |= 1;
-                        if (v10 >= level) mask |= 2;
-                        if (v11 >= level) mask |= 4;
-                        if (v01 >= level) mask |= 8;
-                        if (mask === 0 || mask === 15) continue;
+                switch (mask) {
+                    case 1: case 14: addSeg(qLon0, leftLat, topLon, qLat0); break;
+                    case 2: case 13: addSeg(topLon, qLat0, qLon1, rightLat); break;
+                    case 3: case 12: addSeg(qLon0, leftLat, qLon1, rightLat); break;
+                    case 4: case 11: addSeg(botLon, qLat1, qLon1, rightLat); break;
+                    case 5:
+                        addSeg(qLon0, leftLat, topLon, qLat0);
+                        addSeg(botLon, qLat1, qLon1, rightLat);
+                        break;
+                    case 6: case 9:  addSeg(topLon, qLat0, botLon, qLat1); break;
+                    case 7: case 8:  addSeg(qLon0, leftLat, botLon, qLat1); break;
+                    case 10:
+                        addSeg(topLon, qLat0, qLon1, rightLat);
+                        addSeg(qLon0, leftLat, botLon, qLat1);
+                        break;
+                }
+            }
 
-                        const lon0 = i > 180 ? i - 360 : i;
-                        let lon1 = (i + 1) > 180 ? (i + 1) - 360 : (i + 1);
-                        if (lon0 > 100 && lon1 < -100) lon1 += 360;
+            // Hochauflösende 2x2 Sub-Zellen Marching Squares für seidig-weiche Kurvenkrümmung
+            for (let j = 0; j < NY - 1; j++) {
+                const lat0 = 90 - j;
+                const lat1 = 90 - (j + 1);
+                const latMid = (lat0 + lat1) * 0.5;
+                const row0 = j * NX;
+                const row1 = (j + 1) * NX;
 
-                        const tTop = (level - v00) / (v10 - v00);
-                        const tBot = (level - v01) / (v11 - v01);
-                        const tLeft = (level - v00) / (v01 - v00);
-                        const tRight = (level - v10) / (v11 - v10);
+                for (let i = 0; i < NX; i++) {
+                    const iNext = (i + 1) % NX;
+                    const v00 = smoothBlendGrid[row0 + i];
+                    const v10 = smoothBlendGrid[row0 + iNext];
+                    const v01 = smoothBlendGrid[row1 + i];
+                    const v11 = smoothBlendGrid[row1 + iNext];
 
-                        const topLon = lon0 + tTop * (lon1 - lon0);
-                        const botLon = lon0 + tBot * (lon1 - lon0);
-                        const leftLat = lat0 + tLeft * (lat1 - lat0);
-                        const rightLat = lat0 + tRight * (lat1 - lat0);
+                    let minV = v00 < v10 ? v00 : v10;
+                    if (v01 < minV) minV = v01;
+                    if (v11 < minV) minV = v11;
 
-                        function addSeg(lonA, latA, lonB, latB) {
-                            if (segCount >= MAX_DYNAMIC_SEGS) return;
-                            if (Math.abs(lonA - lonB) > 180) return;
+                    let maxV = v00 > v10 ? v00 : v10;
+                    if (v01 > maxV) maxV = v01;
+                    if (v11 > maxV) maxV = v11;
 
-                            const u1 = (lonA + 180) / 360;
-                            const v1 = (90 - latA) / 180;
-                            const phi1 = v1 * Math.PI;
-                            const theta1 = u1 * Math.PI * 2;
-                            const sinPhi1 = Math.sin(phi1);
-                            const px1 = - isobarRadius * Math.cos(theta1) * sinPhi1;
-                            const py1 = isobarRadius * Math.cos(phi1);
-                            const pz1 = isobarRadius * Math.sin(theta1) * sinPhi1;
+                    if (maxV < 976 || minV > 1036) continue;
 
-                            const u2 = (lonB + 180) / 360;
-                            const v2 = (90 - latB) / 180;
-                            const phi2 = v2 * Math.PI;
-                            const theta2 = u2 * Math.PI * 2;
-                            const sinPhi2 = Math.sin(phi2);
-                            const px2 = - isobarRadius * Math.cos(theta2) * sinPhi2;
-                            const py2 = isobarRadius * Math.cos(phi2);
-                            const pz2 = isobarRadius * Math.sin(theta2) * sinPhi2;
+                    const lon0 = i > 180 ? i - 360 : i;
+                    let lon1 = (i + 1) > 180 ? (i + 1) - 360 : (i + 1);
+                    if (lon0 > 100 && lon1 < -100) lon1 += 360;
+                    const lonMid = (lon0 + lon1) * 0.5;
 
-                            dynamicIsoPositions[posIdx++] = px1;
-                            dynamicIsoPositions[posIdx++] = py1;
-                            dynamicIsoPositions[posIdx++] = pz1;
-                            dynamicIsoPositions[posIdx++] = px2;
-                            dynamicIsoPositions[posIdx++] = py2;
-                            dynamicIsoPositions[posIdx++] = pz2;
+                    const vMid = (v00 + v10 + v01 + v11) * 0.25;
+                    const vtMid = (v00 + v10) * 0.5;
+                    const vbMid = (v01 + v11) * 0.5;
+                    const vlMid = (v00 + v01) * 0.5;
+                    const vrMid = (v10 + v11) * 0.5;
 
-                            dynamicIsoColors[colIdx++] = r;
-                            dynamicIsoColors[colIdx++] = g;
-                            dynamicIsoColors[colIdx++] = b;
-                            dynamicIsoColors[colIdx++] = r;
-                            dynamicIsoColors[colIdx++] = g;
-                            dynamicIsoColors[colIdx++] = b;
+                    for (let lIdx = 0; lIdx < DYNAMIC_ISO_LEVELS.length; lIdx++) {
+                        const level = DYNAMIC_ISO_LEVELS[lIdx];
+                        if (level < minV || level > maxV) continue;
 
-                            segCount++;
-                            segsForLevel++;
+                        curLIdx = lIdx;
+                        const col = ISO_COLORS[lIdx];
+                        curR = col.r; curG = col.g; curB = col.b;
 
-                            // Periodisch Isobaren-Beschriftungspositionen entlang der Linie erfassen
-                            if (segsForLevel % 120 === 60) {
-                                newLabels.push({
-                                    level,
-                                    lat: (latA + latB) * 0.5,
-                                    lon: (lonA + lonB) * 0.5
-                                });
-                            }
-                        }
-
-                        switch (mask) {
-                            case 1: case 14: addSeg(lon0, leftLat, topLon, lat0); break;
-                            case 2: case 13: addSeg(topLon, lat0, lon1, rightLat); break;
-                            case 3: case 12: addSeg(lon0, leftLat, lon1, rightLat); break;
-                            case 4: case 11: addSeg(botLon, lat1, lon1, rightLat); break;
-                            case 5:
-                                addSeg(lon0, leftLat, topLon, lat0);
-                                addSeg(botLon, lat1, lon1, rightLat);
-                                break;
-                            case 6: case 9:  addSeg(topLon, lat0, botLon, lat1); break;
-                            case 7: case 8:  addSeg(lon0, leftLat, botLon, lat1); break;
-                            case 10:
-                                addSeg(topLon, lat0, lon1, rightLat);
-                                addSeg(lon0, leftLat, botLon, lat1);
-                                break;
-                        }
+                        // 4 Sub-Zellen für flüssig abgerundete Isobaren ohne kantige Knicke
+                        marchSubQuad(v00, vtMid, vMid, vlMid, lon0, lonMid, lat0, latMid, level);
+                        marchSubQuad(vtMid, v10, vrMid, vMid, lonMid, lon1, lat0, latMid, level);
+                        marchSubQuad(vlMid, vMid, vbMid, v01, lon0, lonMid, latMid, lat1, level);
+                        marchSubQuad(vMid, vrMid, v11, vbMid, lonMid, lon1, latMid, lat1, level);
                     }
                 }
             }
@@ -5903,7 +5956,7 @@
 
         function getPressureAtPoint(lat, lng) {
             const grid = (lastRenderedIsobarFrac !== -9999) 
-                ? dynamicBlendGrid 
+                ? smoothBlendGrid 
                 : (typeof pressureData !== 'undefined' ? (pressureData.grid || null) : null);
             if (!grid) return null;
             const yFloat = (90 - lat);
