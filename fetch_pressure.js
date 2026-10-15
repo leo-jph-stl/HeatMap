@@ -5,11 +5,12 @@ const BASE_URL = 'https://thredds.ucar.edu/thredds/dodsC/grib/NCEP/GFS/Global_0p
 const NY = 181;
 const NX = 360;
 const PTS_PER_STEP = NY * NX; // 65,160
+const NUM_STEPS = 36; // -24h bis +81h (synchron mit Temperatur, Wolken und Solar)
 
 function fetchText(u, retries = 3, delayMs = 1200) {
     return new Promise((resolve, reject) => {
         function attempt(n) {
-            https.get(u, res => {
+            const req = https.get(u, res => {
                 if (res.statusCode !== 200) {
                     if (n > 1) {
                         setTimeout(() => attempt(n - 1), delayMs);
@@ -21,11 +22,20 @@ function fetchText(u, retries = 3, delayMs = 1200) {
                 let data = '';
                 res.on('data', chunk => data += chunk);
                 res.on('end', () => resolve(data));
-            }).on('error', err => {
+            });
+            req.on('error', err => {
                 if (n > 1) {
                     setTimeout(() => attempt(n - 1), delayMs);
                 } else {
                     reject(err);
+                }
+            });
+            req.setTimeout(35000, () => {
+                req.destroy();
+                if (n > 1) {
+                    setTimeout(() => attempt(n - 1), delayMs);
+                } else {
+                    reject(new Error('Timeout for ' + u));
                 }
             });
         }
@@ -285,9 +295,36 @@ function processStep(gridHpa, computeIsobars = false) {
     return { centers, isobars };
 }
 
+async function fetchSingleStep(threddsIdx, stepNumber, totalSteps) {
+    const url = `${BASE_URL}.ascii?Pressure_reduced_to_MSL_msl[${threddsIdx}:1:${threddsIdx}][0:4:720][0:4:1439]`;
+    const t0 = Date.now();
+    const text = await fetchText(url, 3, 1500);
+
+    const parts = text.split('Pressure_reduced_to_MSL_msl.Pressure_reduced_to_MSL_msl');
+    if (parts.length < 2) throw new Error(`Parse error at step ${threddsIdx}`);
+    const dataBlock = parts[1].split('Pressure_reduced_to_MSL_msl.time')[0];
+
+    // Decimal float regex ignores dimension header integers [1][181][360] and row prefixes [0][0]
+    const regex = /-?\d+\.\d+/g;
+    let match;
+    const gridSlice = new Int16Array(PTS_PER_STEP);
+    let count = 0;
+    while ((match = regex.exec(dataBlock)) !== null && count < PTS_PER_STEP) {
+        gridSlice[count++] = Math.round(parseFloat(match[0]) / 100); // Pa -> hPa
+    }
+
+    if (count < PTS_PER_STEP * 0.98) {
+        throw new Error(`Incomplete data at step ${threddsIdx}: only ${count} points loaded`);
+    }
+
+    const duration = ((Date.now() - t0) / 1000).toFixed(1);
+    console.log(`[${stepNumber}/${totalSteps}] Step ${threddsIdx} loaded in ${duration}s (${count.toLocaleString()} pts)`);
+    return gridSlice;
+}
+
 async function run() {
     try {
-        console.log('=== Fetching NOAA GFS Pressure & Synoptic Isobars (Timeline) ===');
+        console.log('=== Fetching NOAA GFS Pressure & Synoptic Isobars (Full 36-Step Timeline) ===');
         const t0 = Date.now();
 
         // 1. Fetch time indices to align with temperature and wind timeline
@@ -308,8 +345,7 @@ async function run() {
             if (diff < minDiff) { minDiff = diff; bestIdx = i; }
         }
 
-        // 25 steps: -24h to +48h in 3h cadence (25 steps), matching windData and temperature timeline
-        const NUM_STEPS = 25;
+        // 36 steps: -24h to +81h in 3h cadence (36 steps), exactly matching temp_data, cloud_data and solar_data
         const startIdx = Math.max(0, bestIdx - 8);
         const stepsMeta = [];
         for (let i = 0; i < NUM_STEPS; i++) {
@@ -326,67 +362,73 @@ async function run() {
             });
         }
 
-        console.log(`Live index: ${bestIdx} (${stepsMeta[8].timestamp})`);
+        console.log(`Live index: ${bestIdx} (${stepsMeta[8] ? stepsMeta[8].timestamp : 'N/A'})`);
         console.log(`Time window: -24h (${stepsMeta[0].timestamp}) to +${stepsMeta[stepsMeta.length - 1].hour}h (${stepsMeta[stepsMeta.length - 1].timestamp}) [${stepsMeta.length} steps]`);
 
-        // 2. Fetch in chunks of 5 steps to balance payload size and latency
-        const CHUNK_SIZE = 5;
+        // 2. Fetch steps using Concurrency Pool (2 concurrent requests)
+        const CONCURRENCY = 2;
+        const gridSlices = new Array(stepsMeta.length);
+
+        for (let i = 0; i < stepsMeta.length; i += CONCURRENCY) {
+            const batch = [];
+            for (let j = 0; j < CONCURRENCY && (i + j) < stepsMeta.length; j++) {
+                const sIdx = i + j;
+                const p = fetchSingleStep(stepsMeta[sIdx].threddsIdx, sIdx + 1, stepsMeta.length)
+                    .then(arr => { gridSlices[sIdx] = arr; })
+                    .catch(err => {
+                        console.warn(`Warning: Step ${sIdx} (${stepsMeta[sIdx].timestamp}) failed: ${err.message}`);
+                    });
+                batch.push(p);
+            }
+            await Promise.all(batch);
+        }
+
+        // 3. Fallback healing for any missing steps (interpolate from neighbors)
+        for (let i = 0; i < stepsMeta.length; i++) {
+            if (!gridSlices[i]) {
+                console.warn(`Healing missing step ${i} (${stepsMeta[i].timestamp})...`);
+                let prev = null, next = null;
+                for (let p = i - 1; p >= 0; p--) { if (gridSlices[p]) { prev = gridSlices[p]; break; } }
+                for (let n = i + 1; n < stepsMeta.length; n++) { if (gridSlices[n]) { next = gridSlices[n]; break; } }
+                if (prev && next) {
+                    const healed = new Int16Array(PTS_PER_STEP);
+                    for (let k = 0; k < PTS_PER_STEP; k++) healed[k] = Math.round((prev[k] + next[k]) * 0.5);
+                    gridSlices[i] = healed;
+                } else if (prev) {
+                    gridSlices[i] = new Int16Array(prev);
+                } else if (next) {
+                    gridSlices[i] = new Int16Array(next);
+                }
+            }
+        }
+
+        // 4. Process steps (H/T centers and base64 compression)
         const allSteps = [];
         let liveGrid = null;
 
-        for (let c = 0; c < stepsMeta.length; c += CHUNK_SIZE) {
-            const chunkEnd = Math.min(stepsMeta.length, c + CHUNK_SIZE);
-            const firstTIdx = stepsMeta[c].threddsIdx;
-            const lastTIdx = stepsMeta[chunkEnd - 1].threddsIdx;
-            const chunkCount = chunkEnd - c;
+        for (let i = 0; i < stepsMeta.length; i++) {
+            const stepMeta = stepsMeta[i];
+            const gridSlice = gridSlices[i];
+            const isLive = (stepMeta.hour === 0);
+            const processed = processStep(gridSlice, isLive);
 
-            console.log(`Fetching steps ${c + 1}..${chunkEnd}/${stepsMeta.length} (indices [${firstTIdx}:1:${lastTIdx}])...`);
-            const chunkUrl = `${BASE_URL}.ascii?Pressure_reduced_to_MSL_msl[${firstTIdx}:1:${lastTIdx}][0:4:720][0:4:1439]`;
-            const chunkText = await fetchText(chunkUrl);
-
-            const parts = chunkText.split('Pressure_reduced_to_MSL_msl.Pressure_reduced_to_MSL_msl');
-            if (parts.length < 2) throw new Error(`Parse error in chunk ${c}`);
-            const dataBlock = parts[1].split('Pressure_reduced_to_MSL_msl.time')[0];
-
-            const regex = /[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?/g;
-            let match;
-            const nums = [];
-            while ((match = regex.exec(dataBlock)) !== null) {
-                nums.push(Math.round(parseFloat(match[0]) / 100));
+            const compactGrid = Buffer.alloc(PTS_PER_STEP);
+            for (let k = 0; k < PTS_PER_STEP; k++) {
+                compactGrid[k] = Math.max(0, Math.min(255, gridSlice[k] - 900));
             }
 
-            for (let s = 0; s < chunkCount; s++) {
-                const stepMeta = stepsMeta[c + s];
-                const rawSlice = nums.slice(s * PTS_PER_STEP, (s + 1) * PTS_PER_STEP);
-                const gridSlice = new Int16Array(PTS_PER_STEP);
-                if (rawSlice.length === PTS_PER_STEP) {
-                    for (let i = 0; i < PTS_PER_STEP; i++) gridSlice[i] = rawSlice[i];
-                } else if (allSteps.length > 0) {
-                    console.warn(`Warning: Incomplete slice for step ${stepMeta.timestamp}, falling back to previous step.`);
-                    const prevB64 = Buffer.from(allSteps[allSteps.length - 1].gridB64, 'base64');
-                    for (let i = 0; i < PTS_PER_STEP; i++) gridSlice[i] = prevB64[i] + 900;
-                }
-                const isLive = (stepMeta.hour === 0);
-                const processed = processStep(gridSlice, isLive);
-
-                const compactGrid = Buffer.alloc(PTS_PER_STEP);
-                for (let i = 0; i < gridSlice.length; i++) {
-                    compactGrid[i] = Math.max(0, Math.min(255, gridSlice[i] - 900));
-                }
-
-                if (isLive || liveGrid === null) {
-                    liveGrid = Array.from(compactGrid);
-                }
-
-                allSteps.push({
-                    hour: stepMeta.hour,
-                    timestamp: stepMeta.timestamp,
-                    timeMs: stepMeta.timeMs,
-                    centers: processed.centers,
-                    isobars: isLive ? processed.isobars : undefined,
-                    gridB64: compactGrid.toString('base64')
-                });
+            if (isLive || liveGrid === null) {
+                liveGrid = Array.from(compactGrid);
             }
+
+            allSteps.push({
+                hour: stepMeta.hour,
+                timestamp: stepMeta.timestamp,
+                timeMs: stepMeta.timeMs,
+                centers: processed.centers,
+                isobars: isLive ? processed.isobars : undefined,
+                gridB64: compactGrid.toString('base64')
+            });
         }
 
         const liveStep = allSteps.find(s => s.hour === 0) || allSteps[8] || allSteps[0];
@@ -410,7 +452,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = { pressure
 `;
         fs.writeFileSync('pressure_data.js', jsContent, 'utf8');
         const sizeMb = (fs.statSync('pressure_data.js').size / (1024 * 1024)).toFixed(2);
-        console.log(`✅ SUCCESS: Saved pressure_data.js (${sizeMb} MB) in ${((Date.now() - t0) / 1000).toFixed(1)}s.`);
+        console.log(`✅ SUCCESS: Saved pressure_data.js (${sizeMb} MB) with ${allSteps.length} steps in ${((Date.now() - t0) / 1000).toFixed(1)}s.`);
 
     } catch (e) {
         console.error('Error fetching pressure data:', e.message);
