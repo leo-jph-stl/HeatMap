@@ -5316,7 +5316,11 @@
             borders: true   // Grenzen & Städtenamen
         };
 
-        function buildIsobar3DMesh() {
+        let activePressureCenters = (typeof pressureData !== 'undefined' && pressureData.centers) ? pressureData.centers : [];
+        let activePressureIsobars = (typeof pressureData !== 'undefined' && pressureData.isobars) ? pressureData.isobars : [];
+        let currentPressureStepIdx = -1;
+
+        function buildIsobar3DMesh(customIsobars) {
             while (isobarGroup.children.length > 0) {
                 const child = isobarGroup.children[0];
                 isobarGroup.remove(child);
@@ -5324,35 +5328,28 @@
                 if (child.material) child.material.dispose();
             }
 
-            if (typeof pressureData === 'undefined' || !pressureData.isobars) return;
+            const isobars = customIsobars || (activePressureIsobars && activePressureIsobars.length > 0 ? activePressureIsobars : (typeof pressureData !== 'undefined' ? pressureData.isobars : null));
+            if (!isobars || isobars.length === 0) return;
 
             const positions = [];
             const colors = [];
-            const isobarRadius = vectorLineRadius + 0.01;
+            const isobarRadius = vectorLineRadius + 0.012;
 
-            pressureData.isobars.forEach(iso => {
-                const coords = iso.coords;
-                if (!coords || coords.length < 4) return;
-
+            isobars.forEach(iso => {
                 const isLow = iso.level < 1013;
                 const isMajor = (iso.level % 20 === 0) || iso.level === 1000 || iso.level === 1020;
 
-                let r = isLow ? 0.95 : 0.60;
-                let g = isLow ? 0.45 : 0.85;
-                let b = isLow ? 0.45 : 1.00;
+                let r = isLow ? 0.98 : 0.22;
+                let g = isLow ? 0.44 : 0.74;
+                let b = isLow ? 0.52 : 0.97;
                 if (isMajor) {
                     r = Math.min(1.0, r * 1.15);
                     g = Math.min(1.0, g * 1.15);
                     b = Math.min(1.0, b * 1.15);
                 }
 
-                for (let i = 0; i < coords.length; i += 4) {
-                    const lon1 = coords[i];
-                    const lat1 = coords[i + 1];
-                    const lon2 = coords[i + 2];
-                    const lat2 = coords[i + 3];
-
-                    if (Math.abs(lon1 - lon2) > 180) continue;
+                function addSegment(lon1, lat1, lon2, lat2) {
+                    if (Math.abs(lon1 - lon2) > 180) return;
 
                     const u1 = (lon1 + 180) / 360;
                     const v1 = (90 - lat1) / 180;
@@ -5369,6 +5366,23 @@
                     positions.push(px1, py1, pz1, px2, py2, pz2);
                     colors.push(r, g, b, r, g, b);
                 }
+
+                // 1. Chained & smoothed Polylines (iso.lines)
+                if (iso.lines && Array.isArray(iso.lines)) {
+                    for (let l = 0; l < iso.lines.length; l++) {
+                        const poly = iso.lines[l];
+                        if (!poly || poly.length < 4) continue;
+                        for (let i = 0; i < poly.length - 2; i += 2) {
+                            addSegment(poly[i], poly[i + 1], poly[i + 2], poly[i + 3]);
+                        }
+                    }
+                } else if (iso.coords && Array.isArray(iso.coords)) {
+                    // 2. Fallback: Flat coords segments
+                    const coords = iso.coords;
+                    for (let i = 0; i < coords.length; i += 4) {
+                        addSegment(coords[i], coords[i + 1], coords[i + 2], coords[i + 3]);
+                    }
+                }
             });
 
             if (positions.length === 0) return;
@@ -5380,7 +5394,7 @@
             const mat = new THREE.LineBasicMaterial({
                 vertexColors: true,
                 transparent: true,
-                opacity: 0.65,
+                opacity: 0.70,
                 depthWrite: false
             });
 
@@ -10856,14 +10870,18 @@
             cityCtx.save();
 
             // =========================================================================
-            // OVERLAY: HOCH- & TIEFDRUCKGEBIETE (H / T Badges)
+            // OVERLAY: HOCH- & TIEFDRUCKGEBIETE (Schlichte H / T Typografie + Druckwert ohne Rahmen)
             // =========================================================================
-            if (typeof overlayState !== 'undefined' && overlayState.ht && typeof pressureData !== 'undefined' && pressureData.centers) {
-                const nowMs = Date.now();
-                cityCtx.textBaseline = 'middle';
+            const centersToRender = (activePressureCenters && activePressureCenters.length > 0)
+                ? activePressureCenters
+                : ((typeof pressureData !== 'undefined' && pressureData.centers) ? pressureData.centers : []);
 
-                for (let i = 0; i < pressureData.centers.length; i++) {
-                    const c = pressureData.centers[i];
+            if (typeof overlayState !== 'undefined' && overlayState.ht && centersToRender.length > 0) {
+                cityCtx.textBaseline = 'middle';
+                cityCtx.textAlign = 'center';
+
+                for (let i = 0; i < centersToRender.length; i++) {
+                    const c = centersToRender[i];
                     const lonVal = (c.lon !== undefined ? c.lon : c.lng);
                     const localV = latLngToSphereVertex(c.lat, lonVal, surfaceRadius);
                     const worldV = localV.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
@@ -10878,84 +10896,52 @@
                     if (sx < 25 || sx > screenW - 25 || sy < 25 || sy > screenH - 25) continue;
 
                     const isHigh = c.type === 'H';
-                    const pulse = (Math.sin(nowMs * 0.0035 + i * 1.2) + 1) * 0.5;
-                    const auraR = 13 + pulse * 6;
-                    const mainColor = isHigh ? '#3b82f6' : '#ef4444';
-                    const glowColor = isHigh ? `rgba(59, 130, 246, ${0.20 + pulse * 0.20})` : `rgba(239, 68, 68, ${0.20 + pulse * 0.20})`;
+                    const textColor = isHigh ? '#60a5fa' : '#f87171'; // Sanftes Blau / Sanftes Rot
 
-                    // 1. Pulsierende Aura
-                    cityCtx.beginPath();
-                    cityCtx.arc(sx, sy, auraR, 0, Math.PI * 2);
-                    cityCtx.fillStyle = glowColor;
-                    cityCtx.fill();
+                    // 1. Großes, markantes H oder T mit dunkler Kontur für optimale Lesbarkeit auf jedem Hintergrund
+                    cityCtx.font = '900 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                    cityCtx.lineJoin = 'round';
+                    cityCtx.strokeStyle = 'rgba(15, 23, 42, 0.90)';
+                    cityCtx.lineWidth = 3.5;
+                    cityCtx.strokeText(c.type, sx, sy - 2);
+                    cityCtx.fillStyle = textColor;
+                    cityCtx.fillText(c.type, sx, sy - 2);
 
-                    // 2. Fester Markerkreis
-                    cityCtx.beginPath();
-                    cityCtx.arc(sx, sy, 11, 0, Math.PI * 2);
-                    cityCtx.fillStyle = mainColor;
-                    cityCtx.fill();
-                    cityCtx.strokeStyle = '#ffffff';
-                    cityCtx.lineWidth = 1.8;
-                    cityCtx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-                    cityCtx.shadowBlur = 4;
-                    cityCtx.stroke();
-                    cityCtx.shadowColor = 'transparent';
+                    // 2. Schlichte Zahl direkt darunter (z.B. "1024", ohne Kasten / ohne Rahmen)
+                    const pText = String(c.pressure);
+                    cityCtx.font = '700 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                    cityCtx.strokeStyle = 'rgba(15, 23, 42, 0.90)';
+                    cityCtx.lineWidth = 2.5;
+                    cityCtx.strokeText(pText, sx, sy + 12);
+                    cityCtx.fillStyle = '#f1f5f9';
+                    cityCtx.fillText(pText, sx, sy + 12);
 
-                    // 3. 'H' oder 'T' Buchstabe
-                    cityCtx.fillStyle = '#ffffff';
-                    cityCtx.font = '800 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-                    cityCtx.textAlign = 'center';
-                    cityCtx.fillText(c.type, sx, sy + 0.5);
-
-                    // 4. Luftdruck-Badge darunter (z.B. "1024 hPa")
-                    const pText = `${c.pressure} hPa`;
-                    cityCtx.font = '700 9.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-                    const textW = cityCtx.measureText(pText).width;
-                    const bW = textW + 10;
-                    const bH = 16;
-                    const bX = sx - bW / 2;
-                    const bY = sy + 13;
-
-                    cityCtx.fillStyle = 'rgba(15, 23, 42, 0.90)';
-                    cityCtx.strokeStyle = mainColor;
-                    cityCtx.lineWidth = 1.2;
-                    cityCtx.beginPath();
-                    if (typeof cityCtx.roundRect === 'function') {
-                        cityCtx.roundRect(bX, bY, bW, bH, 8);
-                    } else {
-                        cityCtx.rect(bX, bY, bW, bH);
-                    }
-                    cityCtx.fill();
-                    cityCtx.stroke();
-
-                    cityCtx.fillStyle = '#f8fafc';
-                    cityCtx.fillText(pText, sx, bY + bH / 2);
-
-                    placed.push({ x: sx, y: sy + 10, spacingX: bW + 14, spacingY: 36 });
+                    placed.push({ x: sx, y: sy + 4, spacingX: 24, spacingY: 30 });
                 }
             }
 
             // =========================================================================
-            // OVERLAY: ISOBAREN-BESCHRIFTUNGEN (Luftdruck-Werte entlang der Linien)
+            // OVERLAY: ISOBAREN-BESCHRIFTUNGEN (Luftdruck-Werte entlang der Linien, ohne schwere Kästen)
             // =========================================================================
-            if (typeof overlayState !== 'undefined' && overlayState.isobars && typeof pressureData !== 'undefined' && pressureData.isobars) {
+            const isobarsToRender = (activePressureIsobars && activePressureIsobars.length > 0)
+                ? activePressureIsobars
+                : ((typeof pressureData !== 'undefined' && pressureData.isobars) ? pressureData.isobars : []);
+
+            if (typeof overlayState !== 'undefined' && overlayState.isobars && isobarsToRender.length > 0) {
                 cityCtx.font = '600 9.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
                 cityCtx.textAlign = 'center';
                 cityCtx.textBaseline = 'middle';
+                cityCtx.lineJoin = 'round';
 
                 const isZoomedOut = dist > 210;
-                for (let i = 0; i < pressureData.isobars.length; i++) {
-                    const iso = pressureData.isobars[i];
+                for (let i = 0; i < isobarsToRender.length; i++) {
+                    const iso = isobarsToRender[i];
                     if (!iso.labels || iso.labels.length === 0) continue;
                     // Bei weitem Zoom nur 8er-Schritte beschriften um Überladung zu verhindern
                     if (isZoomedOut && (iso.level % 8 !== 0)) continue;
 
                     const isLow = iso.level < 1013;
-                    const borderColor = isLow ? 'rgba(248, 113, 113, 0.85)' : 'rgba(96, 165, 250, 0.85)';
                     const txt = `${iso.level}`;
-                    const textW = cityCtx.measureText(txt).width;
-                    const lW = textW + 8;
-                    const lH = 14;
 
                     for (let j = 0; j < iso.labels.length; j++) {
                         const lbl = iso.labels[j];
@@ -10975,32 +10961,21 @@
                         let coll = false;
                         for (let k = 0; k < placed.length; k++) {
                             const p = placed[k];
-                            if (Math.abs(sx - p.x) < 32 && Math.abs(sy - p.y) < 18) {
+                            if (Math.abs(sx - p.x) < 26 && Math.abs(sy - p.y) < 14) {
                                 coll = true;
                                 break;
                             }
                         }
                         if (coll) continue;
 
-                        const lX = sx - lW / 2;
-                        const lY = sy - lH / 2;
-
-                        cityCtx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-                        cityCtx.strokeStyle = borderColor;
-                        cityCtx.lineWidth = 1.0;
-                        cityCtx.beginPath();
-                        if (typeof cityCtx.roundRect === 'function') {
-                            cityCtx.roundRect(lX, lY, lW, lH, 5);
-                        } else {
-                            cityCtx.rect(lX, lY, lW, lH);
-                        }
-                        cityCtx.fill();
-                        cityCtx.stroke();
-
-                        cityCtx.fillStyle = '#f1f5f9';
+                        // Schlanke, dezente Typografie mit dunkler Kontur statt schwerem Kasten
+                        cityCtx.strokeStyle = 'rgba(15, 23, 42, 0.85)';
+                        cityCtx.lineWidth = 2.2;
+                        cityCtx.strokeText(txt, sx, sy);
+                        cityCtx.fillStyle = isLow ? '#fca5a5' : '#93c5fd';
                         cityCtx.fillText(txt, sx, sy);
 
-                        placed.push({ x: sx, y: sy, spacingX: lW + 8, spacingY: lH + 8 });
+                        placed.push({ x: sx, y: sy, spacingX: 24, spacingY: 14 });
                     }
                 }
             }
@@ -12722,14 +12697,18 @@
             }
 
             // SONDERFALL: KLICK AUF HOCH- ODER TIEFDRUCKGEBIET (H / T)
-            if (typeof overlayState !== 'undefined' && overlayState.ht && typeof pressureData !== 'undefined' && pressureData.centers) {
+            // SONDERFALL: KLICK AUF HOCH- ODER TIEFDRUCKGEBIET (H / T)
+            const clickCenters = (activePressureCenters && activePressureCenters.length > 0)
+                ? activePressureCenters
+                : ((typeof pressureData !== 'undefined' && pressureData.centers) ? pressureData.centers : []);
+            if (typeof overlayState !== 'undefined' && overlayState.ht && clickCenters.length > 0) {
                 let nearestCenter = null;
                 let minCenterDistSq = Infinity;
                 const cLat = clickedPopupPoint.lat;
                 const cLng = clickedPopupPoint.lng;
                 const cosL = Math.cos(cLat * Math.PI / 180);
-                for (let i = 0; i < pressureData.centers.length; i++) {
-                    const c = pressureData.centers[i];
+                for (let i = 0; i < clickCenters.length; i++) {
+                    const c = clickCenters[i];
                     const cLon = (c.lon !== undefined ? c.lon : c.lng);
                     const dLat = c.lat - cLat;
                     let dLon = Math.abs(cLon - cLng);
@@ -13293,6 +13272,30 @@
                 cloudIdx0 = Math.floor(clamped);
                 cloudIdx1 = Math.min(maxI, cloudIdx0 + 1);
                 cloudBlend = clamped - cloudIdx0;
+            }
+
+            // Dynamische Aktualisierung von Luftdruck (H/T Zentren & Isobaren) entlang der Zeitleiste
+            if (typeof pressureData !== 'undefined' && pressureData.steps && pressureData.steps.length > 0) {
+                let bestStep = pressureData.steps[0];
+                let bestIdx = 0;
+                let minDiff = Math.abs(bestStep.hour - currentHourOffset);
+                for (let i = 1; i < pressureData.steps.length; i++) {
+                    const s = pressureData.steps[i];
+                    const diff = Math.abs(s.hour - currentHourOffset);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        bestStep = s;
+                        bestIdx = i;
+                    }
+                }
+                if (currentPressureStepIdx !== bestIdx) {
+                    currentPressureStepIdx = bestIdx;
+                    activePressureCenters = bestStep.centers || [];
+                    activePressureIsobars = bestStep.isobars || [];
+                    if (typeof overlayState !== 'undefined' && overlayState.isobars) {
+                        buildIsobar3DMesh(activePressureIsobars);
+                    }
+                }
             }
 
             const titleEl = document.getElementById('timeDisplayTitle');
