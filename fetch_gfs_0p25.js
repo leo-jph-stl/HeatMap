@@ -70,28 +70,40 @@ async function fetchTimeIndices() {
     return steps;
 }
 
-async function fetchSingleStep(threddsIdx, stepNumber, totalSteps) {
-    const t0 = Date.now();
-    const url = `${BASE_URL}.ascii?Temperature_height_above_ground[${threddsIdx}][0][0:1:720][0:1:1439]`;
-    const text = await fetchText(url);
+async function fetchSingleStep(threddsIdx, stepNumber, totalSteps, retries = 3) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            const t0 = Date.now();
+            const url = `${BASE_URL}.ascii?Temperature_height_above_ground[${threddsIdx}][0][0:1:720][0:1:1439]`;
+            const text = await fetchText(url);
 
-    const parts = text.split('Temperature_height_above_ground.Temperature_height_above_ground');
-    if (parts.length < 2) throw new Error(`Parse error at step ${threddsIdx}`);
-    const dataBlock = parts[1].split('Temperature_height_above_ground.time')[0];
+            const parts = text.split('Temperature_height_above_ground.Temperature_height_above_ground');
+            if (parts.length < 2) throw new Error(`Parse error at step ${threddsIdx}`);
+            const dataBlock = parts[1].split(/Temperature_height_above_ground\.time/)[0];
 
-    const regex = /-?\d+\.\d+/g;
-    let match;
-    const int16Array = new Int16Array(PTS_PER_STEP);
-    let count = 0;
-    while ((match = regex.exec(dataBlock)) !== null && count < PTS_PER_STEP) {
-        let val = parseFloat(match[0]);
-        if (val > 100) val -= 273.15; // Kelvin -> Celsius
-        int16Array[count++] = Math.round(val * 10); // Genauigkeit 0.1 °C
+            const regex = /-?\d+\.\d+/g;
+            let match;
+            const int16Array = new Int16Array(PTS_PER_STEP);
+            let count = 0;
+            while ((match = regex.exec(dataBlock)) !== null && count < PTS_PER_STEP) {
+                let val = parseFloat(match[0]);
+                if (val > 100) val -= 273.15; // Kelvin -> Celsius
+                int16Array[count++] = Math.round(val * 10); // Genauigkeit 0.1 °C
+            }
+
+            if (count < PTS_PER_STEP * 0.95) {
+                throw new Error(`Unvollständige Daten bei Schritt ${threddsIdx}: nur ${count} Messpunkte geladen`);
+            }
+
+            const duration = ((Date.now() - t0) / 1000).toFixed(1);
+            console.log(`[${stepNumber}/${totalSteps}] Schritt ${threddsIdx} geladen in ${duration}s (${count.toLocaleString()} Messpunkte)`);
+            return int16Array;
+        } catch (err) {
+            console.warn(`[Versuch ${attempt}/${retries}] Fehler bei Schritt ${threddsIdx}: ${err.message}`);
+            if (attempt === retries) throw err;
+            await new Promise(r => setTimeout(r, 2000 * attempt));
+        }
     }
-
-    const duration = ((Date.now() - t0) / 1000).toFixed(1);
-    console.log(`[${stepNumber}/${totalSteps}] Schritt ${threddsIdx} geladen in ${duration}s (${count.toLocaleString()} Messpunkte)`);
-    return int16Array;
 }
 
 async function run() {
@@ -99,26 +111,62 @@ async function run() {
         const steps = await fetchTimeIndices();
         const totalPoints = NUM_STEPS * PTS_PER_STEP;
         const masterInt16 = new Int16Array(totalPoints);
+        const validSteps = new Array(steps.length).fill(false);
 
-        console.log(`Starte Download von 25 Zeitschritten mit 0.25° Auflösung (insgesamt ${totalPoints.toLocaleString()} Messpunkte)...`);
+        console.log(`Starte Download von ${steps.length} Zeitschritten mit 0.25° Auflösung (insgesamt ${totalPoints.toLocaleString()} Messpunkte)...`);
         const startTime = Date.now();
 
-        // Paralleler Download mit Concurrency Pool (3 gleichzeitige Anfragen)
-        const CONCURRENCY = 3;
+        // Paralleler Download mit Concurrency Pool (2 gleichzeitige Anfragen für maximale Stabilität)
+        const CONCURRENCY = 2;
         for (let i = 0; i < steps.length; i += CONCURRENCY) {
             const batch = [];
             for (let j = 0; j < CONCURRENCY && (i + j) < steps.length; j++) {
                 const stepIdx = i + j;
-                const p = fetchSingleStep(steps[stepIdx].threddsIdx, stepIdx + 1, steps.length).then(arr => {
-                    masterInt16.set(arr, stepIdx * PTS_PER_STEP);
-                });
+                const p = fetchSingleStep(steps[stepIdx].threddsIdx, stepIdx + 1, steps.length)
+                    .then(arr => {
+                        masterInt16.set(arr, stepIdx * PTS_PER_STEP);
+                        validSteps[stepIdx] = true;
+                    })
+                    .catch(e => {
+                        console.error(`Schritt ${stepIdx} (${steps[stepIdx].timestamp}) konnte nach Wiederholungen nicht geladen werden:`, e.message);
+                    });
                 batch.push(p);
             }
             await Promise.all(batch);
         }
 
+        // LERP-Interpolation für evtl. ausgefallene Zeitschritte (verhindert 0°C-Einfrieren)
+        for (let i = 0; i < steps.length; i++) {
+            if (!validSteps[i]) {
+                let prevIdx = i - 1;
+                while (prevIdx >= 0 && !validSteps[prevIdx]) prevIdx--;
+                let nextIdx = i + 1;
+                while (nextIdx < steps.length && !validSteps[nextIdx]) nextIdx++;
+
+                const targetSub = masterInt16.subarray(i * PTS_PER_STEP, (i + 1) * PTS_PER_STEP);
+                if (prevIdx >= 0 && nextIdx < steps.length) {
+                    const t0 = steps[prevIdx].timeMs, t1 = steps[nextIdx].timeMs, tc = steps[i].timeMs;
+                    const factor = (t1 !== t0) ? (tc - t0) / (t1 - t0) : 0.5;
+                    const prevSub = masterInt16.subarray(prevIdx * PTS_PER_STEP, (prevIdx + 1) * PTS_PER_STEP);
+                    const nextSub = masterInt16.subarray(nextIdx * PTS_PER_STEP, (nextIdx + 1) * PTS_PER_STEP);
+                    const invF = 1 - factor;
+                    for (let k = 0; k < PTS_PER_STEP; k++) {
+                        targetSub[k] = Math.round(invF * prevSub[k] + factor * nextSub[k]);
+                    }
+                    validSteps[i] = true;
+                    console.log(`Schritt ${i} (${steps[i].timestamp}) synthetisiert durch zeitliche Interpolation von Schritt ${prevIdx} und ${nextIdx}`);
+                } else if (prevIdx >= 0) {
+                    targetSub.set(masterInt16.subarray(prevIdx * PTS_PER_STEP, (prevIdx + 1) * PTS_PER_STEP));
+                    validSteps[i] = true;
+                } else if (nextIdx < steps.length) {
+                    targetSub.set(masterInt16.subarray(nextIdx * PTS_PER_STEP, (nextIdx + 1) * PTS_PER_STEP));
+                    validSteps[i] = true;
+                }
+            }
+        }
+
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`Alle 25 Zeitschritte erfolgreich in ${elapsed}s heruntergeladen!`);
+        console.log(`Alle Zeitschritte erfolgreich in ${elapsed}s validiert und bereitgestellt!`);
 
         console.log('Konvertiere in hochoptimiertes Binär-Format...');
         const buffer = Buffer.from(masterInt16.buffer);

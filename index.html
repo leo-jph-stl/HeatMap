@@ -3430,6 +3430,57 @@
             }
         }
 
+        // Automatische Validitätsprüfung & LERP-Rekonstruktion unvollständiger/korrupter Zeitschritte
+        // Verhindert verlässlich, dass der Globus bei fehlenden Daten ganztägig auf 0°C (blau) einfriert.
+        function sanitizeTimelineData(steps) {
+            if (!steps || steps.length === 0) return;
+            const isValid = steps.map(s => {
+                if (!s || !s.data || s.data.length === 0) return false;
+                let nonZero = 0;
+                const len = s.data.length;
+                const checkStep = Math.floor(len / 40);
+                for (let i = 0; i < len; i += checkStep) {
+                    if (s.data[i] !== 0) { nonZero++; break; }
+                }
+                return nonZero > 0;
+            });
+
+            for (let i = 0; i < steps.length; i++) {
+                if (!isValid[i]) {
+                    let prevIdx = i - 1;
+                    while (prevIdx >= 0 && !isValid[prevIdx]) prevIdx--;
+                    let nextIdx = i + 1;
+                    while (nextIdx < steps.length && !isValid[nextIdx]) nextIdx++;
+
+                    if (prevIdx >= 0 && nextIdx < steps.length) {
+                        const t0 = steps[prevIdx].timeMs || steps[prevIdx].hour;
+                        const t1 = steps[nextIdx].timeMs || steps[nextIdx].hour;
+                        const tc = steps[i].timeMs || steps[i].hour;
+                        const factor = (t1 !== t0) ? (tc - t0) / (t1 - t0) : 0.5;
+                        const dPrev = steps[prevIdx].data;
+                        const dNext = steps[nextIdx].data;
+                        const reconstructed = new Int16Array(dPrev.length);
+                        const invF = 1 - factor;
+                        for (let k = 0; k < dPrev.length; k++) {
+                            reconstructed[k] = Math.round(invF * dPrev[k] + factor * dNext[k]);
+                        }
+                        steps[i].data = reconstructed;
+                        isValid[i] = true;
+                    } else if (prevIdx >= 0) {
+                        steps[i].data = new Int16Array(steps[prevIdx].data);
+                        isValid[i] = true;
+                    } else if (nextIdx < steps.length) {
+                        steps[i].data = new Int16Array(steps[nextIdx].data);
+                        isValid[i] = true;
+                    }
+                }
+            }
+        }
+
+        if (typeof tempData !== 'undefined' && tempData.length > 0) {
+            sanitizeTimelineData(tempData);
+        }
+
         // Achtung: buildTempDataTexture(step, rangeMin, rangeMax) hat jetzt 3 Parameter - beim
         // Einsatz als Array.prototype.map()-Callback würden Index/Array sonst als rangeMin/rangeMax
         // durchgereicht werden. Deshalb überall in ein Arrow-Wrapping mit explizitem Argument packen.
@@ -3462,6 +3513,7 @@
 
         function reloadDataTextures() {
             if (typeof tempData !== 'undefined') {
+                sanitizeTimelineData(tempData);
                 tempTextures = tempData.map(step => buildTempDataTexture(step));
             }
             if (typeof windData !== 'undefined') {
@@ -3846,41 +3898,35 @@
                     // Beleuchtungswinkel & Sonnenvektor
                     float sunDotSphere = dot(sphereNorm, u_sunDirection);
                     float sunDotCloud = dot(cloudNormal, u_sunDirection);
-                    float dayFactor = smoothstep(-0.06, 0.12, sunDotSphere);
 
-                    // Direkte diffuse Beleuchtung mit Schatten in Wolkentälern
-                    float diffuse = clamp(sunDotCloud * 0.85 + 0.15, 0.0, 1.0);
-                    // Sonnen-Highlight / Glanz auf sonnenzugewandten Wolkenkämmen
-                    float rimHighlight = pow(clamp(sunDotCloud, 0.0, 1.0), 3.0) * 0.45;
+                    // Echtes 3D-Relief aus Gradienten & Wölbung (24/7 Tag & Nacht sichtbar)
+                    // Wolken bleiben immer weiß, strahlend und plastisch - kein künstliches Abdunkeln bei Nacht!
+                    float reliefLight = clamp(0.72 + (gradU * 0.18 + gradV * 0.18), 0.55, 1.0);
 
-                    // Ambient Occlusion: Tiefe Täler und dichte Sturmkerne erhalten weniger diffuses Himmelslicht
-                    float ao = clamp(1.0 - rawCloud * 0.42 + gradU * 0.12, 0.38, 1.0);
+                    // Zusätzlicher Sonnen-Glanz auf sonnenzugewandten Wolkenkämmen auf der Tagseite
+                    float sunHighlight = clamp(sunDotCloud, 0.0, 1.0);
+                    float rimHighlight = pow(sunHighlight, 3.0) * 0.38 * smoothstep(-0.02, 0.15, sunDotSphere);
 
-                    // 1. Tag-Wolken: Physikalische Farb- & Dichteschichtung
-                    // Tiefes Sturmgrau/Schiefer in dichten Kernen -> seidiges Wolkenweiß -> strahlende Kämme
-                    vec3 stormCore = vec3(0.68, 0.72, 0.78);
-                    vec3 cloudBody  = vec3(0.91, 0.93, 0.96);
-                    vec3 cloudPeak  = vec3(1.0, 1.0, 1.0);
+                    // Ambient Occlusion: Tiefe Täler zwischen Wolkentürmen und dichte Sturmkerne
+                    float ao = clamp(1.0 - rawCloud * 0.35, 0.62, 1.0);
 
-                    vec3 dayCol = mix(stormCore, cloudBody, diffuse * ao);
-                    dayCol = mix(dayCol, cloudPeak, rimHighlight + smoothstep(0.4, 0.9, noisyCloud) * 0.25);
+                    // Wolken-Farbpalette: Helles, sauberes Wolkenweiß mit sanfter Schattierung (Tag & Nacht)
+                    vec3 stormCore = vec3(0.76, 0.80, 0.86);
+                    vec3 cloudBody = vec3(0.92, 0.94, 0.97);
+                    vec3 cloudPeak = vec3(1.0, 1.0, 1.0);
 
-                    // 2. Abend- & Morgendämmerung: Warmer Pfirsich-/Goldglanz an der Wolkenkante am Terminator
+                    vec3 cloudCol = mix(stormCore, cloudBody, reliefLight * ao);
+                    cloudCol = mix(cloudCol, cloudPeak, rimHighlight + smoothstep(0.40, 0.90, noisyCloud) * 0.22);
+
+                    // Dezenter warmer Gold-/Pfirsichglanz an der Wolkenkante am Terminator
                     float twilight = (1.0 - abs(sunDotSphere) / 0.14) * step(abs(sunDotSphere), 0.14);
-                    vec3 sunsetTint = vec3(1.0, 0.68, 0.44);
-                    dayCol = mix(dayCol, dayCol * sunsetTint * 1.35, twilight * 0.55);
+                    vec3 sunsetTint = vec3(1.0, 0.74, 0.52);
+                    cloudCol = mix(cloudCol, cloudCol * sunsetTint, twilight * 0.38);
 
-                    // 3. Nacht-Wolken: Atmosphärischer Nacht-Schimmer mit feinen Rändern
-                    vec3 nightCol = vec3(0.24, 0.28, 0.35) * (0.8 + 0.3 * detailNoise);
-
-                    vec3 finalCol = mix(nightCol, dayCol, dayFactor);
-
-                    // Transparenz-Progression
+                    // Transparenz-Progression: Federleichter Dunst dezent, Fronten deckend
                     float alpha = smoothstep(0.015, 0.48, noisyCloud) * u_opacity;
-                    // Nachts dezent transparenter, damit nächtliche Stadtlichter hindurchscheinen
-                    float nightAlphaScale = mix(0.65, 1.0, dayFactor);
 
-                    gl_FragColor = vec4(finalCol, alpha * nightAlphaScale);
+                    gl_FragColor = vec4(cloudCol, alpha);
                 }
             `,
             uniforms: {
