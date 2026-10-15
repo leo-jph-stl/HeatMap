@@ -3645,8 +3645,98 @@
             return new THREE.Vector3(x, y, z).normalize();
         }
 
-        // DYNAMISCHE 3D WOLKENDECKE (Tag- & Nacht-Wolkenanimation)
+        // DYNAMISCHE 3D WOLKENDECKE & BODENSCHATTEN (Fotorealistisches 3D-Relief mit FBM & Lichtbrechung)
         // =========================================================================
+        // 1. BODENSCHATTEN-LAYER (Projiziert Wolkenschatten auf Gelände und Meere)
+        const cloudShadowGeometry = new THREE.SphereGeometry(surfaceRadius + 0.002, 128, 128);
+        const cloudShadowMaterial = new THREE.ShaderMaterial({
+            vertexShader: `
+                varying vec2 vUv;
+                varying vec3 vNormal;
+                void main() {
+                    vUv = uv;
+                    vNormal = normal;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                precision highp float;
+                uniform sampler2D u_cloudA;
+                uniform sampler2D u_cloudB;
+                uniform float u_blend;
+                uniform float u_cloudMax;
+                uniform vec3 u_sunDirection;
+                uniform float u_shadowIntensity;
+                varying vec2 vUv;
+                varying vec3 vNormal;
+
+                void main() {
+                    vec3 norm = normalize(vNormal);
+                    float sunDot = dot(norm, u_sunDirection);
+                    // Bodenschatten existieren nur bei direktem Sonnenlicht (Tagseite)
+                    if (sunDot <= 0.02) {
+                        discard;
+                    }
+
+                    float phi = vUv.y * 3.14159265;
+                    float theta = vUv.x * 6.2831853;
+                    vec3 T_u = vec3(sin(theta), 0.0, cos(theta));
+                    vec3 T_v = vec3(-cos(theta) * cos(phi), -sin(phi), sin(theta) * cos(phi));
+
+                    // Tangentiale Projektion der Sonnenstrahlen auf die Erdoberfläche
+                    // Ground-Point tastet Wolke ab in Richtung +L_tangent (da Schatten von erhabener Wolke geworfen wird)
+                    float sinPhi = max(sin(phi), 0.18);
+                    float offsetU = dot(u_sunDirection, T_u) / sinPhi * 0.0035;
+                    float offsetV = dot(u_sunDirection, T_v) * 0.0035;
+
+                    vec2 shadowUv = vUv + vec2(offsetU, offsetV);
+                    shadowUv.x = fract(shadowUv.x);
+                    shadowUv.y = clamp(shadowUv.y, 0.001, 0.999);
+
+                    float cA = texture2D(u_cloudA, shadowUv).r;
+                    float cB = texture2D(u_cloudB, shadowUv).r;
+                    float cloudVal = mix(cA, cB, u_blend) / u_cloudMax;
+
+                    // Sekundäres Soft-Sampling für weichen Halbschatten (Penumbra)
+                    vec2 shadowUvSoft = shadowUv + vec2(offsetU, offsetV) * 0.35;
+                    shadowUvSoft.x = fract(shadowUvSoft.x);
+                    shadowUvSoft.y = clamp(shadowUvSoft.y, 0.001, 0.999);
+                    float cA_soft = texture2D(u_cloudA, shadowUvSoft).r;
+                    float cB_soft = texture2D(u_cloudB, shadowUvSoft).r;
+                    float cloudValSoft = mix(cA_soft, cB_soft, u_blend) / u_cloudMax;
+
+                    float combinedCloud = mix(cloudVal, cloudValSoft, 0.40);
+
+                    float shadowFactor = smoothstep(0.08, 0.50, combinedCloud);
+                    if (shadowFactor <= 0.01) {
+                        discard;
+                    }
+
+                    // Weicher Übergang an der Tag-/Nacht-Grenze (Terminator)
+                    float dayFade = smoothstep(0.02, 0.18, sunDot);
+                    float alpha = shadowFactor * dayFade * u_shadowIntensity;
+
+                    // Natürlicher, kühler atmosphärischer Erdschatten (tiefblau-grau)
+                    gl_FragColor = vec4(0.01, 0.02, 0.05, alpha);
+                }
+            `,
+            uniforms: {
+                u_cloudA: { value: (cloudTextures && cloudTextures[0]) ? cloudTextures[0] : null },
+                u_cloudB: { value: (cloudTextures && cloudTextures[0]) ? cloudTextures[0] : null },
+                u_blend: { value: 0.0 },
+                u_cloudMax: { value: useFloat ? maxCloudRange : 1.0 },
+                u_shadowIntensity: { value: 0.42 },
+                u_sunDirection: { value: new THREE.Vector3(1, 0, 0) }
+            },
+            transparent: true,
+            depthWrite: false
+        });
+        const cloudShadowMesh = new THREE.Mesh(cloudShadowGeometry, cloudShadowMaterial);
+        cloudShadowMesh.rotation.y = -Math.PI / 2;
+        cloudShadowMesh.renderOrder = 1.5; // Liegt direkt über Relief/Erde (1), aber unter Wolken (2)
+        scene.add(cloudShadowMesh);
+
+        // 2. HAUPT-WOLKENLAYER (Mit prozeduraler FBM-Turbulenz, 3D-Bump-Relief & Dämmerungslicht)
         const cloudGeometry = new THREE.SphereGeometry(surfaceRadius + 0.007, 128, 128);
         const cloudMaterial = new THREE.ShaderMaterial({
             vertexShader: `
@@ -3666,40 +3756,131 @@
                 uniform float u_cloudMax;
                 uniform float u_opacity;
                 uniform vec3 u_sunDirection;
+                uniform float u_time;
                 varying vec2 vUv;
                 varying vec3 vNormal;
+
+                // Schneller 2D Hash & Value Noise
+                float hash2(vec2 p) {
+                    p = fract(p * vec2(123.34, 456.21));
+                    p += dot(p, p + 45.32);
+                    return fract(p.x * p.y);
+                }
+
+                float noise2(vec2 p) {
+                    vec2 i = floor(p);
+                    vec2 f = fract(p);
+                    f = f * f * (3.0 - 2.0 * f);
+                    float a = hash2(i);
+                    float b = hash2(i + vec2(1.0, 0.0));
+                    float c = hash2(i + vec2(0.0, 1.0));
+                    float d = hash2(i + vec2(1.0, 1.0));
+                    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+                }
+
+                // 3-Oktaven Fractal Brownian Motion (FBM) für feine Cirrus- und Quellwolken-Mikroturbulenzen
+                float fbm(vec2 p) {
+                    float v = 0.0;
+                    float amp = 0.52;
+                    mat2 rot = mat2(0.80, -0.60, 0.60, 0.80);
+                    for (int i = 0; i < 3; i++) {
+                        v += amp * noise2(p);
+                        p = rot * p * 2.06;
+                        amp *= 0.50;
+                    }
+                    return v;
+                }
 
                 void main() {
                     float cA = texture2D(u_cloudA, vUv).r;
                     float cB = texture2D(u_cloudB, vUv).r;
-                    float cloud = clamp(mix(cA, cB, u_blend) / u_cloudMax, 0.0, 1.0);
+                    float rawCloud = clamp(mix(cA, cB, u_blend) / u_cloudMax, 0.0, 1.0);
 
-                    // Reiner Himmel ohne Bewölkung -> Pixel verwerfen für maximale Performance
-                    if (cloud < 0.012) {
+                    // Schneller Vor-Abbruch für wolkenfreien Himmel
+                    if (rawCloud < 0.008) {
                         discard;
                     }
 
-                    // Sonnen-Höhenwinkel (Tag / Dämmerung / Nacht)
-                    float sunDot = dot(normalize(vNormal), u_sunDirection);
-                    float dayFactor = smoothstep(-0.06, 0.12, sunDot);
+                    // Sphärische Winkel für Tangenten & Latitude-Kompensation
+                    float phi = vUv.y * 3.14159265;
+                    float theta = vUv.x * 6.2831853;
+                    float sinPhi = max(sin(phi), 0.15);
 
-                    // 1. Tag-Wolken: Natürliches, helles Weiß mit feiner Wolkendichte-Tönung
-                    vec3 dayCloud = mix(vec3(0.92, 0.94, 0.98), vec3(1.0, 1.0, 1.0), smoothstep(0.08, 0.6, cloud));
+                    // Isotrop skaliertes Rauschfeld mit feiner zeitlicher Mikrodrift
+                    vec2 noiseUv = vec2(vUv.x * sinPhi * 220.0, vUv.y * 140.0);
+                    noiseUv += vec2(u_time * 0.008, u_time * 0.003);
+                    float detailNoise = fbm(noiseUv);
 
-                    // 2. Abend-/Morgendämmerung: Warmer Pfirsich-/Goldton an der Wolkenkante am Terminator
-                    float twilight = (1.0 - abs(sunDot) / 0.12) * step(abs(sunDot), 0.12);
-                    vec3 sunsetCloud = vec3(1.0, 0.74, 0.60);
-                    dayCloud = mix(dayCloud, sunsetCloud, twilight * 0.40);
+                    // Natürliche Kantenauflockerung:
+                    // Dünne Wolken fransen federartig (Cirrus) aus, dichte Sturmkerne bleiben massiv
+                    float noisyCloud = rawCloud + (detailNoise - 0.48) * 0.24 * smoothstep(0.0, 0.55, rawCloud);
+                    noisyCloud = clamp(noisyCloud, 0.0, 1.0);
 
-                    // 3. Nacht-Wolken: Dezenter Silber-/Schieferton
-                    vec3 nightCloud = vec3(0.46, 0.49, 0.55);
+                    if (noisyCloud < 0.012) {
+                        discard;
+                    }
 
-                    vec3 finalCol = mix(nightCloud, dayCloud, dayFactor);
+                    // Räumlicher Dichte-Gradient für echtes 3D-Relief & Normal-Perturbation
+                    vec2 dU = vec2(0.0016, 0.0);
+                    vec2 dV = vec2(0.0, 0.0016);
+                    float cRight = mix(texture2D(u_cloudA, vUv + dU).r, texture2D(u_cloudB, vUv + dU).r, u_blend) / u_cloudMax;
+                    float cLeft  = mix(texture2D(u_cloudA, vUv - dU).r, texture2D(u_cloudB, vUv - dU).r, u_blend) / u_cloudMax;
+                    float cDown  = mix(texture2D(u_cloudA, vUv + dV).r, texture2D(u_cloudB, vUv + dV).r, u_blend) / u_cloudMax;
+                    float cUp    = mix(texture2D(u_cloudA, vUv - dV).r, texture2D(u_cloudB, vUv - dV).r, u_blend) / u_cloudMax;
 
-                    // Transparenz-Progression: Dünner Dunst dezent, dichte Fronten/Zellen deckend
-                    float alpha = smoothstep(0.012, 0.50, cloud) * u_opacity;
+                    // Gradient kombiniert aus GFS-Zellen und hochfrequenter FBM-Mikrotopographie
+                    float nGradU = (fbm(noiseUv + vec2(0.9, 0.0)) - fbm(noiseUv - vec2(0.9, 0.0))) * 0.45;
+                    float nGradV = (fbm(noiseUv + vec2(0.0, 0.9)) - fbm(noiseUv - vec2(0.0, 0.9))) * 0.45;
 
-                    gl_FragColor = vec4(finalCol, alpha);
+                    float gradU = (cRight - cLeft) * 3.8 + nGradU;
+                    float gradV = (cDown - cUp) * 3.8 + nGradV;
+
+                    // Tangentialbasis auf der Kugeloberfläche
+                    vec3 sphereNorm = normalize(vNormal);
+                    vec3 T_u = vec3(sin(theta), 0.0, cos(theta));
+                    vec3 T_v = vec3(-cos(theta) * cos(phi), -sin(phi), sin(theta) * cos(phi));
+
+                    // Störung der Flächennormale in eine plastische 3D-Wolkentopographie
+                    vec3 cloudNormal = normalize(sphereNorm - (T_u * gradU + T_v * gradV) * 0.75);
+
+                    // Beleuchtungswinkel & Sonnenvektor
+                    float sunDotSphere = dot(sphereNorm, u_sunDirection);
+                    float sunDotCloud = dot(cloudNormal, u_sunDirection);
+                    float dayFactor = smoothstep(-0.06, 0.12, sunDotSphere);
+
+                    // Direkte diffuse Beleuchtung mit Schatten in Wolkentälern
+                    float diffuse = clamp(sunDotCloud * 0.85 + 0.15, 0.0, 1.0);
+                    // Sonnen-Highlight / Glanz auf sonnenzugewandten Wolkenkämmen
+                    float rimHighlight = pow(clamp(sunDotCloud, 0.0, 1.0), 3.0) * 0.45;
+
+                    // Ambient Occlusion: Tiefe Täler und dichte Sturmkerne erhalten weniger diffuses Himmelslicht
+                    float ao = clamp(1.0 - rawCloud * 0.42 + gradU * 0.12, 0.38, 1.0);
+
+                    // 1. Tag-Wolken: Physikalische Farb- & Dichteschichtung
+                    // Tiefes Sturmgrau/Schiefer in dichten Kernen -> seidiges Wolkenweiß -> strahlende Kämme
+                    vec3 stormCore = vec3(0.68, 0.72, 0.78);
+                    vec3 cloudBody  = vec3(0.91, 0.93, 0.96);
+                    vec3 cloudPeak  = vec3(1.0, 1.0, 1.0);
+
+                    vec3 dayCol = mix(stormCore, cloudBody, diffuse * ao);
+                    dayCol = mix(dayCol, cloudPeak, rimHighlight + smoothstep(0.4, 0.9, noisyCloud) * 0.25);
+
+                    // 2. Abend- & Morgendämmerung: Warmer Pfirsich-/Goldglanz an der Wolkenkante am Terminator
+                    float twilight = (1.0 - abs(sunDotSphere) / 0.14) * step(abs(sunDotSphere), 0.14);
+                    vec3 sunsetTint = vec3(1.0, 0.68, 0.44);
+                    dayCol = mix(dayCol, dayCol * sunsetTint * 1.35, twilight * 0.55);
+
+                    // 3. Nacht-Wolken: Atmosphärischer Nacht-Schimmer mit feinen Rändern
+                    vec3 nightCol = vec3(0.24, 0.28, 0.35) * (0.8 + 0.3 * detailNoise);
+
+                    vec3 finalCol = mix(nightCol, dayCol, dayFactor);
+
+                    // Transparenz-Progression
+                    float alpha = smoothstep(0.015, 0.48, noisyCloud) * u_opacity;
+                    // Nachts dezent transparenter, damit nächtliche Stadtlichter hindurchscheinen
+                    float nightAlphaScale = mix(0.65, 1.0, dayFactor);
+
+                    gl_FragColor = vec4(finalCol, alpha * nightAlphaScale);
                 }
             `,
             uniforms: {
@@ -3708,14 +3889,15 @@
                 u_blend: { value: 0.0 },
                 u_cloudMax: { value: useFloat ? maxCloudRange : 1.0 },
                 u_opacity: { value: 0.88 },
-                u_sunDirection: { value: new THREE.Vector3(1, 0, 0) }
+                u_sunDirection: { value: new THREE.Vector3(1, 0, 0) },
+                u_time: { value: 0.0 }
             },
             transparent: true,
             depthWrite: false
         });
         const cloudMesh = new THREE.Mesh(cloudGeometry, cloudMaterial);
         cloudMesh.rotation.y = -Math.PI / 2;
-        cloudMesh.renderOrder = 2; // Liegt über Basiskarte/Relief (1), unter Grenzen/Vektoren (3)
+        cloudMesh.renderOrder = 2; // Liegt über Basiskarte/Relief (1) und Schatten (1.5), unter Grenzen/Vektoren (3)
         scene.add(cloudMesh);
 
         function lon2tile(lon, zoom) {
@@ -5325,6 +5507,9 @@
             try {
                 if (typeof updateMoonTiles === 'function' && currentCelestialBody === 'moon') updateMoonTiles();
             } catch(e) { /* moon tile safe */ }
+            if (typeof cloudMaterial !== 'undefined' && cloudMaterial && cloudMaterial.uniforms && cloudMaterial.uniforms.u_time) {
+                cloudMaterial.uniforms.u_time.value = performance.now() * 0.001;
+            }
 
             // Dynamische, seidenweiche hypsometrische Höhenanpassung (LERP - verhindert jegliches Ruckeln/Farbspringen beim Wischen)
             if (currentMode === 'topo' && currentTopoProvider === 'hypsometric') {
@@ -5767,6 +5952,9 @@
             if (type === 'clouds') {
                 if (typeof cloudMesh !== 'undefined' && cloudMesh) {
                     cloudMesh.visible = isAct && currentCelestialBody !== 'moon';
+                }
+                if (typeof cloudShadowMesh !== 'undefined' && cloudShadowMesh) {
+                    cloudShadowMesh.visible = isAct && currentCelestialBody !== 'moon';
                 }
                 if (isAct && typeof updateActiveData === 'function') {
                     updateActiveData();
@@ -13664,15 +13852,28 @@
                 }
             }
 
-            // Stufenlose Aktualisierung der 3D-Wolkendecke bei Tag & Nacht
+            // Stufenlose Aktualisierung der 3D-Wolkendecke & Bodenschatten bei Tag & Nacht
+            const cloudsActive = overlayState.clouds && currentCelestialBody !== 'moon';
             if (typeof cloudMesh !== 'undefined' && cloudMesh) {
-                cloudMesh.visible = overlayState.clouds && currentCelestialBody !== 'moon';
-                if (cloudMesh.visible && typeof cloudTextures !== 'undefined' && cloudTextures.length > 0) {
-                    if (cloudTextures[cloudIdx0] && cloudTextures[cloudIdx1]) {
+                cloudMesh.visible = cloudsActive;
+            }
+            if (typeof cloudShadowMesh !== 'undefined' && cloudShadowMesh) {
+                cloudShadowMesh.visible = cloudsActive;
+            }
+            if (cloudsActive && typeof cloudTextures !== 'undefined' && cloudTextures.length > 0) {
+                if (cloudTextures[cloudIdx0] && cloudTextures[cloudIdx1]) {
+                    const sunDir = computeSunDirection(currentHourOffset);
+                    if (typeof cloudMaterial !== 'undefined' && cloudMaterial && cloudMaterial.uniforms) {
                         cloudMaterial.uniforms.u_cloudA.value = cloudTextures[cloudIdx0];
                         cloudMaterial.uniforms.u_cloudB.value = cloudTextures[cloudIdx1];
                         cloudMaterial.uniforms.u_blend.value = cloudBlend;
-                        cloudMaterial.uniforms.u_sunDirection.value = computeSunDirection(currentHourOffset);
+                        cloudMaterial.uniforms.u_sunDirection.value = sunDir;
+                    }
+                    if (typeof cloudShadowMaterial !== 'undefined' && cloudShadowMaterial && cloudShadowMaterial.uniforms) {
+                        cloudShadowMaterial.uniforms.u_cloudA.value = cloudTextures[cloudIdx0];
+                        cloudShadowMaterial.uniforms.u_cloudB.value = cloudTextures[cloudIdx1];
+                        cloudShadowMaterial.uniforms.u_blend.value = cloudBlend;
+                        cloudShadowMaterial.uniforms.u_sunDirection.value = sunDir;
                     }
                 }
             }
@@ -13964,6 +14165,7 @@
                 if (typeof urbanLineMesh !== 'undefined' && urbanLineMesh) urbanLineMesh.visible = false;
                 if (typeof isobarGroup !== 'undefined' && isobarGroup) isobarGroup.visible = false;
                 if (typeof cloudMesh !== 'undefined' && cloudMesh) cloudMesh.visible = false;
+                if (typeof cloudShadowMesh !== 'undefined' && cloudShadowMesh) cloudShadowMesh.visible = false;
 
                 // Wetter-Overlays & Pill-Buttons auf dem Mond ausblenden
                 const overlayPills = document.querySelectorAll('.overlay-pill, .overlay-divider');
@@ -14057,6 +14259,9 @@
                 }
                 if (typeof cloudMesh !== 'undefined' && cloudMesh) {
                     cloudMesh.visible = (typeof overlayState !== 'undefined') ? overlayState.clouds : true;
+                }
+                if (typeof cloudShadowMesh !== 'undefined' && cloudShadowMesh) {
+                    cloudShadowMesh.visible = (typeof overlayState !== 'undefined') ? overlayState.clouds : true;
                 }
                 const overlayPills = document.querySelectorAll('.overlay-pill, .overlay-divider');
                 overlayPills.forEach(p => p.style.display = '');
