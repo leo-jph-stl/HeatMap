@@ -5280,9 +5280,9 @@
                 // Beim Drehen/Verschieben/Zoomen altes Bild sofort säubern -> Partikel bleiben 1:1 fest an der Geographie verankert
                 screenWindCtx.clearRect(0, 0, screenW, screenH);
             } else {
-                // Im Stillstand lange, geschwungene Schweife fließen lassen (0.960 für exzellente Schweiflänge bei Sturm)
+                // Im Stillstand sanfte, elegante Schweife fließen lassen (harmonische Schweiflänge ohne Übertreibung)
                 screenWindCtx.globalCompositeOperation = 'destination-in';
-                screenWindCtx.fillStyle = 'rgba(0, 0, 0, 0.960)'; 
+                screenWindCtx.fillStyle = 'rgba(0, 0, 0, 0.938)'; 
                 screenWindCtx.fillRect(0, 0, screenW, screenH);
                 screenWindCtx.globalCompositeOperation = 'source-over';
             }
@@ -5363,8 +5363,8 @@
             }
             lastWindDist = dist;
 
-            // Dynamische Schrittweite: Basis-Schritt 0.015 sorgt für sofort sichtbare, rasante Dynamik in Sturmfeldern
-            const step = (h / earthRadius) * 0.015 * timeScale;
+            // Dynamische Schrittweite: Ausgewogener Basisschritt 0.0038 für harmonische, natürliche Strömung
+            const step = (h / earthRadius) * 0.0038 * timeScale;
 
             const pathCalm = new Path2D();
             const pathMed = new Path2D();
@@ -5416,12 +5416,12 @@
                 }
 
                 // Dynamische Windstärke:
-                // - Sturmfelder & Jetstream (> 15 m/s): Rasend schnelle, lang geschwungene Wirbelschweife
-                // - Normale Winde (5 - 15 m/s): Harmonisch fließende Vektorbahnen
-                // - Windstille Hochdruckgebiete (< 5 m/s): Träge Kriechbewegung mit winzigen, dezenten Spuren
+                // - Sturmfelder (> 14 m/s): Bis zu ~2.1x schneller mit fließenden, geschwungenen Wirbelschweifen
+                // - Normale Winde (5 - 14 m/s): Harmonisch fließende Vektorbahnen
+                // - Windstille Hochdruckgebiete (< 5 m/s): Träge Kriechbewegung mit dezenten, kurzen Spuren
                 const speed = Math.sqrt(u * u + v * v);
-                const speedFactor = Math.pow(Math.max(0.1, speed) / 7.5, 0.85);
-                const speedBoost = Math.min(4.5, Math.max(0.20, speedFactor));
+                const speedFactor = Math.pow(Math.max(0.12, speed / 7.5), 0.65);
+                const speedBoost = Math.min(2.1, Math.max(0.35, speedFactor));
                 const effectiveStep = step * speedBoost;
 
                 let cosLat = Math.cos(p.lat * Math.PI / 180);
@@ -5464,19 +5464,19 @@
                 p.age += timeScale;
             }
 
-            // 1. Ruhige, schwache Winde: Dezent, dünn und unaufdringlich
-            screenWindCtx.strokeStyle = 'rgba(255, 255, 255, 0.40)';
+            // 1. Ruhige, schwache Winde: Dezent, hauchdünn und unaufdringlich
+            screenWindCtx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
             screenWindCtx.lineWidth = 0.85;
             screenWindCtx.stroke(pathCalm);
 
-            // 2. Mäßige bis frische Winde: Scharfe, saubere Vektorbahnen
-            screenWindCtx.strokeStyle = 'rgba(255, 255, 255, 0.68)';
-            screenWindCtx.lineWidth = 1.25;
+            // 2. Mäßige bis frische Winde: Feine, saubere Vektorbahnen
+            screenWindCtx.strokeStyle = 'rgba(255, 255, 255, 0.58)';
+            screenWindCtx.lineWidth = 1.05;
             screenWindCtx.stroke(pathMed);
 
-            // 3. Sturmfelder & Jetstream: Dick, strahlend hellweiß und weithin sichtbar
-            screenWindCtx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
-            screenWindCtx.lineWidth = 1.80;
+            // 3. Sturmfelder & Jetstream: Schneller und länger fließend, aber ästhetisch und dezent
+            screenWindCtx.strokeStyle = 'rgba(255, 255, 255, 0.78)';
+            screenWindCtx.lineWidth = 1.30;
             screenWindCtx.stroke(pathStorm);
         }
 
