@@ -3722,6 +3722,30 @@
                 varying vec2 vUv;
                 varying vec3 vNormal;
 
+                float sampleSmoothCloud(sampler2D tex, vec2 uv) {
+                    vec2 texSize = vec2(1441.0, 721.0);
+                    float u = fract(uv.x);
+                    float v = clamp(uv.y, 0.001, 0.999);
+                    vec2 pos = vec2(u, v) * texSize - 0.5;
+                    vec2 i = floor(pos);
+                    vec2 f = fract(pos);
+                    vec2 w = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+                    vec2 p00 = (i + vec2(0.5, 0.5)) / texSize;
+                    vec2 p10 = (i + vec2(1.5, 0.5)) / texSize;
+                    vec2 p01 = (i + vec2(0.5, 1.5)) / texSize;
+                    vec2 p11 = (i + vec2(1.5, 1.5)) / texSize;
+                    p00.x = fract(p00.x); p10.x = fract(p10.x); p01.x = fract(p01.x); p11.x = fract(p11.x);
+                    p00.y = clamp(p00.y, 0.5 / texSize.y, 1.0 - 0.5 / texSize.y);
+                    p10.y = clamp(p10.y, 0.5 / texSize.y, 1.0 - 0.5 / texSize.y);
+                    p01.y = clamp(p01.y, 0.5 / texSize.y, 1.0 - 0.5 / texSize.y);
+                    p11.y = clamp(p11.y, 0.5 / texSize.y, 1.0 - 0.5 / texSize.y);
+                    float v00 = texture2D(tex, p00).r;
+                    float v10 = texture2D(tex, p10).r;
+                    float v01 = texture2D(tex, p01).r;
+                    float v11 = texture2D(tex, p11).r;
+                    return mix(mix(v00, v10, w.x), mix(v01, v11, w.x), w.y);
+                }
+
                 void main() {
                     vec3 norm = normalize(vNormal);
                     float sunDot = dot(norm, u_sunDirection);
@@ -3745,16 +3769,16 @@
                     shadowUv.x = fract(shadowUv.x);
                     shadowUv.y = clamp(shadowUv.y, 0.001, 0.999);
 
-                    float cA = texture2D(u_cloudA, shadowUv).r;
-                    float cB = texture2D(u_cloudB, shadowUv).r;
+                    float cA = sampleSmoothCloud(u_cloudA, shadowUv);
+                    float cB = sampleSmoothCloud(u_cloudB, shadowUv);
                     float cloudVal = mix(cA, cB, u_blend) / u_cloudMax;
 
                     // Sekundäres Soft-Sampling für weichen Halbschatten (Penumbra)
                     vec2 shadowUvSoft = shadowUv + vec2(offsetU, offsetV) * 0.35;
                     shadowUvSoft.x = fract(shadowUvSoft.x);
                     shadowUvSoft.y = clamp(shadowUvSoft.y, 0.001, 0.999);
-                    float cA_soft = texture2D(u_cloudA, shadowUvSoft).r;
-                    float cB_soft = texture2D(u_cloudB, shadowUvSoft).r;
+                    float cA_soft = sampleSmoothCloud(u_cloudA, shadowUvSoft);
+                    float cB_soft = sampleSmoothCloud(u_cloudB, shadowUvSoft);
                     float cloudValSoft = mix(cA_soft, cB_soft, u_blend) / u_cloudMax;
 
                     float combinedCloud = mix(cloudVal, cloudValSoft, 0.40);
@@ -3844,87 +3868,122 @@
                     return v;
                 }
 
-                // Sub-Texel C2 Quintic Smoothing (Beseitigt Blockartefakte und pixelige Treppenstufen)
+                // Echtes 4-Tap C2 Quintic Spline Smoothing (Beseitigt Block-Artefakte und Treppenstufen vollständig)
                 float sampleSmoothCloud(sampler2D tex, vec2 uv) {
-                    vec2 texSize = vec2(1440.0, 721.0);
-                    vec2 pos = uv * texSize - 0.5;
+                    vec2 texSize = vec2(1441.0, 721.0);
+                    float u = fract(uv.x);
+                    float v = clamp(uv.y, 0.001, 0.999);
+
+                    vec2 pos = vec2(u, v) * texSize - 0.5;
+                    vec2 i = floor(pos);
                     vec2 f = fract(pos);
-                    f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-                    vec2 uvSmooth = (floor(pos) + 0.5 + f) / texSize;
-                    return texture2D(tex, uvSmooth).r;
+
+                    // Quintische C2-stetige Hermite-Kurve: 6f^5 - 15f^4 + 10f^3 (überall glatte Steigung 0 an Zellgrenzen)
+                    vec2 w = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+
+                    vec2 p00 = (i + vec2(0.5, 0.5)) / texSize;
+                    vec2 p10 = (i + vec2(1.5, 0.5)) / texSize;
+                    vec2 p01 = (i + vec2(0.5, 1.5)) / texSize;
+                    vec2 p11 = (i + vec2(1.5, 1.5)) / texSize;
+
+                    p00.x = fract(p00.x);
+                    p10.x = fract(p10.x);
+                    p01.x = fract(p01.x);
+                    p11.x = fract(p11.x);
+
+                    p00.y = clamp(p00.y, 0.5 / texSize.y, 1.0 - 0.5 / texSize.y);
+                    p10.y = clamp(p10.y, 0.5 / texSize.y, 1.0 - 0.5 / texSize.y);
+                    p01.y = clamp(p01.y, 0.5 / texSize.y, 1.0 - 0.5 / texSize.y);
+                    p11.y = clamp(p11.y, 0.5 / texSize.y, 1.0 - 0.5 / texSize.y);
+
+                    float v00 = texture2D(tex, p00).r;
+                    float v10 = texture2D(tex, p10).r;
+                    float v01 = texture2D(tex, p01).r;
+                    float v11 = texture2D(tex, p11).r;
+
+                    return mix(mix(v00, v10, w.x), mix(v01, v11, w.x), w.y);
                 }
 
                 void main() {
-                    float cA = sampleSmoothCloud(u_cloudA, vUv);
-                    float cB = sampleSmoothCloud(u_cloudB, vUv);
-                    float rawCloud = clamp(mix(cA, cB, u_blend) / u_cloudMax, 0.0, 1.0);
-
-                    // Früher Abbruch für wolkenfreien Himmel
-                    if (rawCloud < 0.005) {
-                        discard;
-                    }
-
                     // Sphärische Winkel für Tangenten & Latitude-Kompensation
                     float phi = vUv.y * 3.14159265;
-                    float theta = vUv.x * 6.2831853;
                     float sinPhi = max(sin(phi), 0.15);
 
                     // Hochauflösende Mikro-Koordinaten mit sanfter zeitlicher Strömungs-Drift
-                    vec2 p = vec2(vUv.x * sinPhi * 520.0, vUv.y * 320.0);
-                    p += vec2(u_time * 0.004, u_time * 0.0015);
+                    vec2 p = vec2(vUv.x * sinPhi * 480.0, vUv.y * 260.0);
+                    p += vec2(u_time * 0.0035, u_time * 0.0012);
 
-                    // Aerodynamisches Strömungswarping (Domain Warping) für natürliche Wolkenwirbel
+                    // Aerodynamisches Strömungswarping (Domain Warping)
                     vec2 q = vec2(fbm(p), fbm(p + vec2(4.7, 1.9)));
-                    vec2 rWarp = vec2(fbm(p + 2.8 * q + vec2(1.7, 9.2)), fbm(p + 2.8 * q + vec2(8.3, 2.8)));
-                    float fbmDetail = fbm(p + 2.2 * rWarp);
+                    vec2 rWarp = vec2(fbm(p + 2.5 * q + vec2(1.7, 9.2)), fbm(p + 2.5 * q + vec2(8.3, 2.8)));
+
+                    // Organische Verzerrung bricht starre Gitterfronten in wirbelnde Strömungsbänder auf
+                    vec2 warpUv = (rWarp - 0.5) * vec2(0.008 / sinPhi, 0.008);
+                    vec2 warpedUv = vUv + warpUv;
+
+                    float cA = sampleSmoothCloud(u_cloudA, warpedUv);
+                    float cB = sampleSmoothCloud(u_cloudB, warpedUv);
+                    float rawCloud = clamp(mix(cA, cB, u_blend) / u_cloudMax, 0.0, 1.0);
+
+                    // Auch un-verzerrte Basis abfragen für sauberen Abbruch
+                    float cA_raw = sampleSmoothCloud(u_cloudA, vUv);
+                    float cB_raw = sampleSmoothCloud(u_cloudB, vUv);
+                    float baseCloud = clamp(mix(cA_raw, cB_raw, u_blend) / u_cloudMax, 0.0, 1.0);
+
+                    // Früher Abbruch für wolkenfreien Himmel (schont GPU)
+                    if (rawCloud < 0.005 && baseCloud < 0.005) {
+                        discard;
+                    }
 
                     // Zelluläre Quellwolken-Körnigkeit (Altocumulus / Stratocumulus Billows)
-                    float billow = 1.0 - abs(noise2(p * 2.4 + q) * 2.0 - 1.0);
+                    float billow = 1.0 - abs(noise2(p * 2.8 + q) * 2.0 - 1.0);
+                    float fbmDetail = fbm(p * 2.2 + 1.8 * rWarp);
 
-                    // Organische Dichte-Modulation:
-                    // Wolkenränder zerfasern federartig (Cirrus), dichte Zonen behalten zelluläre Wölbung
-                    // statt wie eine massive, blickdichte weiße Decke zu wirken
-                    float edgeWisp = (fbmDetail - 0.48) * 0.32 * smoothstep(0.01, 0.70, rawCloud);
-                    float cellWisp = (billow - 0.50) * 0.20 * smoothstep(0.12, 0.90, rawCloud);
+                    // Organische Dichte-Modulation: Ränder zerfasern fedrig (Cirren), Kern bleibt wolkig
+                    float edgeMask = smoothstep(0.015, 0.45, rawCloud);
+                    float edgeWisp = (fbmDetail - 0.46) * 0.38 * edgeMask;
+                    float cellWisp = (billow - 0.50) * 0.18 * edgeMask;
                     float cloudDensity = clamp(rawCloud + edgeWisp + cellWisp, 0.0, 1.0);
 
-                    if (cloudDensity < 0.010) {
+                    if (cloudDensity < 0.012) {
                         discard;
                     }
 
                     // Räumlicher Gradient für plastische 3D-Wölbung & Lichtkanten
-                    vec2 dU = vec2(0.0014, 0.0);
-                    vec2 dV = vec2(0.0, 0.0014);
-                    float cR = mix(sampleSmoothCloud(u_cloudA, vUv + dU), sampleSmoothCloud(u_cloudB, vUv + dU), u_blend) / u_cloudMax;
-                    float cL = mix(sampleSmoothCloud(u_cloudA, vUv - dU), sampleSmoothCloud(u_cloudB, vUv - dU), u_blend) / u_cloudMax;
-                    float cD = mix(sampleSmoothCloud(u_cloudA, vUv + dV), sampleSmoothCloud(u_cloudB, vUv + dV), u_blend) / u_cloudMax;
-                    float cU = mix(sampleSmoothCloud(u_cloudA, vUv - dV), sampleSmoothCloud(u_cloudB, vUv - dV), u_blend) / u_cloudMax;
+                    vec2 dU = vec2(0.0018 / sinPhi, 0.0);
+                    vec2 dV = vec2(0.0, 0.0018);
+                    float cR = mix(sampleSmoothCloud(u_cloudA, warpedUv + dU), sampleSmoothCloud(u_cloudB, warpedUv + dU), u_blend) / u_cloudMax;
+                    float cL = mix(sampleSmoothCloud(u_cloudA, warpedUv - dU), sampleSmoothCloud(u_cloudB, warpedUv - dU), u_blend) / u_cloudMax;
+                    float cD = mix(sampleSmoothCloud(u_cloudA, warpedUv + dV), sampleSmoothCloud(u_cloudB, warpedUv + dV), u_blend) / u_cloudMax;
+                    float cU = mix(sampleSmoothCloud(u_cloudA, warpedUv - dV), sampleSmoothCloud(u_cloudB, warpedUv - dV), u_blend) / u_cloudMax;
 
-                    float gradU = (cR - cL) * 3.6 + (fbm(p + vec2(0.8, 0.0)) - fbm(p - vec2(0.8, 0.0))) * 0.32;
-                    float gradV = (cD - cU) * 3.6 + (fbm(p + vec2(0.0, 0.8)) - fbm(p - vec2(0.0, 0.8))) * 0.32;
+                    float gradU = (cR - cL) * 3.2 + (fbm(p + vec2(0.8, 0.0)) - fbm(p - vec2(0.8, 0.0))) * 0.28;
+                    float gradV = (cD - cU) * 3.2 + (fbm(p + vec2(0.0, 0.8)) - fbm(p - vec2(0.0, 0.8))) * 0.28;
 
-                    // Plastisches 3D-Höhenlicht: Täler erhalten dezente Schattierung, Kämme strahlen hellweiß
-                    float billowLight = clamp(0.70 + (gradU * 0.20 + gradV * 0.20) + (billow - 0.5) * 0.25, 0.54, 1.0);
+                    // Plastisches 3D-Oberlicht (wie bei echten Satellitenaufnahmen):
+                    // Licht fällt schräg von oben-links ein, erzeugt helle Kämme und sanft schattierte Täler
+                    vec2 lightDir = normalize(vec2(-0.55, 0.83));
+                    float hillLight = clamp(0.74 + dot(vec2(gradU, gradV), lightDir) * 0.28 + (billow - 0.5) * 0.20, 0.52, 1.0);
 
                     // Feine Wolkenpalette: Helle, strahlende Wolken mit plastischem Volumen und Schattierung
-                    vec3 shadowBase = vec3(0.68, 0.73, 0.80); // Weiche, kühle Tiefenschattierung in Wolkentälern
-                    vec3 cloudBody  = vec3(0.91, 0.93, 0.96); // Natürlicher Wolkenkörper
+                    vec3 shadowBase = vec3(0.72, 0.77, 0.84); // Weiche, kühle Tiefenschattierung in Wolkentälern
+                    vec3 cloudBody  = vec3(0.92, 0.94, 0.97); // Natürlicher Wolkenkörper
                     vec3 cloudPeak  = vec3(1.00, 1.00, 1.00); // Strahlend weiße Wolkenkämme
 
-                    vec3 cloudCol = mix(shadowBase, cloudBody, smoothstep(0.12, 0.68, billowLight));
-                    cloudCol = mix(cloudCol, cloudPeak, pow(billowLight, 2.2) * 0.40 + smoothstep(0.40, 0.95, cloudDensity) * 0.28);
+                    vec3 cloudCol = mix(shadowBase, cloudBody, smoothstep(0.52, 0.78, hillLight));
+                    cloudCol = mix(cloudCol, cloudPeak, pow(smoothstep(0.70, 1.0, hillLight), 1.6) * 0.45 + smoothstep(0.45, 0.95, cloudDensity) * 0.25);
 
                     // Sanfter Dämmerungsglanz an der Tag-/Nachtgrenze
                     vec3 sphereNorm = normalize(vNormal);
                     float sunDot = dot(sphereNorm, u_sunDirection);
                     float twilight = (1.0 - abs(sunDot) / 0.15) * step(abs(sunDot), 0.15);
-                    cloudCol = mix(cloudCol, cloudCol * vec3(1.0, 0.82, 0.65), twilight * 0.30);
+                    cloudCol = mix(cloudCol, cloudCol * vec3(1.0, 0.84, 0.70), twilight * 0.25);
 
                     // Natürliche Transparenz-Progression:
-                    // Dünne Wolkenbänder und Dunst lassen die Temperaturfarben elegant durchscheinen (alpha 0.15..0.50),
-                    // dichte Sturmfronten sind substantiell, aber nicht wie eine feste Wand (max alpha ~ 0.82)
-                    float alpha = smoothstep(0.010, 0.90, cloudDensity);
-                    alpha = pow(alpha, 0.78) * 0.82 * u_opacity;
+                    // Dünne Wolkenbänder und Dunst lassen die Temperaturfarben elegant durchscheinen (alpha 0.12..0.45),
+                    // dichte Sturmfronten sind substantiell, aber niemals eine undurchdringliche Wand
+                    float alpha = smoothstep(0.012, 0.90, cloudDensity);
+                    alpha = pow(alpha, 0.92) * 0.80 * u_opacity;
 
                     gl_FragColor = vec4(cloudCol, alpha);
                 }
