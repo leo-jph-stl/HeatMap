@@ -4470,6 +4470,7 @@
         var clickedPopupTileElevation = null;
 
         function applyDynamicElevationRange(minElev, maxElev) {
+            if (currentCelestialBody !== 'earth') return;
             currentVisibleMinElev = minElev;
             currentVisibleMaxElev = maxElev;
 
@@ -4552,7 +4553,7 @@
         }
 
         function refreshVisibleElevationRange() {
-            if ((currentMode !== 'topo' && currentMode !== 'satellite') || currentTopoProvider !== 'hypsometric') return;
+            if (currentCelestialBody !== 'earth' || (currentMode !== 'topo' && currentMode !== 'satellite') || currentTopoProvider !== 'hypsometric') return;
 
             // Frustum aus aktuellem Kamera-Blickfeld aufbauen
             _topoFrustumMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -5140,8 +5141,8 @@
             moonTopoSampleCtx.drawImage(img, 0, 0);
             const data = moonTopoSampleCtx.getImageData(0, 0, 256, 256).data;
             const samples = [];
-            for (let y = 8; y < 256; y += 16) {
-                for (let x = 8; x < 256; x += 16) {
+            for (let y = 4; y < 256; y += 8) {
+                for (let x = 4; x < 256; x += 8) {
                     const idx = (y * 256 + x) * 4;
                     const r = data[idx];
                     const g = data[idx + 1];
@@ -5154,9 +5155,7 @@
             }
             if (samples.length === 0) return { minElev: -9.1, maxElev: 10.8 };
             samples.sort((a, b) => a - b);
-            const p02 = samples[Math.floor(samples.length * 0.02)] ?? samples[0];
-            const p98 = samples[Math.floor(samples.length * 0.98)] ?? samples[samples.length - 1];
-            return { minElev: p02, maxElev: p98 };
+            return { minElev: samples[0], maxElev: samples[samples.length - 1] };
         }
 
         var targetMoonMinElev = -9.1;
@@ -5166,6 +5165,10 @@
 
         function updateVisibleMoonElevationBounds() {
             if (currentCelestialBody !== 'moon' || currentMoonLayer !== 'topo') return;
+
+            // Frustum aus aktuellem Kamera-Blickfeld aufbauen
+            _topoFrustumMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+            _topoFrustum.setFromProjectionMatrix(_topoFrustumMatrix);
 
             let visMin = Infinity;
             let visMax = -Infinity;
@@ -5204,15 +5207,20 @@
         }
 
         function applyDynamicMoonElevationRange(minKm, maxKm) {
+            if (currentCelestialBody !== 'moon' || currentMoonLayer !== 'topo') return;
+
             const minEl = document.getElementById('legend-min');
             const maxEl = document.getElementById('legend-max');
             const ticksEl = document.getElementById('topo-legend-ticks');
             const barEl = document.getElementById('legend-bar');
+            const timeDisplayTitle = document.getElementById('timeDisplayTitle');
+            if (timeDisplayTitle) timeDisplayTitle.innerText = '🌙 Mond-Atlas (LOLA Topographie)';
 
-            const fmt = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)} km`;
+            const fmtM = (v) => `${(v >= 0 ? '+' : '')}${Math.round(v * 1000).toLocaleString('de-DE')} m`;
+            const fmtKm = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)} km`;
 
-            if (minEl) minEl.innerText = fmt(minKm);
-            if (maxEl) maxEl.innerText = fmt(maxKm);
+            if (minEl) minEl.innerText = `${fmtKm(minKm)} (${fmtM(minKm)})`;
+            if (maxEl) maxEl.innerText = `${fmtKm(maxKm)} (${fmtM(maxKm)})`;
 
             if (ticksEl) {
                 const span = maxKm - minKm;
@@ -5220,9 +5228,9 @@
                 const v50 = minKm + 0.50 * span;
                 const v75 = minKm + 0.75 * span;
                 ticksEl.innerHTML = `
-                    <span style="flex:1; text-align:left;">25% (${fmt(v25)})</span>
-                    <span style="flex:1; text-align:center;">50% (${fmt(v50)})</span>
-                    <span style="flex:1; text-align:right;">75% (${fmt(v75)})</span>
+                    <span style="flex:1; text-align:left;">25% (${fmtKm(v25)})</span>
+                    <span style="flex:1; text-align:center;">50% (${fmtKm(v50)})</span>
+                    <span style="flex:1; text-align:right;">75% (${fmtKm(v75)})</span>
                 `;
                 ticksEl.style.display = 'flex';
             }
@@ -5243,6 +5251,13 @@
 
         function getExactMoonElevation(lat, lng) {
             if (currentMoonLayer !== 'topo') return null;
+            let bestTile = null;
+            let bestZ = -1;
+
+            let wrappedLng = lng;
+            while (wrappedLng < -180) wrappedLng += 360;
+            while (wrappedLng > 180) wrappedLng -= 360;
+
             for (const [key, t] of loadedMoonTiles.entries()) {
                 if (t.layer !== 'topo' || !t.mesh || !t.mesh.material || !t.mesh.material.map) continue;
                 const img = t.mesh.material.map.image;
@@ -5255,26 +5270,30 @@
                 const latMax = 90 - (t.row / nRows) * 180;
                 const latMin = 90 - ((t.row + 1) / nRows) * 180;
 
-                let wrappedLng = lng;
-                while (wrappedLng < -180) wrappedLng += 360;
-                while (wrappedLng > 180) wrappedLng -= 360;
-
                 if (lat >= latMin && lat <= latMax && wrappedLng >= lngMin && wrappedLng <= lngMax) {
-                    if (!moonClickCanvas) {
-                        moonClickCanvas = document.createElement('canvas');
-                        moonClickCanvas.width = 256;
-                        moonClickCanvas.height = 256;
-                        moonClickCtx = moonClickCanvas.getContext('2d', { willReadFrequently: true });
+                    if (t.z > bestZ) {
+                        bestZ = t.z;
+                        bestTile = { t, lngMin, lngMax, latMin, latMax, img };
                     }
-                    moonClickCtx.drawImage(img, 0, 0);
-                    const u = (wrappedLng - lngMin) / (lngMax - lngMin);
-                    const v = (latMax - lat) / (latMax - latMin);
-                    const px = Math.min(255, Math.max(0, Math.floor(u * 256)));
-                    const py = Math.min(255, Math.max(0, Math.floor(v * 256)));
-                    const p = moonClickCtx.getImageData(px, py, 1, 1).data;
-                    const km = lolaColorToElevation(p[0], p[1], p[2]);
-                    return Math.round(km * 1000); // meters
                 }
+            }
+
+            if (bestTile) {
+                const { lngMin, lngMax, latMin, latMax, img } = bestTile;
+                if (!moonClickCanvas) {
+                    moonClickCanvas = document.createElement('canvas');
+                    moonClickCanvas.width = 256;
+                    moonClickCanvas.height = 256;
+                    moonClickCtx = moonClickCanvas.getContext('2d', { willReadFrequently: true });
+                }
+                moonClickCtx.drawImage(img, 0, 0);
+                const u = (wrappedLng - lngMin) / (lngMax - lngMin);
+                const v = (latMax - lat) / (latMax - latMin);
+                const px = Math.min(255, Math.max(0, Math.floor(u * 256)));
+                const py = Math.min(255, Math.max(0, Math.floor(v * 256)));
+                const p = moonClickCtx.getImageData(px, py, 1, 1).data;
+                const km = lolaColorToElevation(p[0], p[1], p[2]);
+                return Math.round(km * 1000); // meters
             }
             return null;
         }
@@ -6115,7 +6134,7 @@
                 if (typeof updateHillshadeTiles === 'function') updateHillshadeTiles();
             } catch(e) { /* hillshade render safe */ }
             try {
-                if (typeof updateTopoTiles === 'function' && (currentMode === 'topo' || currentMode === 'satellite')) updateTopoTiles();
+                if (typeof updateTopoTiles === 'function' && currentCelestialBody === 'earth' && (currentMode === 'topo' || currentMode === 'satellite')) updateTopoTiles();
             } catch(e) { /* topo render safe */ }
             try {
                 if (typeof updateMoonTiles === 'function' && currentCelestialBody === 'moon') updateMoonTiles();
@@ -6125,7 +6144,7 @@
             }
 
             // Dynamische, seidenweiche hypsometrische Höhenanpassung (LERP - verhindert jegliches Ruckeln/Farbspringen beim Wischen)
-            if (currentMode === 'topo' && currentTopoProvider === 'hypsometric') {
+            if (currentCelestialBody === 'earth' && currentMode === 'topo' && currentTopoProvider === 'hypsometric') {
                 const diffMin = targetMinElev - currentVisibleMinElev;
                 const diffMax = targetMaxElev - currentVisibleMaxElev;
                 if (Math.abs(diffMin) > 0.1 || Math.abs(diffMax) > 0.1) {
@@ -14485,7 +14504,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                     if (currentMoonLayer === 'topo' && typeof getExactMoonElevation === 'function') {
                         const elev = getExactMoonElevation(clickedPopupPoint.lat, clickedPopupPoint.lng);
                         if (elev !== null) {
-                            elevHtml = `<div style="font-size: 11px; color: #38bdf8; margin-top: 3px; font-weight: 600;">⛰️ Geländehöhe: ${elev > 0 ? '+' : ''}${elev.toLocaleString('de-DE')} m</div>`;
+                            elevHtml = `<div style="font-size: 11px; color: #38bdf8; margin-top: 3px; font-weight: 600;">⛰️ Geländehöhe: ${elev > 0 ? '+' : ''}${elev.toLocaleString('de-DE')} m (${(elev / 1000 >= 0 ? '+' : '') + (elev / 1000).toFixed(1)} km)</div>`;
                         }
                     }
                     popupEl.innerHTML = `
@@ -15018,6 +15037,11 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
         }
 
         function updateActiveData() {
+            if (currentCelestialBody === 'moon') {
+                updatePopupContent();
+                return;
+            }
+
             if (currentMode === 'topo' || currentMode === 'satellite') {
                 const titleEl = document.getElementById('timeDisplayTitle');
                 if (titleEl) {
