@@ -2982,7 +2982,7 @@
         // THREE.JS SETUP
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.05, 1000);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.02, 1000);
         camera.position.z = 250;
         if (window.location.search.includes('alps')) {
             camera.position.set(11.37, 89.61, 86.40);
@@ -3012,7 +3012,6 @@
             renderer = new THREE.WebGLRenderer({
                 antialias: true,
                 alpha: true,
-                logarithmicDepthBuffer: true,
                 powerPreference: 'high-performance'
             });
         } catch (e) {
@@ -4223,22 +4222,18 @@
         let lastCameraPos = new THREE.Vector3();
 
         function updateHillshadeTiles() {
-            // Hillshade-Kacheln erzeugen auf der stetigen Daten-Sphäre (Temperatur/Solar/Wind) störende Kanten,
-            // Kachel-Überlappungen und Z-Fighting (schwarze / gezackte Artefakte im Pazifik & Ozeanen).
-            // Geländerelief wird stattdessen exklusiv und Z-Fighting-frei im Topographie-Modus (OpenTopoMap/Hypsometrie) dargestellt.
-            if (hillshadeGroup && hillshadeGroup.children.length > 0) {
-                while (hillshadeGroup.children.length > 0) {
-                    const c = hillshadeGroup.children[0];
-                    hillshadeGroup.remove(c);
-                    if (c.geometry) c.geometry.dispose();
-                    if (c.material) c.material.dispose();
+            if (hillshadeGroup) {
+                if (hillshadeGroup.children.length > 0) {
+                    while (hillshadeGroup.children.length > 0) {
+                        const c = hillshadeGroup.children[0];
+                        hillshadeGroup.remove(c);
+                        if (c.geometry) c.geometry.dispose();
+                        if (c.material) c.material.dispose();
+                    }
                 }
+                hillshadeGroup.visible = false;
             }
-            if (hillshadeGroup) hillshadeGroup.visible = false;
-            return;
         }
-
-        controls.addEventListener('change', updateHillshadeTiles);
         updateHillshadeTiles();
 
         // DYNAMISCHE 3D TOPOGRAPHISCHE KARTE (OpenTopoMap & ArcGIS Topo & Hypsometrisches Farbrelief)
@@ -5776,7 +5771,6 @@
             updateMoonTiles(true);
         }
         window.switchMoonLayer = switchMoonLayer;
-        window.switchMoonLayer = switchMoonLayer;
 
         // SCREEN-SPACE WIND & CITY LABELS (Windy.com Architektur - IMMER GESTOCHEN SCHARF!)
         const screenWindCanvas = document.getElementById('screenWindCanvas');
@@ -6130,9 +6124,7 @@
             try {
                 if (typeof renderCityLabels === 'function') renderCityLabels();
             } catch(e) { /* city render safe */ }
-            try {
-                if (typeof updateHillshadeTiles === 'function') updateHillshadeTiles();
-            } catch(e) { /* hillshade render safe */ }
+
             try {
                 if (typeof updateTopoTiles === 'function' && currentCelestialBody === 'earth' && (currentMode === 'topo' || currentMode === 'satellite')) updateTopoTiles();
             } catch(e) { /* topo render safe */ }
