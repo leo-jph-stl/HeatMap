@@ -408,6 +408,28 @@
             background: #151821;
             color: #fff;
         }
+        #moonSubSelectWrap {
+            display: none;
+            align-items: center;
+        }
+        #moonSubSelect {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            color: #ddd;
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 10px;
+            padding: 2px 6px;
+            outline: none;
+            cursor: pointer;
+        }
+        #moonSubSelect:hover {
+            border-color: rgba(147, 197, 253, 0.5);
+        }
+        #moonSubSelect option {
+            background: #151821;
+            color: #fff;
+        }
         #solarClimSelectWrap {
             display: none;
             align-items: center;
@@ -2690,6 +2712,12 @@
                     <option value="satellite">Satellit (Echtfarben HD)</option>
                     <option value="opentopo">OpenTopoMap (Wanderkarte)</option>
                     <option value="arcgis">ArcGIS World Topo</option>
+                </select>
+            </div>
+            <div id="moonSubSelectWrap" style="display:none;">
+                <select id="moonSubSelect" onchange="switchMoonLayer(this.value)" title="Mond-Ebene wählen">
+                    <option value="photo" selected>📷 Foto-Mosaik (LROC HD)</option>
+                    <option value="topo">⛰️ Topographie (LOLA Relief)</option>
                 </select>
             </div>
         </div>
@@ -5046,12 +5074,62 @@
         window.setTopoSubSelection = setTopoSubSelection;
 
         // =========================================================================
-        // HIGH-RESOLUTION NASA LROC MOON TILE SYSTEM (LOD Streaming bis Sub-Kilometer)
+        // HIGH-RESOLUTION NASA LROC & LOLA MOON TILE ENGINE (Foto & Topographie)
         // =========================================================================
         const moonTileGroup = new THREE.Group();
         moonTileGroup.rotation.y = -Math.PI / 2;
         moonTileGroup.visible = false;
         scene.add(moonTileGroup);
+
+        let currentMoonLayer = 'photo'; // 'photo' | 'topo'
+        let moonTopoBaseTexture = null;
+        let moonTopoBaseCanvas = null;
+
+        function getMoonTopoBaseTexture() {
+            if (moonTopoBaseTexture) return moonTopoBaseTexture;
+
+            moonTopoBaseCanvas = document.createElement('canvas');
+            moonTopoBaseCanvas.width = 1024;
+            moonTopoBaseCanvas.height = 512;
+            const ctx = moonTopoBaseCanvas.getContext('2d');
+
+            // 1. Initialer hypsometrischer Mond-Gradient als sofortige Basis
+            const grad = ctx.createLinearGradient(0, 512, 0, 0);
+            grad.addColorStop(0.00, '#2b0057'); // Südpol-Aitken Basin (-9.1 km)
+            grad.addColorStop(0.12, '#001099');
+            grad.addColorStop(0.25, '#0066cc');
+            grad.addColorStop(0.40, '#00cc88');
+            grad.addColorStop(0.55, '#88dd00');
+            grad.addColorStop(0.70, '#ffea00');
+            grad.addColorStop(0.85, '#ff5500');
+            grad.addColorStop(1.00, '#ffffff'); // Korolev / lunare Hochländer (+10.8 km)
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 1024, 512);
+
+            moonTopoBaseTexture = new THREE.CanvasTexture(moonTopoBaseCanvas);
+            moonTopoBaseTexture.wrapS = THREE.ClampToEdgeWrapping;
+            moonTopoBaseTexture.wrapT = THREE.ClampToEdgeWrapping;
+            moonTopoBaseTexture.minFilter = THREE.LinearFilter;
+            moonTopoBaseTexture.magFilter = THREE.LinearFilter;
+            moonTopoBaseTexture.generateMipmaps = false;
+
+            // 2. Die 8 Kacheln von Zoom 1 (NASA LOLA 128ppd, 1024x512 px) asynchron stitchen
+            for (let r = 0; r < 2; r++) {
+                for (let c = 0; c < 4; c++) {
+                    const row = r;
+                    const col = c;
+                    const tileImg = new Image();
+                    tileImg.crossOrigin = 'anonymous';
+                    tileImg.onload = () => {
+                        ctx.drawImage(tileImg, col * 256, row * 256, 256, 256);
+                        moonTopoBaseTexture.needsUpdate = true;
+                    };
+                    tileImg.src = `https://trek.nasa.gov/tiles/Moon/EQ/LRO_LOLA_ClrShade_Global_128ppd_v04/1.0.0/default/default028mm/1/${row}/${col}.png`;
+                }
+            }
+
+            return moonTopoBaseTexture;
+        }
 
         const loadedMoonTiles = new Map();
         const loadingMoonKeys = new Set();
@@ -5111,10 +5189,10 @@
             return geom;
         }
 
-        function queueMoonTile(z, row, col, key, d2) {
+        function queueMoonTile(z, row, col, key, d2, layer = currentMoonLayer) {
             if (loadedMoonTiles.has(key) || loadingMoonKeys.has(key)) return;
             loadingMoonKeys.add(key);
-            moonTileQueue.push({ z, row, col, key, d2 });
+            moonTileQueue.push({ z, row, col, key, d2, layer });
             processMoonTileQueue();
         }
 
@@ -5128,13 +5206,21 @@
                     loadingMoonKeys.delete(item.key);
                     continue;
                 }
+                if (item.layer && item.layer !== currentMoonLayer) {
+                    loadingMoonKeys.delete(item.key);
+                    continue;
+                }
                 activeMoonHttpCount++;
-                fetchAndBuildMoonTile(item.z, item.row, item.col, item.key);
+                fetchAndBuildMoonTile(item.z, item.row, item.col, item.key, item.layer || currentMoonLayer);
             }
         }
 
-        function fetchAndBuildMoonTile(z, row, col, key) {
-            const url = `https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/${z}/${row}/${col}.jpg`;
+        function fetchAndBuildMoonTile(z, row, col, key, layer = currentMoonLayer) {
+            const isTopo = (layer === 'topo');
+            const url = isTopo
+                ? `https://trek.nasa.gov/tiles/Moon/EQ/LRO_LOLA_ClrShade_Global_128ppd_v04/1.0.0/default/default028mm/${z}/${row}/${col}.png`
+                : `https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/${z}/${row}/${col}.jpg`;
+            const tileLayer = layer;
             const img = new Image();
             img.crossOrigin = 'anonymous';
             pendingMoonImages.set(key, img);
@@ -5167,8 +5253,9 @@
                 });
                 const mesh = new THREE.Mesh(geom, mat);
                 mesh.renderOrder = 1;
+                mesh.visible = (currentMoonLayer === tileLayer);
                 moonTileGroup.add(mesh);
-                loadedMoonTiles.set(key, { z, row, col, mesh, lastUsed: performance.now() });
+                loadedMoonTiles.set(key, { z, row, col, mesh, layer: tileLayer, lastUsed: performance.now() });
                 cleanup();
             };
 
@@ -5198,17 +5285,18 @@
             const dist = camera.position.length();
             const h = Math.max(1, dist - earthRadius);
 
-            // Bei weitem Abstand (h > 100) reicht die 4K-Basissphäre völlig aus!
+            // Bei weitem Abstand (h > 100) reicht die Basissphäre völlig aus!
             if (h > 100) {
                 moonTileQueue.length = 0;
                 return;
             }
 
+            const maxZ = (currentMoonLayer === 'topo') ? 5 : 7;
             let z = 3;
-            if (h <= 5) z = 7;
-            else if (h <= 14) z = 6;
-            else if (h <= 32) z = 5;
-            else if (h <= 65) z = 4;
+            if (h <= 5) z = Math.min(maxZ, 7);
+            else if (h <= 14) z = Math.min(maxZ, 6);
+            else if (h <= 32) z = Math.min(maxZ, 5);
+            else if (h <= 65) z = Math.min(maxZ, 4);
             else z = 3;
 
             const Px = camera.position.z;
@@ -5254,8 +5342,8 @@
                     dLng *= cosLat;
 
                     const d2 = dLat * dLat + dLng * dLng;
-                    const key = `${z}_${r}_${wrappedCol}`;
-                    candidateTiles.push({ z, row: r, col: wrappedCol, key, d2 });
+                    const key = `${currentMoonLayer}_${z}_${r}_${wrappedCol}`;
+                    candidateTiles.push({ z, row: r, col: wrappedCol, key, d2, layer: currentMoonLayer });
                 }
             }
 
@@ -5267,9 +5355,11 @@
 
             activeList.forEach(t => {
                 if (loadedMoonTiles.has(t.key)) {
-                    loadedMoonTiles.get(t.key).lastUsed = now;
+                    const tileObj = loadedMoonTiles.get(t.key);
+                    tileObj.lastUsed = now;
+                    tileObj.mesh.visible = (tileObj.layer === currentMoonLayer);
                 } else {
-                    queueMoonTile(t.z, t.row, t.col, t.key, t.d2);
+                    queueMoonTile(t.z, t.row, t.col, t.key, t.d2, t.layer);
                 }
             });
 
@@ -5302,6 +5392,79 @@
             if (currentCelestialBody === 'moon') updateMoonTiles();
         });
         window.updateMoonTiles = updateMoonTiles;
+
+        function switchMoonLayer(layer) {
+            if (layer !== 'photo' && layer !== 'topo') layer = 'photo';
+            currentMoonLayer = layer;
+
+            const moonSelect = document.getElementById('moonSubSelect');
+            if (moonSelect) moonSelect.value = layer;
+
+            // Basissphäre aktualisieren
+            if (earthMesh && currentCelestialBody === 'moon') {
+                earthMesh.material.map = (layer === 'topo') ? getMoonTopoBaseTexture() : moonTexture;
+                earthMesh.material.needsUpdate = true;
+            }
+
+            // Laufende Warteschlange nach Layer bereinigen
+            for (let i = moonTileQueue.length - 1; i >= 0; i--) {
+                if (moonTileQueue[i].layer && moonTileQueue[i].layer !== currentMoonLayer) {
+                    loadingMoonKeys.delete(moonTileQueue[i].key);
+                    moonTileQueue.splice(i, 1);
+                }
+            }
+
+            // Geladene Kacheln nach aktiver Ebene umschalten
+            for (const [k, item] of loadedMoonTiles.entries()) {
+                item.mesh.visible = (item.layer === currentMoonLayer);
+            }
+
+            // Buttons hervorheben
+            const btnTopoVis = document.getElementById('btn-topo-vis');
+            const btnSatelliteVis = document.getElementById('btn-satellite-vis');
+            if (btnTopoVis) {
+                if (layer === 'topo') btnTopoVis.classList.add('active-topo');
+                else btnTopoVis.classList.remove('active-topo');
+            }
+            if (btnSatelliteVis) {
+                if (layer === 'photo') btnSatelliteVis.classList.add('active-satellite');
+                else btnSatelliteVis.classList.remove('active-satellite');
+            }
+
+            // Farblegende & UI-Titel anpassen
+            const timeDisplayTitle = document.getElementById('timeDisplayTitle');
+            const timeLabelEl = document.getElementById('timeLabel');
+            const legMin = document.getElementById('legend-min');
+            const legMax = document.getElementById('legend-max');
+            const legBar = document.getElementById('legend-bar');
+            const topoTicks = document.getElementById('topo-legend-ticks');
+
+            if (layer === 'topo') {
+                if (timeDisplayTitle) timeDisplayTitle.innerText = '🌙 Mond-Atlas (LOLA Topographie)';
+                if (timeLabelEl) timeLabelEl.innerText = 'Mondoberfläche: NASA LRO LOLA Topographisches Höhenrelief & Krater';
+                if (legMin) legMin.innerText = '-9.1 km (Südpol-Aitken)';
+                if (legMax) legMax.innerText = '+10.8 km (Korolev)';
+                if (legBar) legBar.style.background = 'linear-gradient(to right, #2b0057 0%, #001099 12%, #0066cc 25%, #00cc88 40%, #88dd00 55%, #ffea00 70%, #ff5500 85%, #ffffff 100%)';
+                if (topoTicks) {
+                    topoTicks.innerHTML = `
+                        <span style="flex:1; text-align:left;">-4 km</span>
+                        <span style="flex:1; text-align:center;">0 km (Datum)</span>
+                        <span style="flex:1; text-align:right;">+5 km</span>
+                    `;
+                    topoTicks.style.display = 'flex';
+                }
+            } else {
+                if (timeDisplayTitle) timeDisplayTitle.innerText = '🌙 Mond-Atlas (Foto-Mosaik LROC HD)';
+                if (timeLabelEl) timeLabelEl.innerText = 'Mondoberfläche: NASA LROC WAC Fotomosaik & Apollo-Landestellen';
+                if (legMin) legMin.innerText = 'Maria (-8 km)';
+                if (legMax) legMax.innerText = 'Hochland (+5.5 km)';
+                if (legBar) legBar.style.background = 'linear-gradient(to right, #11151c, #2a303c, #586376, #94a3b8, #cbd5e1, #ffffff)';
+                if (topoTicks) topoTicks.style.display = 'none';
+            }
+
+            updateMoonTiles(true);
+        }
+        window.switchMoonLayer = switchMoonLayer;
 
         // SCREEN-SPACE WIND & CITY LABELS (Windy.com Architektur - IMMER GESTOCHEN SCHARF!)
         const screenWindCanvas = document.getElementById('screenWindCanvas');
@@ -14728,6 +14891,14 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
 
         function switchLayer(mode) {
             if (currentCelestialBody === 'moon') {
+                if (mode === 'topo') {
+                    switchMoonLayer('topo');
+                    return;
+                }
+                if (mode === 'satellite') {
+                    switchMoonLayer('photo');
+                    return;
+                }
                 switchCelestialBody('earth');
             }
             currentMode = mode;
@@ -14754,6 +14925,8 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             if (climWrap) climWrap.style.display = mode === 'solar' ? 'flex' : 'none';
             const topoWrap = document.getElementById('topoSubSelectWrap');
             if (topoWrap) topoWrap.style.display = mode === 'topo' ? 'flex' : 'none';
+            const moonWrap = document.getElementById('moonSubSelectWrap');
+            if (moonWrap) moonWrap.style.display = 'none';
 
             const playBtn = document.getElementById('playBtn');
             const playSpeedBtn = document.getElementById('playSpeedBtn');
@@ -14923,6 +15096,14 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                     btnMoonVis.className = 'layer-toggle-btn active-moon';
                 }
 
+                // Dropdowns konfigurieren: Mond-Sub-Auswahl anzeigen, irdische ausblenden
+                const moonWrap = document.getElementById('moonSubSelectWrap');
+                if (moonWrap) moonWrap.style.display = 'flex';
+                const topoWrap = document.getElementById('topoSubSelectWrap');
+                if (topoWrap) topoWrap.style.display = 'none';
+                const climWrap = document.getElementById('solarClimSelectWrap');
+                if (climWrap) climWrap.style.display = 'none';
+
                 // 3D-Meshes konfigurieren: Erdkacheln, Wetter, Grenzen und Flüsse ausblenden
                 if (dataMesh) dataMesh.visible = false;
                 if (hillshadeGroup) hillshadeGroup.visible = false;
@@ -14953,34 +15134,18 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                     screenWindCtx.clearRect(0, 0, screenW, screenH);
                 }
 
-                // Mond-Textur & hochauflösendes Relief aktivieren
+                // Mond-Textur & hochauflösendes Kachelrelief aktivieren
                 if (earthMesh) {
                     earthMesh.visible = true;
-                    earthMesh.material.map = moonTexture;
+                    earthMesh.material.map = (currentMoonLayer === 'topo') ? getMoonTopoBaseTexture() : moonTexture;
                     earthMesh.material.needsUpdate = true;
                 }
                 if (typeof moonTileGroup !== 'undefined' && moonTileGroup) {
                     moonTileGroup.visible = true;
                 }
-                if (typeof updateMoonTiles === 'function') {
-                    updateMoonTiles(true);
-                }
 
-                // UI-Texte aktualisieren
-                if (timeDisplayTitle) timeDisplayTitle.innerText = '🌙 Mond-Atlas (3D Oberflächenrelief)';
-                const timeLabelEl = document.getElementById('timeLabel');
-                if (timeLabelEl) timeLabelEl.innerText = 'Mondoberfläche: Apollo-Landestellen, Krater & Maria';
-
-                // Legende an Mond anpassen
-                if (legendEl) {
-                    legendEl.style.display = 'flex';
-                    const legMin = document.getElementById('legend-min');
-                    const legMax = document.getElementById('legend-max');
-                    const legBar = document.getElementById('legend-bar');
-                    if (legMin) legMin.innerText = 'Maria (-8 km)';
-                    if (legMax) legMax.innerText = 'Hochland (+5.5 km)';
-                    if (legBar) legBar.style.background = 'linear-gradient(to right, #11151c, #2a303c, #586376, #94a3b8, #cbd5e1, #ffffff)';
-                }
+                // Mond-Ebene (Foto vs Topographie) anwenden (aktualisiert Farblegende, Ticks, Titel und Kacheln)
+                switchMoonLayer(currentMoonLayer || 'photo');
 
                 // Suchleisten-Platzhalter anpassen
                 if (searchInput) {
@@ -14997,11 +15162,16 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 if (fc) fc.style.display = 'none';
 
                 // Kamera sanft auf Apollo 11 zentrieren, falls bisher über Erde
-                flyToLocation(0.674, 23.473, 'Apollo 11');
+                if (prevBody === 'earth') {
+                    flyToLocation(0.674, 23.473, 'Apollo 11');
+                }
 
             } else {
                 // ZURÜCK ZUR ERDE
                 if (btnMoonVis) btnMoonVis.className = 'layer-toggle-btn';
+
+                const moonWrap = document.getElementById('moonSubSelectWrap');
+                if (moonWrap) moonWrap.style.display = 'none';
 
                 if (typeof moonTileGroup !== 'undefined' && moonTileGroup) {
                     moonTileGroup.visible = false;
