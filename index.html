@@ -1752,25 +1752,22 @@
             </div>
 
             <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 9px; margin-bottom: 7px;">
-                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
-                    <div style="font-size: 10px; color: #888;">
-                        PV-Leistung <span id="pvHistoryRange"></span>
-                        <span id="pvForecastLegend" style="display:none; margin-left: 6px; color: #aaa;">— Live &nbsp; ╌ Prognose</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; flex-wrap: wrap; gap: 4px;">
+                    <div style="font-size: 10px; color: #888; display: flex; align-items: center; gap: 6px;">
+                        <span>PV-Leistung</span>
+                        <span id="pvHistoryRange" style="color: #666; font-size: 8.5px;"></span>
+                        <span id="pvForecastLegend" style="display:none; color: #aaa; font-size: 8.5px;">— Live &nbsp; ╌ Prognose</span>
                     </div>
-                    <button id="pvHistoryResetBtn" title="Auf 3 Tage zurücksetzen" style="display:none; background: rgba(255,219,0,0.12); border: 1px solid rgba(255,219,0,0.35); color: #ffdb00; border-radius: 6px; font-size: 9px; font-weight: 600; padding: 1px 6px; cursor: pointer;">↺ 3 Tage</button>
-                </div>
-                <!-- Dachausrichtung & Modell-Statusleiste (POA / Temperatur / DWD ICON / Hybrid) -->
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 8.5px; flex-wrap: wrap; gap: 4px;">
-                    <div class="pv-orientation-group" style="display: flex; gap: 3px; align-items: center;">
-                        <span style="color: #666; font-size: 8px;">Dach:</span>
-                        <button type="button" class="pv-orient-btn active" data-profile="south_35" style="background: rgba(0,229,255,0.18); border: 1px solid #00e5ff; color: #00e5ff; border-radius: 4px; font-size: 8px; padding: 1.5px 5px; cursor: pointer; font-weight: 600;" title="Standard Schrägdach 35° Süd">☀️ 35° Süd</button>
-                        <button type="button" class="pv-orient-btn" data-profile="flat_0" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8px; padding: 1.5px 5px; cursor: pointer;" title="Flachdach / Horizontale Einstrahlung">🏢 0° Flach</button>
-                        <button type="button" class="pv-orient-btn" data-profile="east_west" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8px; padding: 1.5px 5px; cursor: pointer;" title="Ost-West-Aufständerung (50% Ost / 50% West)">↔️ Ost-West</button>
-                        <button type="button" class="pv-orient-btn" data-profile="steep_65" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8px; padding: 1.5px 5px; cursor: pointer;" title="Steildach / Fassade 65°">📐 65° Steil</button>
-                    </div>
-                    <div style="display: flex; gap: 3px; align-items: center;">
-                        <span id="pvModelBadge" style="background: rgba(0,229,255,0.12); color: #00e5ff; border: 1px solid rgba(0,229,255,0.3); border-radius: 4px; padding: 1px 5px; font-size: 8px; font-weight: 700; cursor: pointer;" title="Klicken: Umschalten zwischen Hybrid (kalibriert) und Zero-Shot (physikalisch)">✨ Hybrid</span>
-                        <span id="pvWeatherBadge" style="background: rgba(0,255,136,0.12); color: #00ff88; border: 1px solid rgba(0,255,136,0.3); border-radius: 4px; padding: 1px 5px; font-size: 8px; font-weight: 700; cursor: pointer;" title="Klicken: Wetterdatenquelle wechseln (Auto / DWD ICON / NOAA GFS)">🛰️ ICON</span>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        <select id="pvOrientationSelect" title="Dachneigung & Ausrichtung des POA-Modells" style="background: rgba(0,229,255,0.1); border: 1px solid rgba(0,229,255,0.3); color: #00e5ff; border-radius: 4px; font-size: 8px; padding: 1px 3px; cursor: pointer; outline: none; font-weight: 600;">
+                            <option value="south_35" selected>☀️ 35° Süd</option>
+                            <option value="flat_0">🏢 0° Flach</option>
+                            <option value="east_west">↔️ Ost-West</option>
+                            <option value="steep_65">📐 65° Steil</option>
+                        </select>
+                        <span id="pvModelBadge" style="background: rgba(0,229,255,0.12); color: #00e5ff; border: 1px solid rgba(0,229,255,0.3); border-radius: 4px; padding: 1px 4px; font-size: 8px; font-weight: 700; cursor: pointer;" title="Klicken: Wechsel Hybrid (kalibriert) / Zero-Shot (physikalisch)">✨ Hybrid</span>
+                        <span id="pvWeatherBadge" style="background: rgba(0,255,136,0.12); color: #00ff88; border: 1px solid rgba(0,255,136,0.3); border-radius: 4px; padding: 1px 4px; font-size: 8px; font-weight: 700; cursor: pointer;" title="Klicken: Wetterdatenquelle wechseln (Auto / DWD ICON / NOAA GFS)">🛰️ ICON</span>
+                        <button id="pvHistoryResetBtn" title="Auf 3 Tage zurücksetzen" style="display:none; background: rgba(255,219,0,0.12); border: 1px solid rgba(255,219,0,0.35); color: #ffdb00; border-radius: 4px; font-size: 8px; font-weight: 600; padding: 1px 5px; cursor: pointer;">↺ 3 Tage</button>
                     </div>
                 </div>
                 <svg id="pvHistoryChart" viewBox="0 0 300 78" preserveAspectRatio="none" style="width:100%; height:78px; display:block; overflow: visible; touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none;"></svg>
@@ -7961,6 +7958,10 @@
 
         function updatePvOrientationUI() {
             const currentProfile = pvScenarioConfig.profile || 'south_35';
+            const sel = document.getElementById('pvOrientationSelect');
+            if (sel && sel.value !== currentProfile) {
+                sel.value = currentProfile;
+            }
             document.querySelectorAll('.pv-orient-btn').forEach(btn => {
                 const prof = btn.getAttribute('data-profile');
                 const isSelected = (prof === currentProfile);
@@ -11204,34 +11205,44 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 });
             });
 
-            // Dachausrichtungs-Buttons (☀️ 35° Süd, 🏢 0° Flach, ↔️ Ost-West, 📐 65° Steil)
+            // Dachausrichtungs-Dropdown & Buttons (☀️ 35° Süd, 🏢 0° Flach, ↔️ Ost-West, 📐 65° Steil)
+            function applyOrientationProfile(prof) {
+                if (!prof) return;
+                pvScenarioConfig.profile = prof;
+                if (prof === 'flat_0') {
+                    pvScenarioConfig.tilt = 0;
+                    pvScenarioConfig.azimuth = 0;
+                } else if (prof === 'south_35') {
+                    pvScenarioConfig.tilt = 35;
+                    pvScenarioConfig.azimuth = 0;
+                } else if (prof === 'east_west') {
+                    pvScenarioConfig.tilt = 15;
+                    pvScenarioConfig.azimuth = 0;
+                } else if (prof === 'steep_65') {
+                    pvScenarioConfig.tilt = 65;
+                    pvScenarioConfig.azimuth = 0;
+                }
+                saveScenarioConfig();
+                updatePvOrientationUI();
+                if (typeof redrawPvChart === 'function') redrawPvChart();
+                if (typeof refreshActivePvAnalysisContainers === 'function') refreshActivePvAnalysisContainers();
+                const calBody = document.getElementById('pvCalibrationBody');
+                if (calBody && calBody.style.display !== 'none') {
+                    loadPvCalibrationReport();
+                }
+            }
+
+            const orientSelect = document.getElementById('pvOrientationSelect');
+            if (orientSelect) {
+                orientSelect.addEventListener('change', (e) => {
+                    applyOrientationProfile(e.target.value);
+                });
+            }
+
             document.querySelectorAll('.pv-orient-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const prof = btn.getAttribute('data-profile');
-                    if (prof) {
-                        pvScenarioConfig.profile = prof;
-                        if (prof === 'flat_0') {
-                            pvScenarioConfig.tilt = 0;
-                            pvScenarioConfig.azimuth = 0;
-                        } else if (prof === 'south_35') {
-                            pvScenarioConfig.tilt = 35;
-                            pvScenarioConfig.azimuth = 0;
-                        } else if (prof === 'east_west') {
-                            pvScenarioConfig.tilt = 15;
-                            pvScenarioConfig.azimuth = 0;
-                        } else if (prof === 'steep_65') {
-                            pvScenarioConfig.tilt = 65;
-                            pvScenarioConfig.azimuth = 0;
-                        }
-                        saveScenarioConfig();
-                        updatePvOrientationUI();
-                        if (typeof redrawPvChart === 'function') redrawPvChart();
-                        if (typeof refreshActivePvAnalysisContainers === 'function') refreshActivePvAnalysisContainers();
-                        const calBody = document.getElementById('pvCalibrationBody');
-                        if (calBody && calBody.style.display !== 'none') {
-                            loadPvCalibrationReport();
-                        }
-                    }
+                    applyOrientationProfile(prof);
                 });
             });
 
@@ -11403,14 +11414,16 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             pvChartState.dataZun = useZun ? ptsZun : [];
             pvChartState.data = (useFox && useZun) ? ptsFox : (useZun ? ptsZun : ptsFox);
 
+            let fcFox = null;
+            let fcZun = null;
             if (useFox) {
-                const fcFox = computePvForecast('foxess');
+                fcFox = computePvForecast('foxess');
                 pvChartState.forecastFox = fcFox ? fcFox.points : null;
             } else {
                 pvChartState.forecastFox = null;
             }
             if (useZun) {
-                const fcZun = computePvForecast('zun');
+                fcZun = computePvForecast('zun');
                 pvChartState.forecastZun = fcZun ? fcZun.points : null;
             } else {
                 pvChartState.forecastZun = null;
