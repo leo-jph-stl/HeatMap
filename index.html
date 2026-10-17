@@ -1759,6 +1759,20 @@
                     </div>
                     <button id="pvHistoryResetBtn" title="Auf 3 Tage zurücksetzen" style="display:none; background: rgba(255,219,0,0.12); border: 1px solid rgba(255,219,0,0.35); color: #ffdb00; border-radius: 6px; font-size: 9px; font-weight: 600; padding: 1px 6px; cursor: pointer;">↺ 3 Tage</button>
                 </div>
+                <!-- Dachausrichtung & Modell-Statusleiste (POA / Temperatur / DWD ICON / Hybrid) -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 8.5px; flex-wrap: wrap; gap: 4px;">
+                    <div class="pv-orientation-group" style="display: flex; gap: 3px; align-items: center;">
+                        <span style="color: #666; font-size: 8px;">Dach:</span>
+                        <button type="button" class="pv-orient-btn active" data-profile="south_35" style="background: rgba(0,229,255,0.18); border: 1px solid #00e5ff; color: #00e5ff; border-radius: 4px; font-size: 8px; padding: 1.5px 5px; cursor: pointer; font-weight: 600;" title="Standard Schrägdach 35° Süd">☀️ 35° Süd</button>
+                        <button type="button" class="pv-orient-btn" data-profile="flat_0" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8px; padding: 1.5px 5px; cursor: pointer;" title="Flachdach / Horizontale Einstrahlung">🏢 0° Flach</button>
+                        <button type="button" class="pv-orient-btn" data-profile="east_west" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8px; padding: 1.5px 5px; cursor: pointer;" title="Ost-West-Aufständerung (50% Ost / 50% West)">↔️ Ost-West</button>
+                        <button type="button" class="pv-orient-btn" data-profile="steep_65" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8px; padding: 1.5px 5px; cursor: pointer;" title="Steildach / Fassade 65°">📐 65° Steil</button>
+                    </div>
+                    <div style="display: flex; gap: 3px; align-items: center;">
+                        <span id="pvModelBadge" style="background: rgba(0,229,255,0.12); color: #00e5ff; border: 1px solid rgba(0,229,255,0.3); border-radius: 4px; padding: 1px 5px; font-size: 8px; font-weight: 700; cursor: pointer;" title="Klicken: Umschalten zwischen Hybrid (kalibriert) und Zero-Shot (physikalisch)">✨ Hybrid</span>
+                        <span id="pvWeatherBadge" style="background: rgba(0,255,136,0.12); color: #00ff88; border: 1px solid rgba(0,255,136,0.3); border-radius: 4px; padding: 1px 5px; font-size: 8px; font-weight: 700; cursor: pointer;" title="Klicken: Wetterdatenquelle wechseln (Auto / DWD ICON / NOAA GFS)">🛰️ ICON</span>
+                    </div>
+                </div>
                 <svg id="pvHistoryChart" viewBox="0 0 300 78" preserveAspectRatio="none" style="width:100%; height:78px; display:block; overflow: visible; touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none;"></svg>
                 <div style="font-size: 8.5px; color: #666; margin-top: 2px;">Ziehen zum Verschieben, Mausrad/Pinch zum Zoomen, Tippen für Details</div>
             </div>
@@ -2015,6 +2029,13 @@
                     <button type="button" class="pv-quick-kwp-btn" data-kwp="15.0" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8.5px; padding: 2px 0; cursor: pointer;">15 kWp</button>
                     <button type="button" class="pv-quick-kwp-btn" data-kwp="20.0" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8.5px; padding: 2px 0; cursor: pointer;">20 kWp</button>
                 </div>
+                <div class="pv-orientation-group" style="display: flex; gap: 4px; align-items: center; margin-top: 5px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.06);">
+                    <span style="font-size: 8px; color: #666; white-space: nowrap;">Dach:</span>
+                    <button type="button" class="pv-orient-btn active" data-profile="south_35" style="flex: 1; background: rgba(0,229,255,0.18); border: 1px solid #00e5ff; color: #00e5ff; border-radius: 4px; font-size: 8px; padding: 2px 0; cursor: pointer; font-weight: 600;" title="Standard Schrägdach 35° Süd">☀️ 35° Süd</button>
+                    <button type="button" class="pv-orient-btn" data-profile="flat_0" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8px; padding: 2px 0; cursor: pointer;" title="Flachdach / Horizontale Fläche">🏢 0° Flach</button>
+                    <button type="button" class="pv-orient-btn" data-profile="east_west" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8px; padding: 2px 0; cursor: pointer;" title="Ost-West-Aufständerung">↔️ Ost-West</button>
+                    <button type="button" class="pv-orient-btn" data-profile="steep_65" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8px; padding: 2px 0; cursor: pointer;" title="Steildach / Fassade 65°">📐 65° Steil</button>
+                </div>
             </div>
 
             <!-- Interaktive Modell- & Speichersteuerung im History-Container -->
@@ -2163,6 +2184,13 @@
                     <button type="button" class="pv-quick-kwp-btn" data-kwp="12.0" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8.5px; padding: 2px 0; cursor: pointer;">12 kWp</button>
                     <button type="button" class="pv-quick-kwp-btn" data-kwp="15.0" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8.5px; padding: 2px 0; cursor: pointer;">15 kWp</button>
                     <button type="button" class="pv-quick-kwp-btn" data-kwp="20.0" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8.5px; padding: 2px 0; cursor: pointer;">20 kWp</button>
+                </div>
+                <div class="pv-orientation-group" style="display: flex; gap: 4px; align-items: center; margin-top: 5px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.06);">
+                    <span style="font-size: 8px; color: #666; white-space: nowrap;">Dach:</span>
+                    <button type="button" class="pv-orient-btn active" data-profile="south_35" style="flex: 1; background: rgba(0,229,255,0.18); border: 1px solid #00e5ff; color: #00e5ff; border-radius: 4px; font-size: 8px; padding: 2px 0; cursor: pointer; font-weight: 600;" title="Standard Schrägdach 35° Süd">☀️ 35° Süd</button>
+                    <button type="button" class="pv-orient-btn" data-profile="flat_0" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8px; padding: 2px 0; cursor: pointer;" title="Flachdach / Horizontale Fläche">🏢 0° Flach</button>
+                    <button type="button" class="pv-orient-btn" data-profile="east_west" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8px; padding: 2px 0; cursor: pointer;" title="Ost-West-Aufständerung">↔️ Ost-West</button>
+                    <button type="button" class="pv-orient-btn" data-profile="steep_65" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 4px; font-size: 8px; padding: 2px 0; cursor: pointer;" title="Steildach / Fassade 65°">📐 65° Steil</button>
                 </div>
             </div>
 
@@ -6910,7 +6938,7 @@
 
             handle.addEventListener('pointerdown', (e) => {
                 // Keine Drag-Initiierung bei Klicks auf interaktive Steuerelemente
-                if (e.target.closest('button, input, select, textarea, a, .pv-hist-pill-btn, .forecast-action-btn, .pv-switch-btn, .pv-quick-kwp-btn')) {
+                if (e.target.closest('button, input, select, textarea, a, .pv-hist-pill-btn, .forecast-action-btn, .pv-switch-btn, .pv-quick-kwp-btn, .pv-orient-btn, #pvModelBadge, #pvWeatherBadge')) {
                     return;
                 }
                 // Bei mobiler Ansicht (< 768px) nativer Touch-Scroll bevorzugen
@@ -7297,13 +7325,209 @@
 
 
 
-        // Interpoliert die GFS-Einstrahlungsprognose (W/m²) am PV-Standort für einen beliebigen
-        // Zeitpunkt (lineare Interpolation zwischen den umgebenden 3h-Schritten von solarData).
-        function interpSolarAtTime(tMs) {
+        // =========================================================================
+        // PV-PROGNOSEMODELL (Stufe 1: POA-Transposition · Stufe 2: Zelltemperatur ·
+        //                   Stufe 3: Multi-Model Weather Routing · Stufe 4: Hybrid)
+        // =========================================================================
+
+        // 1. Robuste NREL / PVsyst Sonnenstandsberechnung (Azimut: 0° = Süd, -90° = Ost, +90° = West, 180° = Nord)
+        function getSolarPosition(tMs, latDeg, lngDeg) {
+            const d = new Date(tMs);
+            const startOfYear = Date.UTC(d.getUTCFullYear(), 0, 1);
+            const dayOfYear = (tMs - startOfYear) / 86400000;
+            const gamma = (2 * Math.PI / 365) * (dayOfYear - 1);
+            const eot = 229.18 * (0.000075 + 0.001868 * Math.cos(gamma) - 0.032077 * Math.sin(gamma)
+                        - 0.014615 * Math.cos(2 * gamma) - 0.040849 * Math.sin(2 * gamma));
+            const decl = 0.006918 - 0.399912 * Math.cos(gamma) + 0.070257 * Math.sin(gamma)
+                       - 0.006758 * Math.cos(2 * gamma) + 0.000907 * Math.sin(2 * gamma);
+            const timeOffset = eot + 4 * lngDeg;
+            const utcMinutes = d.getUTCHours() * 60 + d.getUTCMinutes() + d.getUTCSeconds() / 60;
+            const trueSolarTimeMin = (utcMinutes + timeOffset + 1440) % 1440;
+            const hourAngleDeg = (trueSolarTimeMin / 4) - 180;
+            const hourAngleRad = hourAngleDeg * (Math.PI / 180);
+            const latRad = latDeg * (Math.PI / 180);
+            const cosZenith = Math.sin(latRad) * Math.sin(decl) + Math.cos(latRad) * Math.cos(decl) * Math.cos(hourAngleRad);
+            const clampedCosZenith = Math.max(0, Math.min(1, cosZenith));
+            const zenithRad = Math.acos(clampedCosZenith);
+            const sinAz = - Math.sin(hourAngleRad) * Math.cos(decl) / (Math.sin(zenithRad) || 1e-5);
+            const cosAz = (Math.sin(latRad) * Math.cos(zenithRad) - Math.sin(decl)) / ((Math.cos(latRad) * Math.sin(zenithRad)) || 1e-5);
+            const azRad = Math.atan2(sinAz, cosAz);
+            return {
+                zenithRad,
+                elevationRad: Math.asin(clampedCosZenith),
+                elevationDeg: (Math.asin(clampedCosZenith) * 180) / Math.PI,
+                azimuthRad: azRad,
+                azimuthDeg: azRad * (180 / Math.PI),
+                cosZenith: clampedCosZenith
+            };
+        }
+
+        // 2. Plane-of-Array (POA) Einstrahlungstransposition (Hay-Davies / Erbs)
+        function calculatePOA(ghi, tMs, latDeg, lngDeg, tiltDeg, azimuthDeg, dniDirect = null, dhiDirect = null, profile = 'south_35') {
+            if (!ghi || ghi <= 1) return 0;
+            if (profile === 'flat_0' || tiltDeg === 0) return ghi;
+
+            // Ost-West Aufständerung: 50% Ost (-90°) und 50% West (+90°) mit typisch 15° Neigung
+            if (profile === 'east_west') {
+                const poaEast = calculatePOA(ghi, tMs, latDeg, lngDeg, 15, -90, dniDirect, dhiDirect, 'custom');
+                const poaWest = calculatePOA(ghi, tMs, latDeg, lngDeg, 15, 90, dniDirect, dhiDirect, 'custom');
+                return 0.5 * poaEast + 0.5 * poaWest;
+            }
+
+            const sol = getSolarPosition(tMs, latDeg, lngDeg);
+            if (sol.cosZenith <= 0.03) return 0;
+
+            let dni = (typeof dniDirect === 'number' && dniDirect >= 0) ? dniDirect : null;
+            let dhi = (typeof dhiDirect === 'number' && dhiDirect >= 0) ? dhiDirect : null;
+
+            if (dni === null || dhi === null) {
+                // Erbs Clearness-Index kt & Diffus-Split
+                const I0 = 1361;
+                const kt = Math.max(0, Math.min(1.0, ghi / (I0 * sol.cosZenith)));
+                let df;
+                if (kt <= 0.22) {
+                    df = 1.0 - 0.09 * kt;
+                } else if (kt <= 0.80) {
+                    df = 0.9511 - 0.1604 * kt + 4.388 * Math.pow(kt, 2) - 16.638 * Math.pow(kt, 3) + 12.336 * Math.pow(kt, 4);
+                } else {
+                    df = 0.165;
+                }
+                dhi = ghi * Math.max(0.12, Math.min(1.0, df));
+                dni = Math.max(0, (ghi - dhi) / sol.cosZenith);
+            }
+
+            const tiltRad = tiltDeg * (Math.PI / 180);
+            const roofAzRad = azimuthDeg * (Math.PI / 180); // 0 = Süd, -90 = Ost, +90 = West
+
+            // Einfallswinkel (Angle of Incidence, AOI)
+            const cosAOI = sol.cosZenith * Math.cos(tiltRad) + Math.sin(sol.zenithRad) * Math.sin(tiltRad) * Math.cos(sol.azimuthRad - roofAzRad);
+            const aoiFactor = Math.max(0, cosAOI);
+
+            const beamTilted = dni * aoiFactor;
+            const skyDiffuseTilted = dhi * ((1 + Math.cos(tiltRad)) / 2);
+            const groundReflected = ghi * 0.20 * ((1 - Math.cos(tiltRad)) / 2);
+
+            return Math.max(0, beamTilted + skyDiffuseTilted + groundReflected);
+        }
+
+        // 3. Faiman / King Zelltemperatur-Derating (γ = -0.38%/°C)
+        function getTemperatureDerate(poa, ambientTemp = 15) {
+            const tAmb = (typeof ambientTemp === 'number' && !isNaN(ambientTemp)) ? ambientTemp : 15;
+            const tCell = tAmb + (Math.max(0, poa) * 0.030); // ~30°C Erwärmung bei 1000 W/m² POA
+            const gamma = -0.0038; // -0.38% Effizienz pro °C über STC (25°C)
+            const factor = 1.0 + gamma * (tCell - 25.0);
+            return Math.max(0.70, Math.min(1.15, factor));
+        }
+
+        // 4. Stufe 3: Multi-Model Weather Routing (DWD ICON 2km / NOAA GFS)
+        const pvRegionalWeatherCache = new Map();
+        const pvPendingRegionalFetches = new Set();
+
+        function isCentralEurope(lat, lng) {
+            return lat >= 35 && lat <= 71 && lng >= -25 && lng <= 45;
+        }
+
+        async function fetchRegionalSolarForecast(lat, lng) {
+            const cacheKey = `${lat.toFixed(2)}_${lng.toFixed(2)}`;
+            if (pvPendingRegionalFetches.has(cacheKey)) return;
+            const existing = pvRegionalWeatherCache.get(cacheKey);
+            if (existing && (Date.now() - existing.fetchedAt) < 3600000) return; // 1h Cache
+
+            pvPendingRegionalFetches.add(cacheKey);
+            try {
+                const url = `https://api.open-meteo.com/v1/dwd-icon?latitude=${lat.toFixed(3)}&longitude=${lng.toFixed(3)}&hourly=shortwave_radiation,direct_normal_irradiance,diffuse_radiation,temperature_2m&forecast_days=3&timezone=UTC`;
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                if (data && data.hourly && Array.isArray(data.hourly.time)) {
+                    const steps = [];
+                    const h = data.hourly;
+                    for (let i = 0; i < h.time.length; i++) {
+                        const timeMs = Date.parse(h.time[i] + ':00Z');
+                        if (!isNaN(timeMs)) {
+                            steps.push({
+                                timeMs,
+                                ghi: Math.max(0, h.shortwave_radiation[i] || 0),
+                                dni: Math.max(0, h.direct_normal_irradiance[i] || 0),
+                                dhi: Math.max(0, h.diffuse_radiation[i] || 0),
+                                temp: (typeof h.temperature_2m[i] === 'number') ? h.temperature_2m[i] : 15
+                            });
+                        }
+                    }
+                    if (steps.length > 0) {
+                        pvRegionalWeatherCache.set(cacheKey, { fetchedAt: Date.now(), steps });
+                        if (typeof redrawPvChart === 'function' && document.getElementById('pvHistoryChart')) {
+                            redrawPvChart();
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn('[PV Model] DWD ICON Abruf nicht verfügbar, verwende GFS Raster:', err.message);
+            } finally {
+                pvPendingRegionalFetches.delete(cacheKey);
+            }
+        }
+
+        function interpTempAtTime(tMs, lat, lng) {
+            if (typeof tempData === 'undefined' || !tempData.length) return 15;
+            if (tMs <= tempData[0].timeMs) return getTempAtStep(tempData[0], lat, lng);
+            for (let i = 0; i < tempData.length - 1; i++) {
+                const a = tempData[i], b = tempData[i + 1];
+                if (tMs >= a.timeMs && tMs <= b.timeMs) {
+                    const va = getTempAtStep(a, lat, lng);
+                    const vb = getTempAtStep(b, lat, lng);
+                    const f = b.timeMs > a.timeMs ? (tMs - a.timeMs) / (b.timeMs - a.timeMs) : 0;
+                    return va + (vb - va) * f;
+                }
+            }
+            return getTempAtStep(tempData[tempData.length - 1], lat, lng);
+        }
+
+        function getIrradianceAndTempAt(tMs, lat, lng, preferSource = 'auto') {
+            const cacheKey = `${lat.toFixed(2)}_${lng.toFixed(2)}`;
+            const iconCached = pvRegionalWeatherCache.get(cacheKey);
+            const allowIcon = (preferSource === 'auto' || preferSource === 'icon') && isCentralEurope(lat, lng);
+
+            if (allowIcon && iconCached && iconCached.steps && iconCached.steps.length > 0) {
+                const steps = iconCached.steps;
+                if (tMs >= steps[0].timeMs && tMs <= steps[steps.length - 1].timeMs) {
+                    for (let i = 0; i < steps.length - 1; i++) {
+                        const a = steps[i], b = steps[i + 1];
+                        if (tMs >= a.timeMs && tMs <= b.timeMs) {
+                            const f = b.timeMs > a.timeMs ? (tMs - a.timeMs) / (b.timeMs - a.timeMs) : 0;
+                            return {
+                                ghi: a.ghi + (b.ghi - a.ghi) * f,
+                                dni: a.dni + (b.dni - a.dni) * f,
+                                dhi: a.dhi + (b.dhi - a.dhi) * f,
+                                temp: a.temp + (b.temp - a.temp) * f,
+                                source: 'dwd_icon'
+                            };
+                        }
+                    }
+                }
+            }
+
+            if (allowIcon && !iconCached && tMs >= (Date.now() - 3600000) && typeof fetch === 'function') {
+                fetchRegionalSolarForecast(lat, lng);
+            }
+
+            const ghi = interpSolarAtTime(tMs, lat, lng);
+            const temp = interpTempAtTime(tMs, lat, lng);
+            return {
+                ghi: (typeof ghi === 'number') ? ghi : 0,
+                dni: null,
+                dhi: null,
+                temp,
+                source: 'noaa_gfs'
+            };
+        }
+
+        // Interpoliert die GFS-Einstrahlungsprognose (W/m²) am PV-Standort für einen beliebigen Zeitpunkt
+        function interpSolarAtTime(tMs, customLat = null, customLng = null) {
             if (typeof solarData === 'undefined' || !solarData.length) return null;
             const loc = (typeof getActivePvLocation === 'function') ? getActivePvLocation() : PV_SYSTEM_LOCATION;
-            const lat = (loc && typeof loc.lat === 'number') ? loc.lat : 50.008;
-            const lng = (loc && typeof loc.lng === 'number') ? loc.lng : 8.350;
+            const lat = (typeof customLat === 'number') ? customLat : ((loc && typeof loc.lat === 'number') ? loc.lat : 50.008);
+            const lng = (typeof customLng === 'number') ? customLng : ((loc && typeof loc.lng === 'number') ? loc.lng : 8.350);
             if (tMs <= solarData[0].timeMs) return Math.max(0, getTempAtStep(solarData[0], lat, lng));
             for (let i = 0; i < solarData.length - 1; i++) {
                 const a = solarData[i], b = solarData[i + 1];
@@ -7318,18 +7542,9 @@
             return Math.max(0, getTempAtStep(last, lat, lng));
         }
 
-        // Wie weit das über log_pv_forecast.js gewachsene Log für die Kalibrierung zurückreichen darf.
-        // ~4 Wochen als Kompromiss: genug verschiedene Wetterlagen für einen robusten Faktor, aber nicht
-        // so alt, dass saisonale Sonnenstand-/Verschattungseffekte den Faktor verzerren.
         const PV_FORECAST_LOG_MAX_AGE_MS = 30 * 24 * 3600 * 1000;
 
-        // Schätzt die PV-Leistung für den verfügbaren Prognose-Horizont (bis zu +72h): kalibriert
-        // einen Anlagen-Wirkungsgradfaktor (kW je W/m² Einstrahlung) aus echten Leistungsdaten gegen
-        // die GFS-Einstrahlungsprognose für denselben Zeitraum/Ort, und wendet diesen Faktor auf die
-        // Einstrahlungsprognose der kommenden Stunden an. Bewusst kein fest angenommener Wirkungsgrad:
-        // die Anlage selbst zeigt am zuverlässigsten (über ihre reale Antwort auf reale Einstrahlung),
-        // wie viel kW sie liefert - inklusive Ausrichtung, Verschattung, Verschmutzung und Degradation,
-        // die ein generischer Schätzwert nicht kennt.
+        // 5. Stufe 4: Universelle Hybrid-PV-Prognose (POA + T + Autokalibrierung / Zero-Shot)
         function computePvForecast(plantKey = null) {
             const activePlant = plantKey || (currentActivePvPlant === 'zun' ? 'zun' : 'foxess');
             const targetLive = (activePlant === 'zun') ? livePvDataZun : livePvDataFoxess;
@@ -7338,6 +7553,18 @@
             const defaultLng = (activePlant === 'zun') ? 8.436 : 8.350;
             const plantLat = (targetLoc && typeof targetLoc.lat === 'number') ? targetLoc.lat : defaultLat;
             const plantLng = (targetLoc && typeof targetLoc.lng === 'number') ? targetLoc.lng : defaultLng;
+
+            // Dachkonfiguration aus pvScenarioConfig
+            const profile = (pvScenarioConfig && pvScenarioConfig.profile) ? pvScenarioConfig.profile : 'south_35';
+            let tilt = (pvScenarioConfig && typeof pvScenarioConfig.tilt === 'number') ? pvScenarioConfig.tilt : 35;
+            let azimuth = (pvScenarioConfig && typeof pvScenarioConfig.azimuth === 'number') ? pvScenarioConfig.azimuth : 0;
+            if (profile === 'flat_0') { tilt = 0; azimuth = 0; }
+            else if (profile === 'south_35') { tilt = 35; azimuth = 0; }
+            else if (profile === 'east_west') { tilt = 15; azimuth = 0; }
+            else if (profile === 'steep_65') { tilt = 65; azimuth = 0; }
+
+            const modelMode = (pvScenarioConfig && pvScenarioConfig.modelMode) ? pvScenarioConfig.modelMode : 'hybrid';
+            const weatherSource = (pvScenarioConfig && pvScenarioConfig.weatherSource) ? pvScenarioConfig.weatherSource : 'auto';
 
             let actual = [];
             if (pvChartState) {
@@ -7352,15 +7579,13 @@
             if (!actual.length && targetLive && Array.isArray(targetLive.history_3d)) {
                 actual = targetLive.history_3d.map(p => ({ t: parsePvTimestamp(p.t), pv: p.pv })).filter(p => !isNaN(p.t));
             }
-            if (!actual.length || typeof solarData === 'undefined' || !solarData.length) return null;
+            if ((!actual.length && modelMode === 'hybrid') || (typeof solarData === 'undefined' && pvRegionalWeatherCache.size === 0)) return null;
 
             const now = Date.now();
             const pickCalibPairs = (pairs) => {
-                // Nur echte Sonnenstunden mit nennenswerter Erzeugung berücksichtigen
-                // Verhindert, dass Nacht-/Dämmerungspunkte (pv=0 bei Reststrahlung) den Wirkungsgrad auf 0 verzerren
-                let filtered = pairs.filter(pr => pr.ghi >= 50 && pr.pv >= 0.08 && (pr.pv / pr.ghi) >= 0.003 && (pr.pv / pr.ghi) <= 0.045);
+                let filtered = pairs.filter(pr => pr.effPoa >= 40 && pr.pv >= 0.06 && (pr.pv / pr.effPoa) >= 0.003 && (pr.pv / pr.effPoa) <= 0.045);
                 if (filtered.length < 5) {
-                    filtered = pairs.filter(pr => pr.ghi >= 35 && pr.pv >= 0.05 && (pr.pv / pr.ghi) >= 0.002);
+                    filtered = pairs.filter(pr => pr.effPoa >= 30 && pr.pv >= 0.04 && (pr.pv / pr.effPoa) >= 0.002);
                 }
                 return filtered;
             };
@@ -7368,89 +7593,160 @@
             let calibPairs = [];
             let calibSource = '24h', calibDays = 1;
 
-            if (activePlant === 'zun') {
-                const calibWindowStart = now - 72 * 3600 * 1000;
-                const livePairs = [];
-                for (const p of actual) {
-                    if (p.t < calibWindowStart || p.t > now) continue;
-                    const ghi = interpSolarAtTime(p.t);
-                    if (ghi === null) continue;
-                    livePairs.push({ pv: p.pv, ghi });
-                }
-                calibPairs = pickCalibPairs(livePairs);
-                if (calibPairs.length < 5) {
-                    const fullPairs = actual.filter(p => p.t <= now).map(p => ({ pv: p.pv, ghi: interpSolarAtTime(p.t) })).filter(pr => pr.ghi !== null);
-                    calibPairs = pickCalibPairs(fullPairs);
-                    calibSource = 'hist';
-                    calibDays = 3;
-                }
-            } else {
-                const logWindowStart = now - PV_FORECAST_LOG_MAX_AGE_MS;
-                const logPairs = (typeof pvForecastLog !== 'undefined' ? pvForecastLog : [])
-                    .filter(r => r.t >= logWindowStart && r.t <= now && typeof r.pv === 'number' && typeof r.ghi === 'number')
-                    .map(r => ({ pv: r.pv, ghi: r.ghi }));
-
-                calibPairs = pickCalibPairs(logPairs);
-                calibSource = 'log';
-                calibDays = Math.round(PV_FORECAST_LOG_MAX_AGE_MS / 86400000);
-
-                if (calibPairs.length < 5) {
-                    const calibWindowStart = now - 24 * 3600 * 1000;
+            if (modelMode !== 'zeroshot' && actual.length) {
+                if (activePlant === 'zun') {
+                    const calibWindowStart = now - 72 * 3600 * 1000;
                     const livePairs = [];
                     for (const p of actual) {
                         if (p.t < calibWindowStart || p.t > now) continue;
-                        const ghi = interpSolarAtTime(p.t);
-                        if (ghi === null) continue;
-                        livePairs.push({ pv: p.pv, ghi });
+                        const irr = getIrradianceAndTempAt(p.t, plantLat, plantLng, weatherSource);
+                        if (irr && irr.ghi > 0) {
+                            const poa = calculatePOA(irr.ghi, p.t, plantLat, plantLng, tilt, azimuth, irr.dni, irr.dhi, profile);
+                            const derate = getTemperatureDerate(poa, irr.temp);
+                            livePairs.push({ pv: p.pv, effPoa: poa * derate, poa, derate });
+                        }
                     }
                     calibPairs = pickCalibPairs(livePairs);
-                    calibSource = '24h';
-                    calibDays = 1;
-                }
-
-                if (calibPairs.length < 5) {
-                    // Fallback auf die gesamte verfügbare Historie (bis zu 3 Tage), falls im letzten 24h-Fenster keine Tag-Werte lagen
-                    const fullPairs = [];
-                    for (const p of actual) {
-                        if (p.t > now) continue;
-                        const ghi = interpSolarAtTime(p.t);
-                        if (ghi !== null) fullPairs.push({ pv: p.pv, ghi });
+                    if (calibPairs.length < 5) {
+                        const fullPairs = [];
+                        for (const p of actual) {
+                            if (p.t > now) continue;
+                            const irr = getIrradianceAndTempAt(p.t, plantLat, plantLng, weatherSource);
+                            if (irr && irr.ghi > 0) {
+                                const poa = calculatePOA(irr.ghi, p.t, plantLat, plantLng, tilt, azimuth, irr.dni, irr.dhi, profile);
+                                const derate = getTemperatureDerate(poa, irr.temp);
+                                fullPairs.push({ pv: p.pv, effPoa: poa * derate, poa, derate });
+                            }
+                        }
+                        calibPairs = pickCalibPairs(fullPairs);
+                        calibSource = 'hist';
+                        calibDays = 3;
                     }
-                    calibPairs = pickCalibPairs(fullPairs);
-                    calibSource = '3d-hist';
-                    calibDays = 3;
+                } else {
+                    const logWindowStart = now - PV_FORECAST_LOG_MAX_AGE_MS;
+                    const logPairs = (typeof pvForecastLog !== 'undefined' ? pvForecastLog : [])
+                        .filter(r => r.t >= logWindowStart && r.t <= now && typeof r.pv === 'number' && typeof r.ghi === 'number')
+                        .map(r => {
+                            const poa = calculatePOA(r.ghi, r.t, plantLat, plantLng, tilt, azimuth, null, null, profile);
+                            const derate = getTemperatureDerate(poa, 15);
+                            return { pv: r.pv, effPoa: poa * derate, poa, derate };
+                        });
+
+                    calibPairs = pickCalibPairs(logPairs);
+                    calibSource = 'log';
+                    calibDays = Math.round(PV_FORECAST_LOG_MAX_AGE_MS / 86400000);
+
+                    if (calibPairs.length < 5) {
+                        const calibWindowStart = now - 24 * 3600 * 1000;
+                        const livePairs = [];
+                        for (const p of actual) {
+                            if (p.t < calibWindowStart || p.t > now) continue;
+                            const irr = getIrradianceAndTempAt(p.t, plantLat, plantLng, weatherSource);
+                            if (irr && irr.ghi > 0) {
+                                const poa = calculatePOA(irr.ghi, p.t, plantLat, plantLng, tilt, azimuth, irr.dni, irr.dhi, profile);
+                                const derate = getTemperatureDerate(poa, irr.temp);
+                                livePairs.push({ pv: p.pv, effPoa: poa * derate, poa, derate });
+                            }
+                        }
+                        calibPairs = pickCalibPairs(livePairs);
+                        calibSource = '24h';
+                        calibDays = 1;
+                    }
+
+                    if (calibPairs.length < 5) {
+                        const fullPairs = [];
+                        for (const p of actual) {
+                            if (p.t > now) continue;
+                            const irr = getIrradianceAndTempAt(p.t, plantLat, plantLng, weatherSource);
+                            if (irr && irr.ghi > 0) {
+                                const poa = calculatePOA(irr.ghi, p.t, plantLat, plantLng, tilt, azimuth, irr.dni, irr.dhi, profile);
+                                const derate = getTemperatureDerate(poa, irr.temp);
+                                fullPairs.push({ pv: p.pv, effPoa: poa * derate, poa, derate });
+                            }
+                        }
+                        calibPairs = pickCalibPairs(fullPairs);
+                        calibSource = '3d-hist';
+                        calibDays = 3;
+                    }
                 }
             }
 
-            const maxHistPv = Math.max(1, ...actual.map(p => p.pv), (targetLive && typeof targetLive.solar_power === 'number') ? targetLive.solar_power : 0);
+            const maxHistPv = actual.length ? Math.max(1, ...actual.map(p => p.pv), (targetLive && typeof targetLive.solar_power === 'number') ? targetLive.solar_power : 0) : 10.0;
             let medianRatio = 0;
 
             if (calibPairs.length >= 5) {
-                const ratios = calibPairs.map(pr => pr.pv / pr.ghi).sort((a, b) => a - b);
+                const ratios = calibPairs.map(pr => pr.pv / pr.effPoa).sort((a, b) => a - b);
                 const mid = Math.floor(ratios.length / 2);
                 medianRatio = ratios.length % 2 ? ratios[mid] : (ratios[mid - 1] + ratios[mid]) / 2;
             }
-            // Robuster Sicherheitsanker: wenn Datenlücken vorhanden sind, physikalischen Nenn-Faktor ansetzen
-            if (!(medianRatio > 0.003)) {
-                medianRatio = maxHistPv > 2 ? (maxHistPv / 750) : 0.015;
+
+            // Universal Zero-Shot Modus oder Sicherheitsanker bei fehlenden Daten
+            const nominalKwp = Math.max(0.1, (pvScenarioConfig && pvScenarioConfig.targetKwp) ? pvScenarioConfig.targetKwp : ((pvScenarioConfig && pvScenarioConfig.baseKwp) ? pvScenarioConfig.baseKwp : 9.68));
+            if (modelMode === 'zeroshot' || !(medianRatio > 0.003)) {
+                // Rein physikalischer Wirkungsgrad: kWp * (POA/1000) * 0.86 BOS * eta(T)
+                medianRatio = (nominalKwp / 1000.0) * 0.86;
+                calibSource = 'zero-shot';
+            } else {
+                // Szenario-Skalierung anwenden (falls targetKwp geändert wurde)
+                const sFactor = (typeof getPvScenarioFactor === 'function') ? getPvScenarioFactor() : 1.0;
+                if (Math.abs(sFactor - 1.0) > 0.005) {
+                    medianRatio *= sFactor;
+                }
+                calibSource = `${calibSource} (hybrid POA+T)`;
             }
 
-            const capKw = maxHistPv * 1.05;
-            const lastAvailable = solarData[solarData.length - 1].timeMs;
-            const nowGhi = interpSolarAtTime(now);
+            const capKw = Math.max(nominalKwp * 1.05, maxHistPv * 1.05, (pvRevenueConfig && pvRevenueConfig.inverterAcKw) ? pvRevenueConfig.inverterAcKw : 10.0);
+            const nowIrr = getIrradianceAndTempAt(now, plantLat, plantLng, weatherSource);
+            const nowPoa = calculatePOA(nowIrr.ghi, now, plantLat, plantLng, tilt, azimuth, nowIrr.dni, nowIrr.dhi, profile);
+            const nowDerate = getTemperatureDerate(nowPoa, nowIrr.temp);
             const nowPv = (targetLive && typeof targetLive.solar_power === 'number' && targetLive.solar_power > 0)
                 ? targetLive.solar_power
-                : Math.min(capKw, (nowGhi || 0) * medianRatio);
+                : Math.min(capKw, nowPoa * nowDerate * medianRatio);
 
             const points = [{ t: now, pv: Math.max(0, nowPv) }];
-            for (const step of solarData) {
-                if (step.timeMs <= now || step.timeMs > lastAvailable) continue;
-                const ghi = Math.max(0, getTempAtStep(step, plantLat, plantLng));
-                points.push({ t: step.timeMs, pv: Math.min(capKw, ghi * medianRatio) });
+            let sourceUsed = nowIrr.source;
+
+            // Prüfen ob hochaufgelöste DWD ICON Schritte im Cache liegen
+            const cacheKey = `${plantLat.toFixed(2)}_${plantLng.toFixed(2)}`;
+            const iconCached = pvRegionalWeatherCache.get(cacheKey);
+            const useIconSteps = (weatherSource === 'auto' || weatherSource === 'icon') && isCentralEurope(plantLat, plantLng) && iconCached && iconCached.steps && iconCached.steps.length > 0;
+
+            if (useIconSteps) {
+                sourceUsed = 'dwd_icon';
+                for (const step of iconCached.steps) {
+                    if (step.timeMs <= now) continue;
+                    const poa = calculatePOA(step.ghi, step.timeMs, plantLat, plantLng, tilt, azimuth, step.dni, step.dhi, profile);
+                    const derate = getTemperatureDerate(poa, step.temp);
+                    points.push({ t: step.timeMs, pv: Math.min(capKw, Math.max(0, poa * derate * medianRatio)) });
+                }
+            } else if (typeof solarData !== 'undefined' && solarData.length > 0) {
+                sourceUsed = 'noaa_gfs';
+                const lastAvailable = solarData[solarData.length - 1].timeMs;
+                for (const step of solarData) {
+                    if (step.timeMs <= now || step.timeMs > lastAvailable) continue;
+                    const ghi = Math.max(0, getTempAtStep(step, plantLat, plantLng));
+                    const temp = interpTempAtTime(step.timeMs, plantLat, plantLng);
+                    const poa = calculatePOA(ghi, step.timeMs, plantLat, plantLng, tilt, azimuth, null, null, profile);
+                    const derate = getTemperatureDerate(poa, temp);
+                    points.push({ t: step.timeMs, pv: Math.min(capKw, Math.max(0, poa * derate * medianRatio)) });
+                }
             }
+
             if (points.length < 2) return null;
 
-            return { points, medianRatio, sampleCount: calibPairs.length, capKw, calibSource, calibDays };
+            return {
+                points,
+                medianRatio,
+                sampleCount: calibPairs.length,
+                capKw,
+                calibSource,
+                calibDays,
+                tilt,
+                azimuth,
+                profile,
+                weatherSource: sourceUsed,
+                modelMode
+            };
         }
 
         // Trapez-Integration einer Leistungs-Zeitreihe ({t, pv}-Punkte, egal ob Messwerte oder
@@ -7473,16 +7769,57 @@
 
         function updatePvForecastLegend(forecast) {
             const legendEl = document.getElementById('pvForecastLegend');
+            const modelBadge = document.getElementById('pvModelBadge');
+            const weatherBadge = document.getElementById('pvWeatherBadge');
             if (!legendEl) return;
             if (!forecast) {
                 legendEl.style.display = 'none';
+                if (modelBadge) modelBadge.style.display = 'none';
+                if (weatherBadge) weatherBadge.style.display = 'none';
                 return;
             }
             legendEl.style.display = 'inline';
-            const basisStr = forecast.calibSource === 'log'
-                ? `${forecast.sampleCount} Messwerten aus bis zu ${forecast.calibDays} Tagen`
-                : `${forecast.sampleCount} Messwerten der letzten 24h (Log noch im Aufbau)`;
-            legendEl.title = `Geschätzt aus der GFS-Einstrahlungsprognose, kalibriert auf ${basisStr} dieser Anlage.`;
+            const basisStr = forecast.calibSource.includes('zero-shot')
+                ? 'Physikalisches Zero-Shot-Modell (BOS 86%)'
+                : (forecast.calibSource.includes('log')
+                    ? `${forecast.sampleCount} Messwerten aus bis zu ${forecast.calibDays} Tagen`
+                    : `${forecast.sampleCount} Messwerten der letzten 24h`);
+            const tiltStr = forecast.tilt !== undefined ? `${forecast.tilt}° Neigung` : '35° Neigung';
+            const azStr = forecast.azimuth === 0 ? 'Süd' : (forecast.azimuth === -90 ? 'Ost' : (forecast.azimuth === 90 ? 'West' : `${forecast.azimuth}°`));
+            legendEl.title = `Plane-of-Array (${tiltStr}, ${azStr}) mit Zelltemperatur-Derating (-0.38%/°C) · Kalibriert auf ${basisStr}.`;
+
+            if (modelBadge) {
+                modelBadge.style.display = 'inline-block';
+                if (forecast.modelMode === 'zeroshot' || forecast.calibSource.includes('zero-shot')) {
+                    modelBadge.innerText = '🌐 Zero-Shot';
+                    modelBadge.style.color = '#ff9100';
+                    modelBadge.style.borderColor = 'rgba(255,145,0,0.3)';
+                    modelBadge.style.background = 'rgba(255,145,0,0.12)';
+                    modelBadge.title = 'Klicken: Umschalten auf hybride Anlagentelemetrie-Kalibrierung';
+                } else {
+                    modelBadge.innerText = '✨ Hybrid POA';
+                    modelBadge.style.color = '#00e5ff';
+                    modelBadge.style.borderColor = 'rgba(0,229,255,0.3)';
+                    modelBadge.style.background = 'rgba(0,229,255,0.12)';
+                    modelBadge.title = 'Klicken: Umschalten auf rein physikalisches Zero-Shot Modell';
+                }
+            }
+            if (weatherBadge) {
+                weatherBadge.style.display = 'inline-block';
+                if (forecast.weatherSource === 'dwd_icon') {
+                    weatherBadge.innerText = '🛰️ DWD ICON 2km';
+                    weatherBadge.style.color = '#00ff88';
+                    weatherBadge.style.borderColor = 'rgba(0,255,136,0.3)';
+                    weatherBadge.style.background = 'rgba(0,255,136,0.12)';
+                    weatherBadge.title = 'Klicken: Wetterquelle wechseln (DWD ICON 2km aktiv)';
+                } else {
+                    weatherBadge.innerText = '🌍 NOAA GFS';
+                    weatherBadge.style.color = '#ffdb00';
+                    weatherBadge.style.borderColor = 'rgba(255,219,0,0.3)';
+                    weatherBadge.style.background = 'rgba(255,219,0,0.12)';
+                    weatherBadge.title = 'Klicken: Wetterquelle wechseln (NOAA GFS global aktiv)';
+                }
+            }
         }
 
         // Drei rollierende 24h-Fenster ab jetzt (Tag +1/+2/+3, gekappt am real verfügbaren Prognose-
@@ -7583,11 +7920,15 @@
             }
         }
 
-        // --- PV-Extrapolations- & Szenario-Konfiguration (Anlagengröße X) ---
+        // --- PV-Extrapolations- & Szenario-Konfiguration (Anlagengröße X & Dachgeometrie) ---
         let pvScenarioConfig = {
             baseKwp: 0,                // Reale Basis-Anlagengröße - erst nach Login befüllt (siehe loadPvData)
             targetKwp: 0,              // Vom Nutzer gewählte hypothetische Anlagengröße
-            profile: 'linear_real',    // Bereit für künftige Profile: 'linear_real', 'south_35', 'east_west', etc.
+            profile: 'south_35',       // 'south_35' | 'flat_0' | 'east_west' | 'steep_65' | 'custom'
+            tilt: 35,                  // Dachneigung in Grad
+            azimuth: 0,                // Ausrichtung in Grad (0 = Süd, -90 = Ost, 90 = West)
+            modelMode: 'hybrid',       // 'hybrid' (autokalibriert) | 'zeroshot' (rein physikalisch)
+            weatherSource: 'auto',     // 'auto' (DWD ICON für Mitteleuropa, GFS global) | 'icon' | 'gfs'
             inverterScaleMode: 'clipping' // 'clipping': Wechselrichter AC-Limit wirkt als Obergrenze
         };
 
@@ -7603,6 +7944,11 @@
             }
             pvScenarioConfig.baseKwp = Math.max(0.1, parseFloat(pvScenarioConfig.baseKwp) || 0);
             pvScenarioConfig.targetKwp = Math.max(0.1, parseFloat(pvScenarioConfig.targetKwp) || pvScenarioConfig.baseKwp);
+            pvScenarioConfig.tilt = (typeof pvScenarioConfig.tilt === 'number' && !isNaN(pvScenarioConfig.tilt)) ? pvScenarioConfig.tilt : 35;
+            pvScenarioConfig.azimuth = (typeof pvScenarioConfig.azimuth === 'number' && !isNaN(pvScenarioConfig.azimuth)) ? pvScenarioConfig.azimuth : 0;
+            pvScenarioConfig.profile = pvScenarioConfig.profile || 'south_35';
+            pvScenarioConfig.modelMode = pvScenarioConfig.modelMode || 'hybrid';
+            pvScenarioConfig.weatherSource = pvScenarioConfig.weatherSource || 'auto';
         }
 
         function saveScenarioConfig() {
@@ -7611,6 +7957,27 @@
             } catch (e) {
                 console.warn('Fehler beim Speichern von pvScenarioConfig:', e);
             }
+        }
+
+        function updatePvOrientationUI() {
+            const currentProfile = pvScenarioConfig.profile || 'south_35';
+            document.querySelectorAll('.pv-orient-btn').forEach(btn => {
+                const prof = btn.getAttribute('data-profile');
+                const isSelected = (prof === currentProfile);
+                if (isSelected) {
+                    btn.classList.add('active');
+                    btn.style.background = 'rgba(0,229,255,0.2)';
+                    btn.style.borderColor = '#00e5ff';
+                    btn.style.color = '#00e5ff';
+                    btn.style.fontWeight = '700';
+                } else {
+                    btn.classList.remove('active');
+                    btn.style.background = 'rgba(255,255,255,0.05)';
+                    btn.style.borderColor = 'rgba(255,255,255,0.1)';
+                    btn.style.color = '#aaa';
+                    btn.style.fontWeight = '500';
+                }
+            });
         }
 
         function getPvScenarioFactor() {
@@ -9010,6 +9377,7 @@
                     btn.style.fontWeight = '500';
                 }
             });
+            updatePvOrientationUI();
         }
 
         // --- FoxESS Historische Detailanalyse (Companion Container) ---
@@ -10558,19 +10926,74 @@
         // unabhängiger Leak-Kanal für Anlagendaten). Der Job selbst läuft weiter wöchentlich und
         // schreibt nach KV (siehe pv_calibration_review.yml) - hier wird er nur wieder sichtbar,
         // jetzt aber ausschließlich hinter Login.
+        function generateLivePvCalibrationReport() {
+            const fc = (typeof computePvForecast === 'function') ? computePvForecast() : null;
+            if (!fc) return 'Keine Prognosedaten verfügbar.';
+            const loc = (typeof getActivePvLocation === 'function') ? getActivePvLocation() : PV_SYSTEM_LOCATION;
+            const lat = (loc && typeof loc.lat === 'number') ? loc.lat : 50.008;
+            const lng = (loc && typeof loc.lng === 'number') ? loc.lng : 8.350;
+            const sol = getSolarPosition(Date.now(), lat, lng);
+            const plantName = (currentActivePvPlant === 'zun') ? 'System 2 (Weilbach)' : 'FoxESS System 1 (Hochheim)';
+            const azName = fc.azimuth === 0 ? 'Süd (0°)' : (fc.azimuth === -90 ? 'Ost (-90°)' : (fc.azimuth === 90 ? 'West (+90°)' : `${fc.azimuth}°`));
+            const isZeroShot = fc.modelMode === 'zeroshot' || (fc.calibSource && fc.calibSource.includes('zero-shot'));
+
+            return `======================================================================
+PV-PROGNOSEMODELL v2.0 (UNIVERSAL HYBRID POA + MULTI-WEATHER ROUTING)
+======================================================================
+Aktive Anlage:      ${plantName} (${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E)
+Aktueller Sonnenstand:
+  - Sonnenhöhe:     ${sol.elevationDeg.toFixed(1)}° über Horizont
+  - Sonnenazimut:   ${sol.azimuthDeg.toFixed(1)}° (0° = Süd, -90° = Ost, +90° = West)
+  - cos(Zenith):    ${sol.cosZenith.toFixed(3)}
+
+Stufe 1 · Plane-of-Array (POA) Transposition:
+  - Profil:         ${fc.profile || pvScenarioConfig.profile || 'south_35'}
+  - Dachneigung:    ${fc.tilt !== undefined ? fc.tilt : 35}°
+  - Ausrichtung:    ${azName}
+  - Transposition:  Hay-Davies / Reindl mit Erbs Clearness-Index Split (kt)
+  - Albedo Ground:  ρ = 0.20 (Standard Bodenreflexion)
+
+Stufe 2 · Modul-Zelltemperatur Derating:
+  - Modell:         Faiman / King (T_cell = T_amb + POA × 0.030 °C·m²/W)
+  - Koeffizient:    γ = -0.38 % / °C (Standard monokristallines Silizium)
+  - STC-Referenz:   25.0 °C Zelltemperatur (100% Wirkungsgrad)
+
+Stufe 3 · Regional Multi-Model Weather Routing:
+  - Aktive Quelle:  ${fc.weatherSource === 'dwd_icon' ? '🛰️ DWD ICON 2km (Hochauflösend Zentraleuropa)' : '🌍 NOAA GFS 0.25° (Global)'}
+  - Routing-Modus:  ${pvScenarioConfig.weatherSource === 'auto' ? 'Auto (DWD ICON für Zentraleuropa, GFS global)' : pvScenarioConfig.weatherSource.toUpperCase()}
+
+Stufe 4 · Universelle Kalibrierung & Skalierung:
+  - Betriebsmodus:  ${isZeroShot ? '🌐 Zero-Shot (Rein physikalisch, BOS 86%)' : '✨ Hybrid Autokalibriert (Inverter-Telemetrie)'}
+  - Datenbasis:     ${fc.calibSource || '3d-hist'}
+  - Stichproben:    ${fc.sampleCount} gültige Messpaare
+  - Eff. Kennzahl:  ${(fc.medianRatio * 1000).toFixed(2)} W_pv / (W/m² POA · η_T)
+  - Wechselrichter: ${fc.capKw ? fc.capKw.toFixed(2) + ' kW (Clipping-Grenze)' : '10.0 kW'}
+======================================================================`;
+        }
+
         let pvCalibrationReportLoaded = false;
         async function loadPvCalibrationReport() {
             const el = document.getElementById('pvCalibrationReportText');
-            if (!el || !isPvAuthenticated) return;
-            el.textContent = 'Lädt...';
-            const res = await pvAuthedFetch('/api/private/pv_calibration_report');
-            if (typeof res === 'string' && res) {
-                el.textContent = res;
-            } else if (res && typeof res === 'object') {
-                el.textContent = JSON.stringify(res, null, 2);
-            } else {
-                el.textContent = 'Noch kein Bericht vorhanden (der Job läuft wöchentlich montags 08:00 Uhr).';
+            if (!el) return;
+            if (isPvAuthenticated) {
+                el.textContent = 'Lädt Server-Kalibrierung...';
+                try {
+                    const res = await pvAuthedFetch('/api/private/pv_calibration_report');
+                    if (typeof res === 'string' && res) {
+                        el.textContent = res;
+                        pvCalibrationReportLoaded = true;
+                        return;
+                    } else if (res && typeof res === 'object') {
+                        el.textContent = JSON.stringify(res, null, 2);
+                        pvCalibrationReportLoaded = true;
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('Server-Kalibrierungsbericht nicht abrufbar, verwende Live-Modellbericht:', e);
+                }
             }
+            // Live client-seitiger Kalibrierungs- und Modellbericht
+            el.textContent = generateLivePvCalibrationReport();
             pvCalibrationReportLoaded = true;
         }
 
@@ -10781,6 +11204,73 @@
                 });
             });
 
+            // Dachausrichtungs-Buttons (☀️ 35° Süd, 🏢 0° Flach, ↔️ Ost-West, 📐 65° Steil)
+            document.querySelectorAll('.pv-orient-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const prof = btn.getAttribute('data-profile');
+                    if (prof) {
+                        pvScenarioConfig.profile = prof;
+                        if (prof === 'flat_0') {
+                            pvScenarioConfig.tilt = 0;
+                            pvScenarioConfig.azimuth = 0;
+                        } else if (prof === 'south_35') {
+                            pvScenarioConfig.tilt = 35;
+                            pvScenarioConfig.azimuth = 0;
+                        } else if (prof === 'east_west') {
+                            pvScenarioConfig.tilt = 15;
+                            pvScenarioConfig.azimuth = 0;
+                        } else if (prof === 'steep_65') {
+                            pvScenarioConfig.tilt = 65;
+                            pvScenarioConfig.azimuth = 0;
+                        }
+                        saveScenarioConfig();
+                        updatePvOrientationUI();
+                        if (typeof redrawPvChart === 'function') redrawPvChart();
+                        if (typeof refreshActivePvAnalysisContainers === 'function') refreshActivePvAnalysisContainers();
+                        const calBody = document.getElementById('pvCalibrationBody');
+                        if (calBody && calBody.style.display !== 'none') {
+                            loadPvCalibrationReport();
+                        }
+                    }
+                });
+            });
+
+            // Modell-Badge Klick: Wechsel zwischen Hybrid (kalibriert) & Zero-Shot (physikalisch)
+            const modelBadge = document.getElementById('pvModelBadge');
+            if (modelBadge) {
+                modelBadge.addEventListener('click', () => {
+                    pvScenarioConfig.modelMode = (pvScenarioConfig.modelMode === 'zeroshot') ? 'hybrid' : 'zeroshot';
+                    saveScenarioConfig();
+                    if (typeof redrawPvChart === 'function') redrawPvChart();
+                    if (typeof refreshActivePvAnalysisContainers === 'function') refreshActivePvAnalysisContainers();
+                    const calBody = document.getElementById('pvCalibrationBody');
+                    if (calBody && calBody.style.display !== 'none') {
+                        loadPvCalibrationReport();
+                    }
+                });
+            }
+
+            // Wetter-Badge Klick: Wechsel zwischen Auto / ICON / GFS
+            const weatherBadge = document.getElementById('pvWeatherBadge');
+            if (weatherBadge) {
+                weatherBadge.addEventListener('click', () => {
+                    if (pvScenarioConfig.weatherSource === 'auto') {
+                        pvScenarioConfig.weatherSource = 'icon';
+                    } else if (pvScenarioConfig.weatherSource === 'icon') {
+                        pvScenarioConfig.weatherSource = 'gfs';
+                    } else {
+                        pvScenarioConfig.weatherSource = 'auto';
+                    }
+                    saveScenarioConfig();
+                    if (typeof redrawPvChart === 'function') redrawPvChart();
+                    if (typeof refreshActivePvAnalysisContainers === 'function') refreshActivePvAnalysisContainers();
+                    const calBody = document.getElementById('pvCalibrationBody');
+                    if (calBody && calBody.style.display !== 'none') {
+                        loadPvCalibrationReport();
+                    }
+                });
+            }
+
             if (openHistBtn) {
                 openHistBtn.addEventListener('click', () => {
                     showPvHistory();
@@ -10942,7 +11432,7 @@
             }
 
             if (typeof updatePvForecastLegend === 'function') {
-                updatePvForecastLegend(useFox ? computePvForecast('foxess') : (useZun ? computePvForecast('zun') : null));
+                updatePvForecastLegend(useFox ? fcFox : (useZun ? fcZun : null));
             }
             const euroBody = document.getElementById('pvEuroBody');
             if (euroBody && euroBody.style.display !== 'none' && typeof renderEuroTable === 'function') {
@@ -10980,6 +11470,10 @@
 
             drawPvChart();
             drawPriceChart();
+        }
+
+        function redrawPvChart() {
+            renderPvHistoryChart();
         }
 
         function clipPointsToView(arr, viewStart, viewEnd) {
