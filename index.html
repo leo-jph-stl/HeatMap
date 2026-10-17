@@ -161,9 +161,27 @@
         #layer-toggles-visible {
             display: flex;
             align-items: center;
+            width: 100%;
+            margin-top: 8px;
+        }
+        .dock-mode-group {
+            display: flex;
+            align-items: center;
             flex-wrap: wrap;
             gap: 6px;
-            margin-top: 8px;
+            width: 100%;
+        }
+        .dock-btn-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .dock-divider {
+            width: 1px;
+            height: 18px;
+            background: rgba(255, 255, 255, 0.18);
+            margin: 0 4px;
+            flex-shrink: 0;
         }
         .layer-toggle-btn {
             background: rgba(255, 255, 255, 0.06);
@@ -2675,50 +2693,68 @@
             <span id="timeLabelMax">+72h</span>
         </div>
         <div id="layer-toggles-visible">
-            <button id="btn-temp-vis" class="layer-toggle-btn active" onclick="switchLayer('temp')">🌡️ Temperatur</button>
-            <button id="btn-solar-vis" class="layer-toggle-btn" onclick="switchLayer('solar')">☀️ Einstrahlung</button>
-            <button id="btn-clouds-vis" class="layer-toggle-btn" onclick="switchLayer('clouds')" title="Globale Wolkendecke &amp; Wolkenwassergehalt">☁️ Wolken</button>
-            <button id="btn-topo-vis" class="layer-toggle-btn" onclick="switchLayer('topo')">⛰️ Topographie</button>
-            <button id="btn-satellite-vis" class="layer-toggle-btn" onclick="switchLayer('satellite')">🛰️ Satellit</button>
-            <button id="btn-moon-vis" class="layer-toggle-btn" onclick="toggleMoonEarth()" title="Detaillierte 3D Mondkarte &amp; Apollo-Landestellen">🌙 Mond</button>
-            <button id="btn-route-vis" class="layer-toggle-btn" onclick="toggleRoutePlanner()" title="3D-Routenplaner &amp; Höhenprofil öffnen">🧭 Route</button>
-            <button id="btn-area-vis" class="layer-toggle-btn" onclick="toggleAreaMeasure()" title="3D-Flächenmessung &amp; Formbestimmung">📐 Fläche</button>
-            <div class="overlay-divider"></div>
-            <button id="btn-overlay-clouds" class="layer-toggle-btn overlay-pill active-clouds" onclick="toggleOverlay('clouds')" title="Wolken-Animation (Wolkendecke bei Tag &amp; Nacht) ein-/ausblenden">☁️ Wolken</button>
-            <button id="btn-overlay-ht" class="layer-toggle-btn overlay-pill active-ht" onclick="toggleOverlay('ht')" title="Hoch- &amp; Tiefdruckgebiete (H/T) ein-/ausblenden">🔴🔵 Hoch/Tief</button>
-            <button id="btn-overlay-isobars" class="layer-toggle-btn overlay-pill active" onclick="toggleOverlay('isobars')" title="Isobaren (Luftdruck-Höhenlinien in hPa) ein-/ausblenden">🌀 Isobaren</button>
-            <button id="btn-overlay-menu" class="layer-toggle-btn overlay-pill" onclick="toggleOverlayMenu()" title="Zusätzliche Wetter-Ebenen &amp; Overlays anpassen">🥞 Ebenen ▾</button>
-            <div id="solarClimSelectWrap" style="display:none;">
-                <select id="solarClimSelect" onchange="setSolarClimSelection(this.value)" title="Zeitraum wählen">
-                    <option value="live">Live</option>
-                    <option value="JAN">Januar ⌀</option>
-                    <option value="FEB">Februar ⌀</option>
-                    <option value="MAR">März ⌀</option>
-                    <option value="APR">April ⌀</option>
-                    <option value="MAY">Mai ⌀</option>
-                    <option value="JUN">Juni ⌀</option>
-                    <option value="JUL">Juli ⌀</option>
-                    <option value="AUG">August ⌀</option>
-                    <option value="SEP">September ⌀</option>
-                    <option value="OCT">Oktober ⌀</option>
-                    <option value="NOV">November ⌀</option>
-                    <option value="DEC">Dezember ⌀</option>
-                    <option value="ANN">Jahresmittel</option>
-                </select>
+            <!-- 🌍 ERD-KONTROLLEN (Wetter, Geographie, Overlays & Tools) -->
+            <div id="earth-controls-bar" class="dock-mode-group">
+                <div class="dock-btn-group">
+                    <button id="btn-temp-vis" class="layer-toggle-btn active" onclick="switchLayer('temp')">🌡️ Temperatur</button>
+                    <button id="btn-solar-vis" class="layer-toggle-btn" onclick="switchLayer('solar')">☀️ Einstrahlung</button>
+                    <button id="btn-clouds-vis" class="layer-toggle-btn" onclick="switchLayer('clouds')" title="Globale Wolkendecke &amp; Wolkenwassergehalt">☁️ Wolken</button>
+                    <button id="btn-wind-vis" class="layer-toggle-btn" onclick="switchLayer('wind')" title="Globale Windströmung &amp; Partikel">💨 Wind</button>
+                    <button id="btn-topo-vis" class="layer-toggle-btn" onclick="switchLayer('topo')">⛰️ Topographie</button>
+                    <button id="btn-satellite-vis" class="layer-toggle-btn" onclick="switchLayer('satellite')">🛰️ Satellit</button>
+                </div>
+                <div id="solarClimSelectWrap" style="display:none;">
+                    <select id="solarClimSelect" onchange="setSolarClimSelection(this.value)" title="Zeitraum wählen">
+                        <option value="live">Live</option>
+                        <option value="JAN">Januar ⌀</option>
+                        <option value="FEB">Februar ⌀</option>
+                        <option value="MAR">März ⌀</option>
+                        <option value="APR">April ⌀</option>
+                        <option value="MAY">Mai ⌀</option>
+                        <option value="JUN">Juni ⌀</option>
+                        <option value="JUL">Juli ⌀</option>
+                        <option value="AUG">August ⌀</option>
+                        <option value="SEP">September ⌀</option>
+                        <option value="OCT">Oktober ⌀</option>
+                        <option value="NOV">November ⌀</option>
+                        <option value="DEC">Dezember ⌀</option>
+                        <option value="ANN">Jahresmittel</option>
+                    </select>
+                </div>
+                <div id="topoSubSelectWrap" style="display:none;">
+                    <select id="topoSubSelect" onchange="setTopoSubSelection(this.value)" title="Kartenstil wählen">
+                        <option value="hypsometric" selected>Farbrelief (Höhenschichten)</option>
+                        <option value="satellite">Satellit (Echtfarben HD)</option>
+                        <option value="opentopo">OpenTopoMap (Wanderkarte)</option>
+                        <option value="arcgis">ArcGIS World Topo</option>
+                    </select>
+                </div>
+                <div class="dock-divider"></div>
+                <button id="btn-overlay-menu" class="layer-toggle-btn overlay-pill" onclick="toggleOverlayMenu()" title="Zusätzliche Wetter-Ebenen &amp; Overlays anpassen">🥞 Ebenen ▾</button>
+                <div class="dock-divider"></div>
+                <div class="dock-btn-group">
+                    <button id="btn-route-vis" class="layer-toggle-btn" onclick="toggleRoutePlanner()" title="3D-Routenplaner &amp; Höhenprofil öffnen">🧭 Route</button>
+                    <button id="btn-area-vis" class="layer-toggle-btn" onclick="toggleAreaMeasure()" title="3D-Flächenmessung &amp; Formbestimmung">📐 Fläche</button>
+                </div>
             </div>
-            <div id="topoSubSelectWrap" style="display:none;">
-                <select id="topoSubSelect" onchange="setTopoSubSelection(this.value)" title="Kartenstil wählen">
-                    <option value="hypsometric" selected>Farbrelief (Höhenschichten)</option>
-                    <option value="satellite">Satellit (Echtfarben HD)</option>
-                    <option value="opentopo">OpenTopoMap (Wanderkarte)</option>
-                    <option value="arcgis">ArcGIS World Topo</option>
-                </select>
-            </div>
-            <div id="moonSubSelectWrap" style="display:none;">
-                <select id="moonSubSelect" onchange="switchMoonLayer(this.value)" title="Mond-Ebene wählen">
-                    <option value="photo" selected>📷 Foto-Mosaik (LROC HD)</option>
-                    <option value="topo">⛰️ Topographie (LOLA Relief)</option>
-                </select>
+
+            <!-- 🌙 MOND-KONTROLLEN (Foto, Topo, Relief, Apollo & Krater) -->
+            <div id="moon-controls-bar" class="dock-mode-group" style="display:none;">
+                <div class="dock-btn-group">
+                    <button id="btn-moon-photo" class="layer-toggle-btn active-moon" onclick="switchMoonLayer('photo')" title="NASA LROC WAC Fotomosaik HD (Echtfarben/Graustufen)">📷 Foto-Mosaik</button>
+                    <button id="btn-moon-topo" class="layer-toggle-btn" onclick="toggleMoonTopo()" title="NASA LRO LOLA Topographisches Höhenrelief (Ein-/Ausschalten)">⛰️ Topographie</button>
+                    <button id="btn-moon-shade" class="layer-toggle-btn" onclick="switchMoonLayer('shade')" title="NASA LOLA Schattiertes Geländerelief">🌒 Relief</button>
+                </div>
+                <div class="dock-divider"></div>
+                <div class="dock-btn-group">
+                    <button id="btn-moon-apollo" class="layer-toggle-btn active-moon" onclick="toggleMoonApolloLandmarks()" title="Apollo 11-17 Landestellen &amp; Signalmarker ein-/ausblenden">🚀 Apollo</button>
+                    <button id="btn-moon-craters" class="layer-toggle-btn active-moon" onclick="toggleMoonCraterLabels()" title="Mondkrater &amp; Maria Beschriftungen ein-/ausblenden">⚪ Krater</button>
+                </div>
+                <div class="dock-divider"></div>
+                <div class="dock-btn-group">
+                    <button id="btn-moon-route" class="layer-toggle-btn" onclick="toggleRoutePlanner()" title="3D-Distanz- &amp; Streckenmessung auf dem Mond">🧭 Distanz</button>
+                    <button id="btn-moon-area" class="layer-toggle-btn" onclick="toggleAreaMeasure()" title="3D-Flächenmessung auf dem Mond">📐 Fläche</button>
+                </div>
             </div>
         </div>
 
@@ -2946,7 +2982,7 @@
         // THREE.JS SETUP
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.02, 1000);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.05, 1000);
         camera.position.z = 250;
         if (window.location.search.includes('alps')) {
             camera.position.set(11.37, 89.61, 86.40);
@@ -2973,7 +3009,12 @@
 
         let renderer;
         try {
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+            renderer = new THREE.WebGLRenderer({
+                antialias: true,
+                alpha: true,
+                logarithmicDepthBuffer: true,
+                powerPreference: 'high-performance'
+            });
         } catch (e) {
             console.error('WebGL initialization error:', e);
             const errBox = document.createElement('div');
@@ -3727,6 +3768,7 @@
         // DYNAMISCHES 3D TOPOGRAPHIE- & GELÄNDE-RELIEF (ESRI World Hillshade)
         const hillshadeGroup = new THREE.Group();
         hillshadeGroup.rotation.y = -Math.PI / 2;
+        hillshadeGroup.visible = false;
         scene.add(hillshadeGroup);
 
         // BERECHNUNG DES SOLAR-VEKTORS (Subsolar-Punkt für Tag-/Nacht-Beleuchtung)
@@ -4181,81 +4223,21 @@
         let lastCameraPos = new THREE.Vector3();
 
         function updateHillshadeTiles() {
-            if (currentCelestialBody === 'moon' || currentMode === 'topo' || currentMode === 'satellite') return;
-            const now = performance.now();
-            if (now - lastTileUpdate < 100) return;
-            
-            if (camera.position.distanceToSquared(lastCameraPos) < 0.05) return;
-            lastCameraPos.copy(camera.position);
-            lastTileUpdate = now;
-
-            const dist = camera.position.length();
-            const h = Math.max(1, dist - earthRadius);
-
-            let z = 5;
-            if (h < 20) z = 8;
-            else if (h < 40) z = 7;
-            else if (h < 85) z = 6;
-
-            const Px = camera.position.z;
-            const Py = camera.position.y;
-            const Pz = -camera.position.x;
-            const vFrac = Math.acos(Math.min(Math.max(Py / dist, -1), 1)) / Math.PI;
-            const centerLat = 90 - vFrac * 180;
-            let uFrac = Math.atan2(Pz, -Px) / (2 * Math.PI);
-            if (uFrac < 0) uFrac += 1;
-            const centerLng = uFrac * 360 - 180;
-
-            const spanDeg = Math.min(75, (h / earthRadius) * camera.fov * 1.35);
-            const cosLat = Math.max(0.18, Math.cos(centerLat * Math.PI / 180));
-            const latSpan = spanDeg * 0.65;
-            const lngSpan = (spanDeg * 0.65) / cosLat;
-
-            const latMin = Math.max(-84, centerLat - latSpan);
-            const latMax = Math.min(84, centerLat + latSpan);
-            const lngMin = centerLng - lngSpan;
-            const lngMax = centerLng + lngSpan;
-
-            const nTiles = Math.pow(2, z);
-            const xMin = lon2tile(lngMin, z);
-            const xMax = lon2tile(lngMax, z);
-            const yMin = lat2tile(latMax, z);
-            const yMax = lat2tile(latMin, z);
-
-            const candidateTiles = [];
-            for (let y = yMin; y <= yMax; y++) {
-                if (y < 0 || y >= nTiles) continue;
-                for (let x = xMin; x <= xMax; x++) {
-                    const wrappedX = ((x % nTiles) + nTiles) % nTiles;
-                    const tLon = (wrappedX + 0.5) / nTiles * 360 - 180;
-                    const tN = Math.PI - (2 * Math.PI * (y + 0.5)) / nTiles;
-                    const tLat = (180 / Math.PI) * Math.atan(Math.sinh(tN));
-                    const dLat = tLat - centerLat;
-                    const dLng = (tLon - centerLng) * cosLat;
-                    const d2 = dLat * dLat + dLng * dLng;
-                    candidateTiles.push({ z, x: wrappedX, y, d2, key: `${z}_${wrappedX}_${y}` });
+            // Hillshade-Kacheln erzeugen auf der stetigen Daten-Sphäre (Temperatur/Solar/Wind) störende Kanten,
+            // Kachel-Überlappungen und Z-Fighting (schwarze / gezackte Artefakte im Pazifik & Ozeanen).
+            // Geländerelief wird stattdessen exklusiv und Z-Fighting-frei im Topographie-Modus (OpenTopoMap/Hypsometrie) dargestellt.
+            if (hillshadeGroup && hillshadeGroup.children.length > 0) {
+                while (hillshadeGroup.children.length > 0) {
+                    const c = hillshadeGroup.children[0];
+                    hillshadeGroup.remove(c);
+                    if (c.geometry) c.geometry.dispose();
+                    if (c.material) c.material.dispose();
                 }
             }
-            candidateTiles.sort((a, b) => a.d2 - b.d2);
-            const maxTiles = (z >= 7) ? 36 : 24;
-            const activeKeys = new Set(candidateTiles.slice(0, maxTiles).map(t => t.key));
-
-            candidateTiles.slice(0, maxTiles).forEach(t => {
-                loadTileMesh(t.z, t.x, t.y, t.key);
-            });
-
-            for (const [key, tileObj] of loadedTiles.entries()) {
-                if (!activeKeys.has(key)) {
-                    if (tileObj.z !== z || (now - tileObj.lastUsed > 5000)) {
-                        hillshadeGroup.remove(tileObj.mesh);
-                        tileObj.mesh.geometry.dispose();
-                        loadedTiles.delete(key);
-                    }
-                } else {
-                    tileObj.lastUsed = now;
-                }
-            }
+            if (hillshadeGroup) hillshadeGroup.visible = false;
+            return;
         }
+
         controls.addEventListener('change', updateHillshadeTiles);
         updateHillshadeTiles();
 
@@ -5081,9 +5063,221 @@
         moonTileGroup.visible = false;
         scene.add(moonTileGroup);
 
-        let currentMoonLayer = 'photo'; // 'photo' | 'topo'
+        let currentMoonLayer = 'photo'; // 'photo' | 'topo' | 'shade'
         let moonTopoBaseTexture = null;
         let moonTopoBaseCanvas = null;
+        let moonShadeBaseTexture = null;
+        let moonShadeBaseCanvas = null;
+
+        let moonShowApollo = true;
+        let moonShowCraters = true;
+
+        // Offizielle NASA LOLA Farbskala Kontrollpunkte: [Höhe in km, R, G, B]
+        const LOLA_SCALE = [
+            [-9.1, 43, 0, 87],     // #2b0057 Südpol-Aitken (tiefstes Becken)
+            [-6.0, 0, 16, 153],    // #001099
+            [-3.0, 0, 102, 204],   // #0066cc Mare-Böden
+            [-1.0, 0, 170, 204],   // #00aacc
+            [ 0.0, 0, 204, 136],   // #00cc88 Mond-Bezugsdatum
+            [ 1.5, 136, 221, 0],   // #88dd00
+            [ 3.5, 255, 234, 0],   // #ffea00 Mittlere Hochländer
+            [ 6.0, 255, 102, 0],   // #ff6600
+            [ 8.5, 255, 0, 0],     // #ff0000
+            [10.8, 255, 255, 255]  // #ffffff Korolev Kraterrand (höchster Punkt)
+        ];
+
+        function lolaColorToElevation(r, g, b) {
+            let minDist = Infinity;
+            let bestElev = 0;
+            for (let i = 0; i < LOLA_SCALE.length - 1; i++) {
+                const p1 = LOLA_SCALE[i];
+                const p2 = LOLA_SCALE[i + 1];
+                const vx = p2[1] - p1[1], vy = p2[2] - p1[2], vz = p2[3] - p1[3];
+                const lenSq = vx * vx + vy * vy + vz * vz;
+                if (lenSq === 0) continue;
+                const wx = r - p1[1], wy = g - p1[2], wz = b - p1[3];
+                const t = Math.max(0, Math.min(1, (wx * vx + wy * vy + wz * vz) / lenSq));
+                const px = p1[1] + t * vx;
+                const py = p1[2] + t * vy;
+                const pz = p1[3] + t * vz;
+                const distSq = (r - px) * (r - px) + (g - py) * (g - py) + (b - pz) * (b - pz);
+                if (distSq < minDist) {
+                    minDist = distSq;
+                    bestElev = p1[0] + t * (p2[0] - p1[0]);
+                }
+            }
+            return bestElev; // in km
+        }
+
+        function elevationToLolaColor(km) {
+            if (km <= -9.1) return 'rgb(43, 0, 87)';
+            if (km >= 10.8) return 'rgb(255, 255, 255)';
+            for (let i = 0; i < LOLA_SCALE.length - 1; i++) {
+                const p1 = LOLA_SCALE[i];
+                const p2 = LOLA_SCALE[i + 1];
+                if (km >= p1[0] && km <= p2[0]) {
+                    const t = (km - p1[0]) / (p2[0] - p1[0]);
+                    const r = Math.round(p1[1] + t * (p2[1] - p1[1]));
+                    const g = Math.round(p1[2] + t * (p2[2] - p1[2]));
+                    const b = Math.round(p1[3] + t * (p2[3] - p1[3]));
+                    return `rgb(${r}, ${g}, ${b})`;
+                }
+            }
+            return '#00cc88';
+        }
+
+        let moonTopoSampleCanvas = null;
+        let moonTopoSampleCtx = null;
+
+        function sampleMoonTileElevationBounds(img) {
+            if (!img || !img.width || !img.height) return { minElev: -9.1, maxElev: 10.8 };
+            if (!moonTopoSampleCanvas) {
+                moonTopoSampleCanvas = document.createElement('canvas');
+                moonTopoSampleCanvas.width = 256;
+                moonTopoSampleCanvas.height = 256;
+                moonTopoSampleCtx = moonTopoSampleCanvas.getContext('2d', { willReadFrequently: true });
+            }
+            moonTopoSampleCtx.drawImage(img, 0, 0);
+            const data = moonTopoSampleCtx.getImageData(0, 0, 256, 256).data;
+            const samples = [];
+            for (let y = 8; y < 256; y += 16) {
+                for (let x = 8; x < 256; x += 16) {
+                    const idx = (y * 256 + x) * 4;
+                    const r = data[idx];
+                    const g = data[idx + 1];
+                    const b = data[idx + 2];
+                    const elev = lolaColorToElevation(r, g, b);
+                    if (elev >= -9.5 && elev <= 11.5) {
+                        samples.push(elev);
+                    }
+                }
+            }
+            if (samples.length === 0) return { minElev: -9.1, maxElev: 10.8 };
+            samples.sort((a, b) => a - b);
+            const p02 = samples[Math.floor(samples.length * 0.02)] ?? samples[0];
+            const p98 = samples[Math.floor(samples.length * 0.98)] ?? samples[samples.length - 1];
+            return { minElev: p02, maxElev: p98 };
+        }
+
+        var targetMoonMinElev = -9.1;
+        var targetMoonMaxElev = 10.8;
+        var currentVisibleMoonMinElev = -9.1;
+        var currentVisibleMoonMaxElev = 10.8;
+
+        function updateVisibleMoonElevationBounds() {
+            if (currentCelestialBody !== 'moon' || currentMoonLayer !== 'topo') return;
+
+            let visMin = Infinity;
+            let visMax = -Infinity;
+            let validCount = 0;
+
+            for (const key of activeMoonKeys) {
+                const tile = loadedMoonTiles.get(key);
+                if (tile && tile.layer === 'topo' && tile.minElev !== undefined && tile.maxElev !== undefined) {
+                    if (tile.mesh && typeof isTileVisibleOnScreen === 'function' && !isTileVisibleOnScreen(tile)) continue;
+                    if (tile.minElev < visMin) visMin = tile.minElev;
+                    if (tile.maxElev > visMax) visMax = tile.maxElev;
+                    validCount++;
+                }
+            }
+
+            if (validCount === 0) {
+                for (const key of activeMoonKeys) {
+                    const tile = loadedMoonTiles.get(key);
+                    if (tile && tile.layer === 'topo' && tile.minElev !== undefined && tile.maxElev !== undefined) {
+                        if (tile.minElev < visMin) visMin = tile.minElev;
+                        if (tile.maxElev > visMax) visMax = tile.maxElev;
+                        validCount++;
+                    }
+                }
+            }
+
+            if (validCount > 0 && visMin !== Infinity && visMax !== -Infinity) {
+                if (visMax - visMin < 0.6) {
+                    const mid = (visMin + visMax) / 2;
+                    visMin = mid - 0.3;
+                    visMax = mid + 0.3;
+                }
+                targetMoonMinElev = Math.max(-9.1, visMin);
+                targetMoonMaxElev = Math.min(10.8, visMax);
+            }
+        }
+
+        function applyDynamicMoonElevationRange(minKm, maxKm) {
+            const minEl = document.getElementById('legend-min');
+            const maxEl = document.getElementById('legend-max');
+            const ticksEl = document.getElementById('topo-legend-ticks');
+            const barEl = document.getElementById('legend-bar');
+
+            const fmt = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)} km`;
+
+            if (minEl) minEl.innerText = fmt(minKm);
+            if (maxEl) maxEl.innerText = fmt(maxKm);
+
+            if (ticksEl) {
+                const span = maxKm - minKm;
+                const v25 = minKm + 0.25 * span;
+                const v50 = minKm + 0.50 * span;
+                const v75 = minKm + 0.75 * span;
+                ticksEl.innerHTML = `
+                    <span style="flex:1; text-align:left;">25% (${fmt(v25)})</span>
+                    <span style="flex:1; text-align:center;">50% (${fmt(v50)})</span>
+                    <span style="flex:1; text-align:right;">75% (${fmt(v75)})</span>
+                `;
+                ticksEl.style.display = 'flex';
+            }
+
+            if (barEl) {
+                const span = maxKm - minKm;
+                const c0 = elevationToLolaColor(minKm);
+                const c25 = elevationToLolaColor(minKm + 0.25 * span);
+                const c50 = elevationToLolaColor(minKm + 0.50 * span);
+                const c75 = elevationToLolaColor(minKm + 0.75 * span);
+                const c100 = elevationToLolaColor(maxKm);
+                barEl.style.background = `linear-gradient(to right, ${c0}, ${c25}, ${c50}, ${c75}, ${c100})`;
+            }
+        }
+
+        let moonClickCanvas = null;
+        let moonClickCtx = null;
+
+        function getExactMoonElevation(lat, lng) {
+            if (currentMoonLayer !== 'topo') return null;
+            for (const [key, t] of loadedMoonTiles.entries()) {
+                if (t.layer !== 'topo' || !t.mesh || !t.mesh.material || !t.mesh.material.map) continue;
+                const img = t.mesh.material.map.image;
+                if (!img || !img.width) continue;
+
+                const nCols = Math.pow(2, t.z + 1);
+                const nRows = Math.pow(2, t.z);
+                const lngMin = -180 + (t.col / nCols) * 360;
+                const lngMax = -180 + ((t.col + 1) / nCols) * 360;
+                const latMax = 90 - (t.row / nRows) * 180;
+                const latMin = 90 - ((t.row + 1) / nRows) * 180;
+
+                let wrappedLng = lng;
+                while (wrappedLng < -180) wrappedLng += 360;
+                while (wrappedLng > 180) wrappedLng -= 360;
+
+                if (lat >= latMin && lat <= latMax && wrappedLng >= lngMin && wrappedLng <= lngMax) {
+                    if (!moonClickCanvas) {
+                        moonClickCanvas = document.createElement('canvas');
+                        moonClickCanvas.width = 256;
+                        moonClickCanvas.height = 256;
+                        moonClickCtx = moonClickCanvas.getContext('2d', { willReadFrequently: true });
+                    }
+                    moonClickCtx.drawImage(img, 0, 0);
+                    const u = (wrappedLng - lngMin) / (lngMax - lngMin);
+                    const v = (latMax - lat) / (latMax - latMin);
+                    const px = Math.min(255, Math.max(0, Math.floor(u * 256)));
+                    const py = Math.min(255, Math.max(0, Math.floor(v * 256)));
+                    const p = moonClickCtx.getImageData(px, py, 1, 1).data;
+                    const km = lolaColorToElevation(p[0], p[1], p[2]);
+                    return Math.round(km * 1000); // meters
+                }
+            }
+            return null;
+        }
 
         function getMoonTopoBaseTexture() {
             if (moonTopoBaseTexture) return moonTopoBaseTexture;
@@ -5093,16 +5287,15 @@
             moonTopoBaseCanvas.height = 512;
             const ctx = moonTopoBaseCanvas.getContext('2d');
 
-            // 1. Initialer hypsometrischer Mond-Gradient als sofortige Basis
             const grad = ctx.createLinearGradient(0, 512, 0, 0);
-            grad.addColorStop(0.00, '#2b0057'); // Südpol-Aitken Basin (-9.1 km)
+            grad.addColorStop(0.00, '#2b0057');
             grad.addColorStop(0.12, '#001099');
             grad.addColorStop(0.25, '#0066cc');
             grad.addColorStop(0.40, '#00cc88');
             grad.addColorStop(0.55, '#88dd00');
             grad.addColorStop(0.70, '#ffea00');
             grad.addColorStop(0.85, '#ff5500');
-            grad.addColorStop(1.00, '#ffffff'); // Korolev / lunare Hochländer (+10.8 km)
+            grad.addColorStop(1.00, '#ffffff');
             ctx.fillStyle = grad;
             ctx.fillRect(0, 0, 1024, 512);
 
@@ -5113,7 +5306,6 @@
             moonTopoBaseTexture.magFilter = THREE.LinearFilter;
             moonTopoBaseTexture.generateMipmaps = false;
 
-            // 2. Die 8 Kacheln von Zoom 1 (NASA LOLA 128ppd, 1024x512 px) asynchron stitchen
             for (let r = 0; r < 2; r++) {
                 for (let c = 0; c < 4; c++) {
                     const row = r;
@@ -5129,6 +5321,40 @@
             }
 
             return moonTopoBaseTexture;
+        }
+
+        function getMoonShadeBaseTexture() {
+            if (moonShadeBaseTexture) return moonShadeBaseTexture;
+
+            moonShadeBaseCanvas = document.createElement('canvas');
+            moonShadeBaseCanvas.width = 1024;
+            moonShadeBaseCanvas.height = 512;
+            const ctx = moonShadeBaseCanvas.getContext('2d');
+            ctx.fillStyle = '#64748b';
+            ctx.fillRect(0, 0, 1024, 512);
+
+            moonShadeBaseTexture = new THREE.CanvasTexture(moonShadeBaseCanvas);
+            moonShadeBaseTexture.wrapS = THREE.ClampToEdgeWrapping;
+            moonShadeBaseTexture.wrapT = THREE.ClampToEdgeWrapping;
+            moonShadeBaseTexture.minFilter = THREE.LinearFilter;
+            moonShadeBaseTexture.magFilter = THREE.LinearFilter;
+            moonShadeBaseTexture.generateMipmaps = false;
+
+            for (let r = 0; r < 2; r++) {
+                for (let c = 0; c < 4; c++) {
+                    const row = r;
+                    const col = c;
+                    const tileImg = new Image();
+                    tileImg.crossOrigin = 'anonymous';
+                    tileImg.onload = () => {
+                        ctx.drawImage(tileImg, col * 256, row * 256, 256, 256);
+                        moonShadeBaseTexture.needsUpdate = true;
+                    };
+                    tileImg.src = `https://trek.nasa.gov/tiles/Moon/EQ/LRO_LOLA_Shade_Global_128ppd_v04/1.0.0/default/default028mm/1/${row}/${col}.png`;
+                }
+            }
+
+            return moonShadeBaseTexture;
         }
 
         const loadedMoonTiles = new Map();
@@ -5216,10 +5442,15 @@
         }
 
         function fetchAndBuildMoonTile(z, row, col, key, layer = currentMoonLayer) {
-            const isTopo = (layer === 'topo');
-            const url = isTopo
-                ? `https://trek.nasa.gov/tiles/Moon/EQ/LRO_LOLA_ClrShade_Global_128ppd_v04/1.0.0/default/default028mm/${z}/${row}/${col}.png`
-                : `https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/${z}/${row}/${col}.jpg`;
+            let url = '';
+            if (layer === 'topo') {
+                url = `https://trek.nasa.gov/tiles/Moon/EQ/LRO_LOLA_ClrShade_Global_128ppd_v04/1.0.0/default/default028mm/${z}/${row}/${col}.png`;
+            } else if (layer === 'shade') {
+                url = `https://trek.nasa.gov/tiles/Moon/EQ/LRO_LOLA_Shade_Global_128ppd_v04/1.0.0/default/default028mm/${z}/${row}/${col}.png`;
+            } else {
+                url = `https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/${z}/${row}/${col}.jpg`;
+            }
+
             const tileLayer = layer;
             const img = new Image();
             img.crossOrigin = 'anonymous';
@@ -5243,6 +5474,16 @@
                 tex.magFilter = THREE.LinearFilter;
                 tex.needsUpdate = true;
 
+                let tileMinElev = -9.1;
+                let tileMaxElev = 10.8;
+                if (tileLayer === 'topo') {
+                    try {
+                        const bounds = sampleMoonTileElevationBounds(img);
+                        tileMinElev = bounds.minElev;
+                        tileMaxElev = bounds.maxElev;
+                    } catch (e) {}
+                }
+
                 const segs = (z <= 4) ? 12 : 8;
                 const geom = getMoonTileGeometry(row, col, z, segs, surfaceRadius + 0.04);
                 const mat = new THREE.MeshBasicMaterial({
@@ -5255,8 +5496,12 @@
                 mesh.renderOrder = 1;
                 mesh.visible = (currentMoonLayer === tileLayer);
                 moonTileGroup.add(mesh);
-                loadedMoonTiles.set(key, { z, row, col, mesh, layer: tileLayer, lastUsed: performance.now() });
+                loadedMoonTiles.set(key, { z, row, col, mesh, layer: tileLayer, minElev: tileMinElev, maxElev: tileMaxElev, lastUsed: performance.now() });
                 cleanup();
+
+                if (currentMoonLayer === 'topo') {
+                    updateVisibleMoonElevationBounds();
+                }
             };
 
             img.onerror = () => {
@@ -5291,7 +5536,7 @@
                 return;
             }
 
-            const maxZ = (currentMoonLayer === 'topo') ? 5 : 7;
+            const maxZ = (currentMoonLayer === 'topo' || currentMoonLayer === 'shade') ? 5 : 7;
             let z = 3;
             if (h <= 5) z = Math.min(maxZ, 7);
             else if (h <= 14) z = Math.min(maxZ, 6);
@@ -5387,22 +5632,77 @@
                     }
                 }
             }
+
+            if (currentMoonLayer === 'topo') {
+                updateVisibleMoonElevationBounds();
+            }
         }
         controls.addEventListener('change', () => {
             if (currentCelestialBody === 'moon') updateMoonTiles();
         });
         window.updateMoonTiles = updateMoonTiles;
 
+        function toggleMoonTopo() {
+            if (currentMoonLayer === 'topo') {
+                switchMoonLayer('photo');
+            } else {
+                switchMoonLayer('topo');
+            }
+        }
+        window.toggleMoonTopo = toggleMoonTopo;
+
+        function toggleMoonApolloLandmarks() {
+            moonShowApollo = !moonShowApollo;
+            const btn = document.getElementById('btn-moon-apollo');
+            if (btn) {
+                if (moonShowApollo) btn.classList.add('active-moon');
+                else btn.classList.remove('active-moon');
+            }
+            if (typeof renderCityLabels === 'function') renderCityLabels();
+        }
+        window.toggleMoonApolloLandmarks = toggleMoonApolloLandmarks;
+
+        function toggleMoonCraterLabels() {
+            moonShowCraters = !moonShowCraters;
+            const btn = document.getElementById('btn-moon-craters');
+            if (btn) {
+                if (moonShowCraters) btn.classList.add('active-moon');
+                else btn.classList.remove('active-moon');
+            }
+            if (typeof renderCityLabels === 'function') renderCityLabels();
+        }
+        window.toggleMoonCraterLabels = toggleMoonCraterLabels;
+
         function switchMoonLayer(layer) {
-            if (layer !== 'photo' && layer !== 'topo') layer = 'photo';
+            if (layer !== 'photo' && layer !== 'topo' && layer !== 'shade') layer = 'photo';
             currentMoonLayer = layer;
 
-            const moonSelect = document.getElementById('moonSubSelect');
-            if (moonSelect) moonSelect.value = layer;
+            const btnPhoto = document.getElementById('btn-moon-photo');
+            const btnTopo = document.getElementById('btn-moon-topo');
+            const btnShade = document.getElementById('btn-moon-shade');
+
+            if (btnPhoto) {
+                if (layer === 'photo') btnPhoto.classList.add('active-moon');
+                else btnPhoto.classList.remove('active-moon');
+            }
+            if (btnTopo) {
+                if (layer === 'topo') btnTopo.classList.add('active-topo');
+                else btnTopo.classList.remove('active-topo');
+            }
+            if (btnShade) {
+                if (layer === 'shade') btnShade.classList.add('active-moon');
+                else btnShade.classList.remove('active-moon');
+            }
 
             // Basissphäre aktualisieren
             if (earthMesh && currentCelestialBody === 'moon') {
-                earthMesh.material.map = (layer === 'topo') ? getMoonTopoBaseTexture() : moonTexture;
+                if (layer === 'topo') {
+                    earthMesh.material.map = getMoonTopoBaseTexture();
+                } else if (layer === 'shade') {
+                    earthMesh.material.map = getMoonShadeBaseTexture();
+                } else {
+                    earthMesh.material.map = moonTexture;
+                }
                 earthMesh.material.needsUpdate = true;
             }
 
@@ -5419,51 +5719,44 @@
                 item.mesh.visible = (item.layer === currentMoonLayer);
             }
 
-            // Buttons hervorheben
-            const btnTopoVis = document.getElementById('btn-topo-vis');
-            const btnSatelliteVis = document.getElementById('btn-satellite-vis');
-            if (btnTopoVis) {
-                if (layer === 'topo') btnTopoVis.classList.add('active-topo');
-                else btnTopoVis.classList.remove('active-topo');
-            }
-            if (btnSatelliteVis) {
-                if (layer === 'photo') btnSatelliteVis.classList.add('active-satellite');
-                else btnSatelliteVis.classList.remove('active-satellite');
-            }
-
             // Farblegende & UI-Titel anpassen
             const timeDisplayTitle = document.getElementById('timeDisplayTitle');
             const timeLabelEl = document.getElementById('timeLabel');
-            const legMin = document.getElementById('legend-min');
-            const legMax = document.getElementById('legend-max');
-            const legBar = document.getElementById('legend-bar');
+            const legendEl = document.getElementById('legend');
             const topoTicks = document.getElementById('topo-legend-ticks');
 
             if (layer === 'topo') {
                 if (timeDisplayTitle) timeDisplayTitle.innerText = '🌙 Mond-Atlas (LOLA Topographie)';
-                if (timeLabelEl) timeLabelEl.innerText = 'Mondoberfläche: NASA LRO LOLA Topographisches Höhenrelief & Krater';
-                if (legMin) legMin.innerText = '-9.1 km (Südpol-Aitken)';
-                if (legMax) legMax.innerText = '+10.8 km (Korolev)';
-                if (legBar) legBar.style.background = 'linear-gradient(to right, #2b0057 0%, #001099 12%, #0066cc 25%, #00cc88 40%, #88dd00 55%, #ffea00 70%, #ff5500 85%, #ffffff 100%)';
-                if (topoTicks) {
-                    topoTicks.innerHTML = `
-                        <span style="flex:1; text-align:left;">-4 km</span>
-                        <span style="flex:1; text-align:center;">0 km (Datum)</span>
-                        <span style="flex:1; text-align:right;">+5 km</span>
-                    `;
-                    topoTicks.style.display = 'flex';
-                }
+                if (timeLabelEl) timeLabelEl.innerText = 'Mondoberfläche: NASA LRO LOLA Dynamisches Höhenrelief & Krater';
+                if (legendEl) legendEl.style.display = 'flex';
+                targetMoonMinElev = -9.1;
+                targetMoonMaxElev = 10.8;
+                currentVisibleMoonMinElev = -9.1;
+                currentVisibleMoonMaxElev = 10.8;
+                applyDynamicMoonElevationRange(currentVisibleMoonMinElev, currentVisibleMoonMaxElev);
+            } else if (layer === 'shade') {
+                if (timeDisplayTitle) timeDisplayTitle.innerText = '🌙 Mond-Atlas (Schattiertes Geländerelief)';
+                if (timeLabelEl) timeLabelEl.innerText = 'Mondoberfläche: NASA LOLA Globales Schattiertes Geländerelief';
+                if (legendEl) legendEl.style.display = 'none';
+                if (topoTicks) topoTicks.style.display = 'none';
             } else {
                 if (timeDisplayTitle) timeDisplayTitle.innerText = '🌙 Mond-Atlas (Foto-Mosaik LROC HD)';
                 if (timeLabelEl) timeLabelEl.innerText = 'Mondoberfläche: NASA LROC WAC Fotomosaik & Apollo-Landestellen';
-                if (legMin) legMin.innerText = 'Maria (-8 km)';
-                if (legMax) legMax.innerText = 'Hochland (+5.5 km)';
-                if (legBar) legBar.style.background = 'linear-gradient(to right, #11151c, #2a303c, #586376, #94a3b8, #cbd5e1, #ffffff)';
+                if (legendEl) {
+                    legendEl.style.display = 'flex';
+                    const legMin = document.getElementById('legend-min');
+                    const legMax = document.getElementById('legend-max');
+                    const legBar = document.getElementById('legend-bar');
+                    if (legMin) legMin.innerText = 'Maria (-8 km)';
+                    if (legMax) legMax.innerText = 'Hochland (+5.5 km)';
+                    if (legBar) legBar.style.background = 'linear-gradient(to right, #11151c, #2a303c, #586376, #94a3b8, #cbd5e1, #ffffff)';
+                }
                 if (topoTicks) topoTicks.style.display = 'none';
             }
 
             updateMoonTiles(true);
         }
+        window.switchMoonLayer = switchMoonLayer;
         window.switchMoonLayer = switchMoonLayer;
 
         // SCREEN-SPACE WIND & CITY LABELS (Windy.com Architektur - IMMER GESTOCHEN SCHARF!)
@@ -5840,6 +6133,18 @@
                     const nextMin = Math.abs(diffMin) < 0.25 ? targetMinElev : (currentVisibleMinElev + diffMin * alpha);
                     const nextMax = Math.abs(diffMax) < 0.25 ? targetMaxElev : (currentVisibleMaxElev + diffMax * alpha);
                     applyDynamicElevationRange(nextMin, nextMax);
+                }
+            }
+
+            // Dynamische, seidenweiche hypsometrische Höhenanpassung für den Mond
+            if (currentCelestialBody === 'moon' && currentMoonLayer === 'topo') {
+                const diffMin = targetMoonMinElev - currentVisibleMoonMinElev;
+                const diffMax = targetMoonMaxElev - currentVisibleMoonMaxElev;
+                if (Math.abs(diffMin) > 0.02 || Math.abs(diffMax) > 0.02) {
+                    const alpha = 0.08;
+                    currentVisibleMoonMinElev += diffMin * alpha;
+                    currentVisibleMoonMaxElev += diffMax * alpha;
+                    applyDynamicMoonElevationRange(currentVisibleMoonMinElev, currentVisibleMoonMaxElev);
                 }
             }
             
@@ -12182,6 +12487,8 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 for (let i = 0; i < moonLandmarks.length; i++) {
                     const lm = moonLandmarks[i];
                     if (!lm.worldPos) continue;
+                    if (lm.type === 'apollo' && !moonShowApollo) continue;
+                    if (lm.type !== 'apollo' && !moonShowCraters) continue;
 
                     // Sichtbarkeitsprüfung gegen Krümmungshorizont
                     const cosA = (lm.worldPos.x * cx + lm.worldPos.y * cy + lm.worldPos.z * cz) / (surfaceRadius * dist);
@@ -14174,10 +14481,17 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 } else {
                     const latStr = `${Math.abs(clickedPopupPoint.lat).toFixed(2)}° ${clickedPopupPoint.lat >= 0 ? 'N' : 'S'}`;
                     const lngStr = `${Math.abs(clickedPopupPoint.lng).toFixed(2)}° ${clickedPopupPoint.lng >= 0 ? 'E' : 'W'}`;
+                    let elevHtml = '';
+                    if (currentMoonLayer === 'topo' && typeof getExactMoonElevation === 'function') {
+                        const elev = getExactMoonElevation(clickedPopupPoint.lat, clickedPopupPoint.lng);
+                        if (elev !== null) {
+                            elevHtml = `<div style="font-size: 11px; color: #38bdf8; margin-top: 3px; font-weight: 600;">⛰️ Geländehöhe: ${elev > 0 ? '+' : ''}${elev.toLocaleString('de-DE')} m</div>`;
+                        }
+                    }
                     popupEl.innerHTML = `
                         <div style="font-size: 11px; color: #94a3b8; margin-bottom: 2px;">🌙 Mond-Koordinate</div>
                         <strong style="font-size: 13px; color: #f1f5f9;">${latStr}, ${lngStr}</strong><br>
-                        <span style="font-size: 10px; color: #64748b;">Mondkruste / Regolith</span>
+                        ${elevHtml || '<span style="font-size: 10px; color: #64748b;">Mondkruste / Regolith</span>'}
                     `;
                 }
                 return;
@@ -14978,7 +15292,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 topoTileGroup.visible = false;
                 if (typeof topoBaseMesh !== 'undefined' && topoBaseMesh) topoBaseMesh.visible = false;
                 dataMesh.visible = true;
-                hillshadeGroup.visible = true;
+                hillshadeGroup.visible = false;
 
                 if (mode === 'temp') {
                     document.getElementById('legend-min').innerText = '-30°C';
