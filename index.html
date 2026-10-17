@@ -15206,14 +15206,15 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
         function switchLayer(mode) {
             if (currentCelestialBody === 'moon') {
                 if (mode === 'topo') {
-                    switchMoonLayer('topo');
+                    toggleMoonTopo();
                     return;
                 }
                 if (mode === 'satellite') {
                     switchMoonLayer('photo');
                     return;
                 }
-                switchCelestialBody('earth');
+                switchCelestialBody('earth', mode);
+                return;
             }
             currentMode = mode;
 
@@ -15225,12 +15226,14 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             const btnTempVis = document.getElementById('btn-temp-vis');
             const btnSolarVis = document.getElementById('btn-solar-vis');
             const btnCloudsVis = document.getElementById('btn-clouds-vis');
+            const btnWindVis = document.getElementById('btn-wind-vis');
             const btnTopoVis = document.getElementById('btn-topo-vis');
             const btnSatelliteVis = document.getElementById('btn-satellite-vis');
             const btnMoonVis = document.getElementById('btn-moon-vis');
             if (btnTempVis) btnTempVis.className = 'layer-toggle-btn' + (mode === 'temp' ? ' active' : '');
             if (btnSolarVis) btnSolarVis.className = 'layer-toggle-btn' + (mode === 'solar' ? ' active-solar' : '');
             if (btnCloudsVis) btnCloudsVis.className = 'layer-toggle-btn' + (mode === 'clouds' ? ' active-clouds' : '');
+            if (btnWindVis) btnWindVis.className = 'layer-toggle-btn' + (mode === 'wind' ? ' active' : '');
             if (btnTopoVis) btnTopoVis.className = 'layer-toggle-btn' + (mode === 'topo' ? ' active-topo' : '');
             if (btnSatelliteVis) btnSatelliteVis.className = 'layer-toggle-btn' + (mode === 'satellite' ? ' active-satellite' : '');
             if (btnMoonVis) btnMoonVis.className = 'layer-toggle-btn';
@@ -15352,31 +15355,22 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
 
         // CELESTIAL BODY WECHSLER (🌍 ERDE <-> 🌙 MOND)
         let lastEarthMode = 'temp';
-        function switchCelestialBody(body) {
+        function switchCelestialBody(body, targetEarthMode) {
             const prevBody = currentCelestialBody;
             currentCelestialBody = body;
 
-            const btnEarth = document.getElementById('celestial-btn-earth');
-            const btnMoon = document.getElementById('celestial-btn-moon');
-            const btnMoonVis = document.getElementById('btn-moon-vis');
+            // Beide Toggle-Elemente synchronisieren (im Suchcontainer & im Timeline-Dock)
+            document.querySelectorAll('.celestial-btn').forEach(btn => {
+                if (btn.id === 'celestial-btn-earth' || btn.textContent.includes('Erde')) {
+                    btn.className = 'celestial-btn' + (body === 'earth' ? ' active' : '');
+                } else if (btn.id === 'celestial-btn-moon' || btn.textContent.includes('Mond')) {
+                    btn.className = 'celestial-btn' + (body === 'moon' ? ' active' : '');
+                }
+            });
+
             const searchInput = document.getElementById('searchInput');
-
-            if (btnEarth) btnEarth.className = 'celestial-btn' + (body === 'earth' ? ' active' : '');
-            if (btnMoon) btnMoon.className = 'celestial-btn' + (body === 'moon' ? ' active' : '');
-
-            const earthButtons = [
-                document.getElementById('btn-temp-vis'),
-                document.getElementById('btn-solar-vis'),
-                document.getElementById('btn-clouds-vis'),
-                document.getElementById('btn-topo-vis'),
-                document.getElementById('btn-satellite-vis'),
-                document.getElementById('btn-route-vis'),
-                document.getElementById('btn-area-vis'),
-                document.getElementById('solarClimSelectWrap'),
-                document.getElementById('topoSubSelectWrap'),
-                document.getElementById('pvQuickBtn'),
-                document.getElementById('pvZunQuickBtn')
-            ];
+            const earthControlsBar = document.getElementById('earth-controls-bar');
+            const moonControlsBar = document.getElementById('moon-controls-bar');
 
             const playBtn = document.getElementById('playBtn');
             const playSpeedBtn = document.getElementById('playSpeedBtn');
@@ -15390,6 +15384,10 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                     lastEarthMode = currentMode || 'temp';
                 }
 
+                // Dock-Steuerungsleisten: Erde ausblenden, Mond einblenden
+                if (earthControlsBar) earthControlsBar.style.display = 'none';
+                if (moonControlsBar) moonControlsBar.style.display = 'flex';
+
                 // Animation & Zeitleiste anhalten & ausblenden
                 if (playAnimId) {
                     cancelAnimationFrame(playAnimId);
@@ -15401,18 +15399,9 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 if (timeSlider) timeSlider.style.display = 'none';
                 if (timeLabels) timeLabels.style.display = 'none';
 
-                // Alle irdischen Ebenen-Buttons deaktivieren
-                const allVisBtns = document.querySelectorAll('.layer-toggle-btn');
-                allVisBtns.forEach(b => {
-                    b.classList.remove('active', 'active-solar', 'active-clouds', 'active-topo', 'active-satellite');
-                });
-                if (btnMoonVis) {
-                    btnMoonVis.className = 'layer-toggle-btn active-moon';
-                }
-
                 // Dropdowns konfigurieren: Mond-Sub-Auswahl anzeigen, irdische ausblenden
                 const moonWrap = document.getElementById('moonSubSelectWrap');
-                if (moonWrap) moonWrap.style.display = 'flex';
+                if (moonWrap) moonWrap.style.display = 'none';
                 const topoWrap = document.getElementById('topoSubSelectWrap');
                 if (topoWrap) topoWrap.style.display = 'none';
                 const climWrap = document.getElementById('solarClimSelectWrap');
@@ -15437,9 +15426,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 if (typeof cloudMesh !== 'undefined' && cloudMesh) cloudMesh.visible = false;
                 if (typeof cloudShadowMesh !== 'undefined' && cloudShadowMesh) cloudShadowMesh.visible = false;
 
-                // Wetter-Overlays & Pill-Buttons auf dem Mond ausblenden
-                const overlayPills = document.querySelectorAll('.overlay-pill, .overlay-divider');
-                overlayPills.forEach(p => p.style.display = 'none');
+                // Wetter-Overlays Dropdown schließen
                 const overlayPanel = document.getElementById('overlay-menu-panel');
                 if (overlayPanel) overlayPanel.style.display = 'none';
 
@@ -15451,15 +15438,27 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 // Mond-Textur & hochauflösendes Kachelrelief aktivieren
                 if (earthMesh) {
                     earthMesh.visible = true;
-                    earthMesh.material.map = (currentMoonLayer === 'topo') ? getMoonTopoBaseTexture() : moonTexture;
+                    earthMesh.material.map = (currentMoonLayer === 'topo') ? getMoonTopoBaseTexture() : ((currentMoonLayer === 'shade') ? getMoonShadeBaseTexture() : moonTexture);
                     earthMesh.material.needsUpdate = true;
                 }
                 if (typeof moonTileGroup !== 'undefined' && moonTileGroup) {
                     moonTileGroup.visible = true;
                 }
 
-                // Mond-Ebene (Foto vs Topographie) anwenden (aktualisiert Farblegende, Ticks, Titel und Kacheln)
+                // Mond-Ebene (Foto vs Topographie vs Relief) anwenden
                 switchMoonLayer(currentMoonLayer || 'photo');
+
+                // Apollo / Krater Toggles im Mond-Dock synchronisieren
+                const btnApollo = document.getElementById('btn-moon-apollo');
+                if (btnApollo) {
+                    if (moonShowApollo) btnApollo.classList.add('active-moon');
+                    else btnApollo.classList.remove('active-moon');
+                }
+                const btnCraters = document.getElementById('btn-moon-craters');
+                if (btnCraters) {
+                    if (moonShowCraters) btnCraters.classList.add('active-moon');
+                    else btnCraters.classList.remove('active-moon');
+                }
 
                 // Suchleisten-Platzhalter anpassen
                 if (searchInput) {
@@ -15482,7 +15481,9 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
 
             } else {
                 // ZURÜCK ZUR ERDE
-                if (btnMoonVis) btnMoonVis.className = 'layer-toggle-btn';
+                // Dock-Steuerungsleisten: Mond ausblenden, Erde einblenden
+                if (earthControlsBar) earthControlsBar.style.display = 'flex';
+                if (moonControlsBar) moonControlsBar.style.display = 'none';
 
                 const moonWrap = document.getElementById('moonSubSelectWrap');
                 if (moonWrap) moonWrap.style.display = 'none';
@@ -15532,7 +15533,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 }
 
                 // Zuletzt aktiven Erd-Modus wiederherstellen
-                switchLayer(lastEarthMode || 'temp');
+                switchLayer(targetEarthMode || lastEarthMode || 'temp');
             }
 
             if (typeof renderCityLabels === 'function') {
@@ -15947,11 +15948,15 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
         function toggleRoutePlanner(show) {
             const container = document.getElementById('route-container');
             const btn = document.getElementById('btn-route-vis');
+            const btnMoon = document.getElementById('btn-moon-route');
             if (!container) return;
             const willShow = (show !== undefined) ? !!show : (container.style.display === 'none');
             container.style.display = willShow ? 'block' : 'none';
             if (btn) {
                 btn.className = 'layer-toggle-btn' + (willShow ? ' active' : '');
+            }
+            if (btnMoon) {
+                btnMoon.className = 'layer-toggle-btn' + (willShow ? ' active-moon' : '');
             }
             if (willShow) {
                 renderRouteWaypointsList();
@@ -16900,11 +16905,13 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
         function toggleAreaMeasure(forceState) {
             const container = document.getElementById('area-measure-container');
             const btn = document.getElementById('btn-area-vis');
+            const btnMoon = document.getElementById('btn-moon-area');
             const shouldOpen = (forceState !== undefined) ? forceState : (container.style.display === 'none' || !container.style.display);
 
             if (shouldOpen) {
                 container.style.display = 'block';
                 if (btn) btn.classList.add('active');
+                if (btnMoon) btnMoon.classList.add('active-moon');
                 areaMeasureState.active = true;
                 if (!areaMeasureState.isDrawing && areaMeasureState.points.length === 0) {
                     setAreaDrawing(true);
@@ -16912,6 +16919,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             } else {
                 container.style.display = 'none';
                 if (btn) btn.classList.remove('active');
+                if (btnMoon) btnMoon.classList.remove('active-moon');
                 areaMeasureState.active = false;
                 setAreaDrawing(false);
             }
