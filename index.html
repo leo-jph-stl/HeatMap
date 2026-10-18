@@ -3082,6 +3082,7 @@
         moonTexture.magFilter = THREE.LinearFilter;
         moonTexture.generateMipmaps = true;
 
+        const defaultMoonMaterial = new THREE.MeshBasicMaterial({ map: moonTexture });
         const moonBumpTexture = textureLoader.load('assets/moon_bump.jpg');
         moonBumpTexture.wrapS = THREE.ClampToEdgeWrapping;
         moonBumpTexture.wrapT = THREE.ClampToEdgeWrapping;
@@ -5085,6 +5086,76 @@
             [10.8, 255, 255, 255]  // #ffffff Korolev Kraterrand (höchster Punkt)
         ];
 
+        const moonTopoFragmentShader = `
+            precision highp float;
+            uniform sampler2D u_tile;
+            uniform sampler2D u_colorRamp;
+            uniform float u_minElev;
+            uniform float u_maxElev;
+            varying vec2 vUv;
+
+            vec3 rgb2hsv(vec3 c) {
+                vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+                vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+                vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+                float d = q.x - min(q.w, q.y);
+                float e = 1.0e-10;
+                return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+            }
+
+            float getMoonElevKm(vec3 col) {
+                vec3 hsv = rgb2hsv(col);
+                float h = hsv.x * 360.0;
+                float s = hsv.y;
+                if (h < 15.0 && s < 0.96) {
+                    return 8.5 + (1.0 - s) * (10.8 - 8.5);
+                }
+                if (h >= 233.7) return -9.1 + (269.7 - h) / (269.7 - 233.7) * (-6.0 - (-9.1));
+                if (h >= 210.0) return -6.0 + (233.7 - h) / (233.7 - 210.0) * (-3.0 - (-6.0));
+                if (h >= 190.0) return -3.0 + (210.0 - h) / (210.0 - 190.0) * (-1.0 - (-3.0));
+                if (h >= 160.0) return -1.0 + (190.0 - h) / (190.0 - 160.0) * ( 0.0 - (-1.0));
+                if (h >=  83.1) return  0.0 + (160.0 - h) / (160.0 -  83.1) * ( 1.5 -   0.0);
+                if (h >=  55.1) return  1.5 + ( 83.1 - h) / ( 83.1 -  55.1) * ( 3.5 -   1.5);
+                if (h >=  24.0) return  3.5 + ( 55.1 - h) / ( 55.1 -  24.0) * ( 6.0 -   3.5);
+                if (h >=   0.0) return  6.0 + ( 24.0 - h) / ( 24.0 -   0.0) * ( 8.5 -   6.0);
+                return 8.5;
+            }
+
+            void main() {
+                vec4 texCol = texture2D(u_tile, vUv);
+                float elev = getMoonElevKm(texCol.rgb);
+                float span = max(0.08, u_maxElev - u_minElev);
+                float norm = clamp((elev - u_minElev) / span, 0.0, 1.0);
+                vec3 col = texture2D(u_colorRamp, vec2(norm, 0.5)).rgb;
+                vec3 hsv = rgb2hsv(texCol.rgb);
+                float hillshade = clamp(hsv.z * 1.35, 0.35, 1.45);
+                gl_FragColor = vec4(col * hillshade, 1.0);
+            }
+        `;
+
+        let moonBaseShaderMat = null;
+        function getMoonTopoBaseMaterial() {
+            if (!moonBaseShaderMat) {
+                moonBaseShaderMat = new THREE.ShaderMaterial({
+                    vertexShader: `
+                        varying vec2 vUv;
+                        void main() {
+                            vUv = uv;
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        }
+                    `,
+                    fragmentShader: moonTopoFragmentShader,
+                    uniforms: {
+                        u_tile: { value: getMoonTopoBaseTexture() },
+                        u_colorRamp: { value: colorRampTopoTex },
+                        u_minElev: { value: currentVisibleMoonMinElev },
+                        u_maxElev: { value: currentVisibleMoonMaxElev }
+                    }
+                });
+            }
+            return moonBaseShaderMat;
+        }
+
         function lolaColorToElevation(r, g, b) {
             let minDist = Infinity;
             let bestElev = 0;
@@ -5138,22 +5209,20 @@
             }
             moonTopoSampleCtx.drawImage(img, 0, 0);
             const data = moonTopoSampleCtx.getImageData(0, 0, 256, 256).data;
-            const samples = [];
+            let minE = 100.0;
+            let maxE = -100.0;
             for (let y = 4; y < 256; y += 8) {
                 for (let x = 4; x < 256; x += 8) {
                     const idx = (y * 256 + x) * 4;
-                    const r = data[idx];
-                    const g = data[idx + 1];
-                    const b = data[idx + 2];
-                    const elev = lolaColorToElevation(r, g, b);
+                    const elev = lolaColorToElevation(data[idx], data[idx + 1], data[idx + 2]);
                     if (elev >= -9.5 && elev <= 11.5) {
-                        samples.push(elev);
+                        if (elev < minE) minE = elev;
+                        if (elev > maxE) maxE = elev;
                     }
                 }
             }
-            if (samples.length === 0) return { minElev: -9.1, maxElev: 10.8 };
-            samples.sort((a, b) => a - b);
-            return { minElev: samples[0], maxElev: samples[samples.length - 1] };
+            if (minE > maxE) return { minElev: -9.1, maxElev: 10.8 };
+            return { minElev: minE, maxElev: maxE };
         }
 
         var targetMoonMinElev = -9.1;
@@ -5194,19 +5263,47 @@
             }
 
             if (validCount > 0 && visMin !== Infinity && visMax !== -Infinity) {
-                if (visMax - visMin < 0.6) {
+                if (visMax - visMin < 0.3) {
                     const mid = (visMin + visMax) / 2;
-                    visMin = mid - 0.3;
-                    visMax = mid + 0.3;
+                    visMin = mid - 0.15;
+                    visMax = mid + 0.15;
                 }
-                targetMoonMinElev = Math.max(-9.1, visMin);
-                targetMoonMaxElev = Math.min(10.8, visMax);
+                const span = visMax - visMin;
+                let step = 0.1;
+                if (span < 1.0) step = 0.05;
+                else if (span < 3.0) step = 0.1;
+                else if (span < 8.0) step = 0.2;
+                else step = 0.5;
+
+                const tMin = Math.floor(visMin / step) * step;
+                let tMax = Math.ceil(visMax / step) * step;
+                if (tMax - tMin < 0.3) tMax = tMin + 0.3;
+
+                targetMoonMinElev = Math.max(-9.1, tMin);
+                targetMoonMaxElev = Math.min(10.8, tMax);
             }
         }
 
         function applyDynamicMoonElevationRange(minKm, maxKm) {
             if (currentCelestialBody !== 'moon' || currentMoonLayer !== 'topo') return;
 
+            currentVisibleMoonMinElev = minKm;
+            currentVisibleMoonMaxElev = maxKm;
+
+            // 1. Uniforms aller aktiven Mondkacheln und der Basissphäre aktualisieren (dynamische Neufärbung)
+            for (const [key, tileObj] of loadedMoonTiles.entries()) {
+                if (tileObj.mesh && tileObj.mesh.material && tileObj.mesh.material.uniforms) {
+                    const u = tileObj.mesh.material.uniforms;
+                    if (u.u_minElev) u.u_minElev.value = minKm;
+                    if (u.u_maxElev) u.u_maxElev.value = maxKm;
+                }
+            }
+            if (moonBaseShaderMat && moonBaseShaderMat.uniforms) {
+                if (moonBaseShaderMat.uniforms.u_minElev) moonBaseShaderMat.uniforms.u_minElev.value = minKm;
+                if (moonBaseShaderMat.uniforms.u_maxElev) moonBaseShaderMat.uniforms.u_maxElev.value = maxKm;
+            }
+
+            // 2. Farblegende aktualisieren (identisch zur Erde)
             const minEl = document.getElementById('legend-min');
             const maxEl = document.getElementById('legend-max');
             const ticksEl = document.getElementById('topo-legend-ticks');
@@ -5234,13 +5331,8 @@
             }
 
             if (barEl) {
-                const span = maxKm - minKm;
-                const c0 = elevationToLolaColor(minKm);
-                const c25 = elevationToLolaColor(minKm + 0.25 * span);
-                const c50 = elevationToLolaColor(minKm + 0.50 * span);
-                const c75 = elevationToLolaColor(minKm + 0.75 * span);
-                const c100 = elevationToLolaColor(maxKm);
-                barEl.style.background = `linear-gradient(to right, ${c0}, ${c25}, ${c50}, ${c75}, ${c100})`;
+                barEl.style.display = '';
+                barEl.style.background = topoGradientCss;
             }
         }
 
@@ -5257,8 +5349,10 @@
             while (wrappedLng > 180) wrappedLng -= 360;
 
             for (const [key, t] of loadedMoonTiles.entries()) {
-                if (t.layer !== 'topo' || !t.mesh || !t.mesh.material || !t.mesh.material.map) continue;
-                const img = t.mesh.material.map.image;
+                if (t.layer !== 'topo' || !t.mesh || !t.mesh.material) continue;
+                const tex = t.mesh.material.map || (t.mesh.material.uniforms && t.mesh.material.uniforms.u_tile ? t.mesh.material.uniforms.u_tile.value : null);
+                if (!tex) continue;
+                const img = tex.image;
                 if (!img || !img.width) continue;
 
                 const nCols = Math.pow(2, t.z + 1);
@@ -5293,6 +5387,20 @@
                 const km = lolaColorToElevation(p[0], p[1], p[2]);
                 return Math.round(km * 1000); // meters
             }
+
+            if (moonTopoBaseCanvas) {
+                const u = (wrappedLng + 180) / 360;
+                const v = (90 - lat) / 180;
+                const px = Math.min(1023, Math.max(0, Math.floor(u * 1024)));
+                const py = Math.min(511, Math.max(0, Math.floor(v * 512)));
+                const ctx = moonTopoBaseCanvas.getContext('2d');
+                if (ctx) {
+                    const p = ctx.getImageData(px, py, 1, 1).data;
+                    const km = lolaColorToElevation(p[0], p[1], p[2]);
+                    return Math.round(km * 1000);
+                }
+            }
+
             return null;
         }
 
@@ -5501,14 +5609,37 @@
                     } catch (e) {}
                 }
 
-                const segs = (z <= 4) ? 12 : 8;
+                const segs = (z <= 2) ? 16 : ((z <= 4) ? 12 : 8);
                 const geom = getMoonTileGeometry(row, col, z, segs, surfaceRadius + 0.04);
-                const mat = new THREE.MeshBasicMaterial({
-                    map: tex,
-                    side: THREE.FrontSide,
-                    depthWrite: true,
-                    depthTest: true
-                });
+                let mat;
+                if (tileLayer === 'topo') {
+                    mat = new THREE.ShaderMaterial({
+                        vertexShader: `
+                            varying vec2 vUv;
+                            void main() {
+                                vUv = uv;
+                                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                            }
+                        `,
+                        fragmentShader: moonTopoFragmentShader,
+                        uniforms: {
+                            u_tile: { value: tex },
+                            u_colorRamp: { value: colorRampTopoTex },
+                            u_minElev: { value: currentVisibleMoonMinElev },
+                            u_maxElev: { value: currentVisibleMoonMaxElev }
+                        },
+                        side: THREE.FrontSide,
+                        depthWrite: true,
+                        depthTest: true
+                    });
+                } else {
+                    mat = new THREE.MeshBasicMaterial({
+                        map: tex,
+                        side: THREE.FrontSide,
+                        depthWrite: true,
+                        depthTest: true
+                    });
+                }
                 const mesh = new THREE.Mesh(geom, mat);
                 mesh.renderOrder = 1;
                 mesh.visible = (currentMoonLayer === tileLayer);
@@ -5545,21 +5676,21 @@
             lastMoonTileUpdate = now;
 
             const dist = camera.position.length();
-            const h = Math.max(1, dist - earthRadius);
+            const h = Math.max(0.01, dist - earthRadius);
 
-            // Bei weitem Abstand (h > 100) reicht die Basissphäre völlig aus!
-            if (h > 100) {
+            if (h > 450) {
                 moonTileQueue.length = 0;
                 return;
             }
 
             const maxZ = (currentMoonLayer === 'topo' || currentMoonLayer === 'shade') ? 5 : 7;
-            let z = 3;
+            let z = 2;
             if (h <= 5) z = Math.min(maxZ, 7);
             else if (h <= 14) z = Math.min(maxZ, 6);
             else if (h <= 32) z = Math.min(maxZ, 5);
-            else if (h <= 65) z = Math.min(maxZ, 4);
-            else z = 3;
+            else if (h <= 70) z = Math.min(maxZ, 4);
+            else if (h <= 140) z = 3;
+            else z = 2;
 
             const Px = camera.position.z;
             const Py = camera.position.y;
@@ -5573,13 +5704,16 @@
             const nCols = Math.pow(2, z + 1);
             const nRows = Math.pow(2, z);
 
-            const fovRad = (camera.fov * Math.PI) / 180;
-            const viewAngle = 2 * Math.asin(Math.min(1.0, Math.tan(fovRad / 2) * (dist / surfaceRadius)));
-            const degSpan = Math.min(100, Math.max(8, (viewAngle * 180 / Math.PI) * 1.25));
+            const aspect = Math.max(1.0, window.innerWidth / Math.max(1, window.innerHeight));
+            const tanFovHalf = Math.tan((camera.fov * Math.PI / 180) / 2);
+            const horizonRad = Math.acos(Math.min(1.0, earthRadius / dist));
+            const horizonDeg = horizonRad * (180 / Math.PI);
+            const fovGroundDeg = (tanFovHalf * (h * 2.2) / earthRadius) * (180 / Math.PI);
+            const groundSpanDeg = Math.max(1.0, Math.min(horizonDeg * 0.98, fovGroundDeg));
 
-            const latSpan = degSpan / 2;
             const cosLat = Math.max(0.2, Math.cos(centerLat * Math.PI / 180));
-            const lngSpan = Math.min(180, latSpan / cosLat);
+            const latSpan = groundSpanDeg;
+            const lngSpan = Math.min(180, (groundSpanDeg * aspect) / cosLat);
 
             const latMin = Math.max(-90, centerLat - latSpan);
             const latMax = Math.min(90, centerLat + latSpan);
@@ -5610,7 +5744,7 @@
             }
 
             candidateTiles.sort((a, b) => a.d2 - b.d2);
-            const maxTiles = 28;
+            const maxTiles = 36;
             activeMoonKeys.clear();
             const activeList = candidateTiles.slice(0, maxTiles);
             activeList.forEach(t => activeMoonKeys.add(t.key));
@@ -5632,18 +5766,21 @@
                 }
             }
 
-            if (loadedMoonTiles.size > 120) {
+            if (loadedMoonTiles.size > 140) {
                 const sorted = Array.from(loadedMoonTiles.entries())
                     .filter(([k, t]) => !activeMoonKeys.has(k))
                     .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
 
-                const removeCount = loadedMoonTiles.size - 100;
+                const removeCount = loadedMoonTiles.size - 110;
                 for (let i = 0; i < Math.min(removeCount, sorted.length); i++) {
                     const [k, t] = sorted[i];
                     if (t.z !== z || (now - t.lastUsed > 6000)) {
                         moonTileGroup.remove(t.mesh);
                         t.mesh.geometry.dispose();
                         if (t.mesh.material.map) t.mesh.material.map.dispose();
+                        if (t.mesh.material.uniforms && t.mesh.material.uniforms.u_tile && t.mesh.material.uniforms.u_tile.value) {
+                            t.mesh.material.uniforms.u_tile.value.dispose();
+                        }
                         t.mesh.material.dispose();
                         loadedMoonTiles.delete(k);
                     }
@@ -5714,12 +5851,15 @@
             // Basissphäre aktualisieren
             if (earthMesh && currentCelestialBody === 'moon') {
                 if (layer === 'topo') {
-                    earthMesh.material.map = getMoonTopoBaseTexture();
+                    earthMesh.material = getMoonTopoBaseMaterial();
                 } else if (layer === 'shade') {
+                    earthMesh.material = defaultMoonMaterial;
                     earthMesh.material.map = getMoonShadeBaseTexture();
                 } else {
+                    earthMesh.material = defaultMoonMaterial;
                     earthMesh.material.map = moonTexture;
                 }
+                earthMesh.material.visible = true;
                 earthMesh.material.needsUpdate = true;
             }
 
@@ -6163,11 +6303,11 @@
             if (currentCelestialBody === 'moon' && currentMoonLayer === 'topo') {
                 const diffMin = targetMoonMinElev - currentVisibleMoonMinElev;
                 const diffMax = targetMoonMaxElev - currentVisibleMoonMaxElev;
-                if (Math.abs(diffMin) > 0.02 || Math.abs(diffMax) > 0.02) {
+                if (Math.abs(diffMin) > 0.01 || Math.abs(diffMax) > 0.01) {
                     const alpha = 0.08;
-                    currentVisibleMoonMinElev += diffMin * alpha;
-                    currentVisibleMoonMaxElev += diffMax * alpha;
-                    applyDynamicMoonElevationRange(currentVisibleMoonMinElev, currentVisibleMoonMaxElev);
+                    const nextMin = Math.abs(diffMin) < 0.03 ? targetMoonMinElev : (currentVisibleMoonMinElev + diffMin * alpha);
+                    const nextMax = Math.abs(diffMax) < 0.03 ? targetMoonMaxElev : (currentVisibleMoonMaxElev + diffMax * alpha);
+                    applyDynamicMoonElevationRange(nextMin, nextMax);
                 }
             }
             
@@ -15468,9 +15608,6 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 // Mond-Textur & hochauflösendes Kachelrelief aktivieren
                 if (earthMesh) {
                     earthMesh.visible = true;
-                    earthMesh.material.visible = true;
-                    earthMesh.material.map = (currentMoonLayer === 'topo') ? getMoonTopoBaseTexture() : ((currentMoonLayer === 'shade') ? getMoonShadeBaseTexture() : moonTexture);
-                    earthMesh.material.needsUpdate = true;
                 }
                 if (typeof moonTileGroup !== 'undefined' && moonTileGroup) {
                     moonTileGroup.visible = true;
@@ -15536,6 +15673,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
 
                 // Erd-Textur wiederherstellen (auf der Erde bleibt die Basiskugel unsichtbar, um Z-Fighting zu verhindern)
                 if (earthMesh) {
+                    earthMesh.material = earthMaterial;
                     earthMesh.material.visible = false;
                     earthMesh.material.map = earthTexture;
                     earthMesh.material.needsUpdate = true;
