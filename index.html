@@ -2778,12 +2778,12 @@
                     <span class="overlay-icon">🌧️</span>
                     <div class="overlay-text">
                         <strong>Niederschlag (Regen &amp; Schnee)</strong>
-                        <small id="precip-desc-label">Kartographische Schraffur (Grau): Dicht = Regen, Weit = Schnee</small>
+                        <small id="precip-desc-label">Feine Schraffur (Grau): Linien = Regen, * = Schnee</small>
                     </div>
                 </label>
                 <div id="precip-style-picker" style="display: flex; gap: 6px; padding: 2px 12px 8px 40px;">
-                    <button type="button" id="btn-precip-dots" class="precip-style-btn active" onclick="setPrecipHatchStyle('dots')" style="font-size: 11px; padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.35); background: rgba(255,255,255,0.20); color: #fff; cursor: pointer;">Muster A/B (Punktraster)</button>
-                    <button type="button" id="btn-precip-lines" class="precip-style-btn" onclick="setPrecipHatchStyle('lines')" style="font-size: 11px; padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: #94a3b8; cursor: pointer;">Linienschraffur (///)</button>
+                    <button type="button" id="btn-precip-lines" class="precip-style-btn active" onclick="setPrecipHatchStyle('lines')" style="font-size: 11px; padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.35); background: rgba(255,255,255,0.20); color: #fff; cursor: pointer;">Feine Linien (/// &amp; *)</button>
+                    <button type="button" id="btn-precip-dots" class="precip-style-btn" onclick="setPrecipHatchStyle('dots')" style="font-size: 11px; padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.25); color: #94a3b8; cursor: pointer;">Feine Punkte (• &amp; *)</button>
                 </div>
                 <label class="overlay-checkbox-row">
                     <input type="checkbox" id="chk-overlay-ht" checked onchange="toggleOverlay('ht', this.checked)">
@@ -4056,7 +4056,7 @@
                     float cellWisp = (billow - 0.50) * 0.22 * edgeMask;
                     float cloudDensity = clamp(rawCloud + edgeWisp + cellWisp, 0.0, 1.0);
 
-                    if (cloudDensity < 0.012) {
+                    if (cloudDensity < 0.005) {
                         discard;
                     }
 
@@ -4075,14 +4075,18 @@
                     vec2 lightDir = normalize(vec2(-0.55, 0.83));
                     float hillLight = clamp(0.70 + dot(vec2(gradU, gradV), lightDir) * 0.36 + (billow - 0.5) * 0.24, 0.44, 1.0);
 
-                    // Feine, kontrastreiche Wolkenpalette:
-                    // Deeper shadowBase verhindert das 'Verwaschen' auf grellem Gelb/Grün
-                    vec3 shadowBase = vec3(0.55, 0.62, 0.72); // Plastisch kühle Tiefenschattierung
-                    vec3 cloudBody  = vec3(0.94, 0.96, 0.98); // Natürlicher, reiner Wolkenkörper
-                    vec3 cloudPeak  = vec3(1.00, 1.00, 1.00); // Strahlend weiße Wolkenkämme
+                    // Kontraststarke, plastische Wolkenpalette:
+                    // Dünne Zirren & Schleierwolken erhalten eine kühle Schiefer-/Silbertönung,
+                    // damit sie auf grellem Gelb/Grün der Temperaturkarte plastisch und brillant hervortreten!
+                    vec3 shadowBase    = vec3(0.50, 0.58, 0.68); // Plastisch kühle Tiefenschattierung
+                    vec3 thinCloudTint = vec3(0.62, 0.70, 0.80); // Zartes, silbrig-kühles Wolken-Schiefer für feine Zirren
+                    vec3 cloudBody     = vec3(0.95, 0.97, 0.99); // Natürlicher, reiner Wolkenkörper
+                    vec3 cloudPeak     = vec3(1.00, 1.00, 1.00); // Strahlend weiße Wolkenkämme
 
-                    vec3 cloudCol = mix(shadowBase, cloudBody, smoothstep(0.44, 0.74, hillLight));
-                    cloudCol = mix(cloudCol, cloudPeak, pow(smoothstep(0.65, 1.0, hillLight), 1.5) * 0.55 + smoothstep(0.38, 0.88, cloudDensity) * 0.35);
+                    vec3 bodyCol = mix(shadowBase, cloudBody, smoothstep(0.38, 0.72, hillLight));
+                    float thinMix = smoothstep(0.005, 0.32, cloudDensity);
+                    vec3 cloudCol = mix(thinCloudTint, bodyCol, thinMix);
+                    cloudCol = mix(cloudCol, cloudPeak, pow(smoothstep(0.65, 1.0, hillLight), 1.5) * 0.55 + smoothstep(0.35, 0.85, cloudDensity) * 0.35);
 
                     // Sanfter Dämmerungsglanz an der Tag-/Nachtgrenze
                     vec3 sphereNorm = normalize(vNormal);
@@ -4090,11 +4094,12 @@
                     float twilight = (1.0 - abs(sunDot) / 0.15) * step(abs(sunDot), 0.15);
                     cloudCol = mix(cloudCol, cloudCol * vec3(1.0, 0.84, 0.70), twilight * 0.25);
 
-                    // Fotorealistische zweistufige Deckkraftkurve:
-                    // Dünne Cirren (0.012 .. 0.40) lassen Temperaturfarben durch (alpha 0.18..0.55)
-                    // Dichte Fronten & Sturmkerne (0.40 .. 0.85) werden massiv, strahlend weiß (alpha 0.85..0.98)
-                    float alphaThin = smoothstep(0.012, 0.45, cloudDensity) * 0.60;
-                    float alphaDense = smoothstep(0.35, 0.82, cloudDensity) * 0.40;
+                    // Sanft ansprechende Deckkraftkurve:
+                    // Auch zarte Schleier- und Zirruswolken (0.005 .. 0.35) erhalten eine sichtbare, sanfte Deckkraft (16% .. 55%),
+                    // während dichte Sturmkerne (0.35 .. 0.85) strahlend weiß und blickdicht (bis 98%) werden.
+                    float normThin = clamp((cloudDensity - 0.005) / 0.35, 0.0, 1.0);
+                    float alphaThin = pow(normThin, 0.52) * 0.52;
+                    float alphaDense = smoothstep(0.28, 0.78, cloudDensity) * 0.46;
                     float alpha = clamp((alphaThin + alphaDense) * u_opacity, 0.0, 0.98);
 
                     gl_FragColor = vec4(cloudCol, alpha);
@@ -4151,8 +4156,8 @@
                     float cRaw = mix(cRawA, cRawB, u_cloudBlend);
                     float cloudNorm = (u_useFloat > 0.5) ? clamp(cRaw / u_cloudMax, 0.0, 1.0) : cRaw;
 
-                    // Schwelle für aktiven Niederschlag (nur unter echten Regen- und Schneewolken)
-                    if (cloudNorm < 0.14) {
+                    // Schwelle für aktiven Niederschlag
+                    if (cloudNorm < 0.12) {
                         discard;
                     }
 
@@ -4170,38 +4175,44 @@
                     float cosLat = max(0.18, cos(latRad));
                     vec2 uvScaled = vec2(vUv.x * cosLat, vUv.y);
 
-                    // MUSTER A: Regen (Dichtes Punkt-Gitter aus Referenzbild Box 3 - statisch verankert)
-                    vec2 uvRain = uvScaled * 780.0;
-                    float rowRain = floor(uvRain.y);
-                    float shiftRain = mod(rowRain, 2.0) * 0.5;
-                    vec2 cellRain = fract(vec2(uvRain.x + shiftRain, uvRain.y)) - 0.5;
-                    float dRain = length(cellRain);
-                    float rainDotAlpha = smoothstep(0.24, 0.14, dRain);
-
-                    // MUSTER A (Alternative): Klassische diagonale 45°-Linienschraffur (///)
-                    float diagLine = (uvScaled.x + uvScaled.y) * 520.0;
+                    // MUSTER REGEN: DEUTLICH FEINERE SCHRAFFUR
+                    // 1. Feine Diagonallinien (///) im 45°-Winkel
+                    float diagLine = (uvScaled.x + uvScaled.y) * 1650.0;
                     float dLine = abs(fract(diagLine) - 0.5);
-                    float rainLineAlpha = smoothstep(0.13, 0.04, dLine);
+                    float rainLineAlpha = smoothstep(0.16, 0.035, dLine);
 
-                    float rainAlpha = (u_hatchStyle > 0.5) ? rainLineAlpha : rainDotAlpha;
+                    // 2. Feines Punktraster (Alternative)
+                    vec2 uvRainDots = uvScaled * 1800.0;
+                    float rowRain = floor(uvRainDots.y);
+                    float shiftRain = mod(rowRain, 2.0) * 0.5;
+                    vec2 cellRain = fract(vec2(uvRainDots.x + shiftRain, uvRainDots.y)) - 0.5;
+                    float rainDotAlpha = smoothstep(0.24, 0.10, length(cellRain));
 
-                    // MUSTER B: Schnee (Weites, offenes Punkt-Gitter aus Referenzbild Box 1 - statisch verankert)
-                    vec2 uvSnow = uvScaled * 390.0; // halbe Frequenz / weite Abstände
+                    float rainAlpha = (u_hatchStyle < 0.5) ? rainDotAlpha : rainLineAlpha;
+
+                    // MUSTER SCHNEE: FEINE "*" SYMBOLE (8-strahlige Schneesterne / Asteriske)
+                    vec2 uvSnow = uvScaled * 980.0;
                     float rowSnow = floor(uvSnow.y);
                     float shiftSnow = mod(rowSnow, 2.0) * 0.5;
-                    vec2 cellSnow = fract(vec2(uvSnow.x + shiftSnow, uvSnow.y)) - 0.5;
-                    float dSnow = length(cellSnow);
-                    float snowDotAlpha = smoothstep(0.20, 0.11, dSnow);
+                    vec2 cSnow = fract(vec2(uvSnow.x + shiftSnow, uvSnow.y)) - 0.5;
 
-                    // Mischen von Regen (Muster A) und Schnee (Muster B)
-                    float hatchAlpha = mix(rainAlpha, snowDotAlpha, isSnow);
+                    float dR1 = abs(cSnow.x);
+                    float dR2 = abs(cSnow.y);
+                    float dR3 = abs(cSnow.x - cSnow.y) * 0.707106;
+                    float dR4 = abs(cSnow.x + cSnow.y) * 0.707106;
+                    float dStar = min(min(dR1, dR2), min(dR3, dR4));
+                    float starR = length(cSnow);
+                    float snowStarAlpha = smoothstep(0.065, 0.012, dStar) * smoothstep(0.38, 0.26, starR);
+
+                    // Mischen von Regen und Schnee
+                    float hatchAlpha = mix(rainAlpha, snowStarAlpha, isSnow);
                     if (hatchAlpha <= 0.02) {
                         discard;
                     }
 
-                    // Statische, neutrale Kartographie-Schraffur in Grau
-                    vec3 hatchColor = vec3(0.30, 0.33, 0.37);
-                    float finalAlpha = hatchAlpha * mix(0.82, 0.90, isSnow) * u_opacity;
+                    // Statische, neutrale, feine Kartographie-Schraffur in Schiefergrau
+                    vec3 hatchColor = vec3(0.25, 0.28, 0.33);
+                    float finalAlpha = hatchAlpha * mix(0.85, 0.92, isSnow) * u_opacity;
                     gl_FragColor = vec4(hatchColor, finalAlpha);
                 }
             `,
@@ -4216,8 +4227,8 @@
                 u_tempMin: { value: minTempRange },
                 u_tempMax: { value: maxTempRange },
                 u_useFloat: { value: useFloat ? 1.0 : 0.0 },
-                u_hatchStyle: { value: 0.0 }, // 0 = Punktraster (Muster A/B), 1 = Diagonallinien
-                u_opacity: { value: 0.85 }
+                u_hatchStyle: { value: 1.0 }, // 1 = Feine Linien (Standard), 0 = Feine Punkte
+                u_opacity: { value: 0.88 }
             },
             transparent: true,
             depthWrite: false
@@ -7101,7 +7112,7 @@
         }
         window.toggleOverlay = toggleOverlay;
 
-        let precipHatchStyle = 'dots';
+        let precipHatchStyle = 'lines';
         function setPrecipHatchStyle(style) {
             precipHatchStyle = style;
             const btnDots = document.getElementById('btn-precip-dots');
@@ -7115,7 +7126,7 @@
                     btnDots.style.background = 'rgba(0,0,0,0.25)';
                     btnDots.style.borderColor = 'rgba(255,255,255,0.1)';
                     btnDots.style.color = '#94a3b8';
-                    if (desc) desc.innerText = 'Kartographische Schraffur (Grau): Linien = Regen, Punkte = Schnee';
+                    if (desc) desc.innerText = 'Feine Schraffur (Grau): Linien = Regen, * = Schnee';
                 } else {
                     btnDots.style.background = 'rgba(255,255,255,0.20)';
                     btnDots.style.borderColor = 'rgba(255,255,255,0.35)';
@@ -7123,11 +7134,11 @@
                     btnLines.style.background = 'rgba(0,0,0,0.25)';
                     btnLines.style.borderColor = 'rgba(255,255,255,0.1)';
                     btnLines.style.color = '#94a3b8';
-                    if (desc) desc.innerText = 'Kartographische Schraffur (Grau): Dicht = Regen, Weit = Schnee';
+                    if (desc) desc.innerText = 'Feine Schraffur (Grau): Punkte = Regen, * = Schnee';
                 }
             }
             if (typeof precipMaterial !== 'undefined' && precipMaterial && precipMaterial.uniforms && precipMaterial.uniforms.u_hatchStyle) {
-                precipMaterial.uniforms.u_hatchStyle.value = (style === 'lines') ? 1.0 : 0.0;
+                precipMaterial.uniforms.u_hatchStyle.value = (style === 'dots') ? 0.0 : 1.0;
             }
         }
         window.setPrecipHatchStyle = setPrecipHatchStyle;
