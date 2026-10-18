@@ -2774,12 +2774,21 @@
                     </div>
                 </label>
                 <label class="overlay-checkbox-row">
+                    <input type="checkbox" id="chk-overlay-precip" checked onchange="toggleOverlay('precip', this.checked)">
+                    <span class="overlay-icon">🌧️</span>
+                    <div class="overlay-text">
+                        <strong>Niederschlag (Regen &amp; Schnee)</strong>
+                        <small>Animierte Schraffierung: Blau = Regen, Weiß = Schnee</small>
+                    </div>
+                </label>
+                <label class="overlay-checkbox-row">
                     <input type="checkbox" id="chk-overlay-ht" checked onchange="toggleOverlay('ht', this.checked)">
                     <span class="overlay-icon">🔴🔵</span>
                     <div class="overlay-text">
                         <strong>Hoch- &amp; Tiefdruckgebiete (H / T)</strong>
                         <small>Zentren &amp; Kerndruck in hPa (Zyklonen &amp; Antizyklonen)</small>
                     </div>
+                </label>
                 <label class="overlay-checkbox-row">
                     <input type="checkbox" id="chk-overlay-isobars" checked onchange="toggleOverlay('isobars', this.checked)">
                     <span class="overlay-icon">🌀</span>
@@ -4102,6 +4111,124 @@
         cloudMesh.rotation.y = -Math.PI / 2;
         cloudMesh.renderOrder = 2; // Liegt über Basiskarte/Relief (1) und Schatten (1.5), unter Grenzen/Vektoren (3)
         scene.add(cloudMesh);
+
+        // =========================================================================
+        // 3. ANIMIERTE NIEDERSCHLAGS-SCHRAFFIERUNG (Regen & Schnee Punktmatrix-Muster)
+        // =========================================================================
+        const precipGeometry = new THREE.SphereGeometry(surfaceRadius + 0.005, 128, 128);
+        const precipMaterial = new THREE.ShaderMaterial({
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                precision highp float;
+                uniform sampler2D u_cloudA;
+                uniform sampler2D u_cloudB;
+                uniform float u_cloudBlend;
+                uniform float u_cloudMax;
+                uniform sampler2D u_tempA;
+                uniform sampler2D u_tempB;
+                uniform float u_tempBlend;
+                uniform float u_tempMin;
+                uniform float u_tempMax;
+                uniform float u_useFloat;
+                uniform float u_time;
+                uniform float u_opacity;
+                varying vec2 vUv;
+
+                void main() {
+                    float cRawA = texture2D(u_cloudA, vUv).r;
+                    float cRawB = texture2D(u_cloudB, vUv).r;
+                    float cRaw = mix(cRawA, cRawB, u_cloudBlend);
+                    float cloudNorm = (u_useFloat > 0.5) ? clamp(cRaw / u_cloudMax, 0.0, 1.0) : cRaw;
+
+                    // Schwelle für aktiven Niederschlag (nur unter echten Regen-/Schneewolken)
+                    if (cloudNorm < 0.14) {
+                        discard;
+                    }
+
+                    float precipRate = clamp((cloudNorm - 0.14) / 0.52, 0.0, 1.0);
+
+                    // Temperatur zur Unterscheidung Regen vs. Schnee
+                    float tRawA = texture2D(u_tempA, vUv).r;
+                    float tRawB = texture2D(u_tempB, vUv).r;
+                    float tRaw = mix(tRawA, tRawB, u_tempBlend);
+                    float tempC = (u_useFloat > 0.5) ? tRaw : (u_tempMin + tRaw * (u_tempMax - u_tempMin));
+
+                    // Schnee bei T <= 0°C, Regen bei T >= 2°C, dazwischen weicher Übergang (Schneeregen)
+                    float isSnow = smoothstep(2.0, 0.0, tempC);
+
+                    // Sphärische Punktmatrix / Schraffur (Kompensation der Längengrad-Konvergenz)
+                    float latRad = (vUv.y - 0.5) * 3.14159265;
+                    float cosLat = max(0.18, cos(latRad));
+                    vec2 uvScaled = vec2(vUv.x * cosLat, vUv.y) * 580.0;
+
+                    // Regen fällt dynamisch schräg abwärts
+                    vec2 rainOffset = vec2(u_time * 0.40, -u_time * 2.5);
+                    vec2 rainUV = uvScaled + rainOffset;
+
+                    // Schnee schwebt gemächlich abwärts mit sanftem Windpendeln
+                    vec2 snowOffset = vec2(sin(u_time * 0.7 + uvScaled.y * 0.12) * 0.35, -u_time * 0.65);
+                    vec2 snowUV = uvScaled + snowOffset;
+
+                    vec2 pUV = mix(rainUV, snowUV, isSnow);
+                    vec2 cell = fract(pUV) - 0.5;
+                    vec2 cellId = floor(pUV);
+
+                    // Deterministischer Zellen-Hash für abgestufte Punkt-Dichte (wie Skizzen-Stufen 1, 2, 3)
+                    float h = fract(sin(dot(cellId, vec2(127.1, 311.7))) * 43758.5453123);
+                    float activeThreshold = mix(0.22, 0.90, precipRate);
+                    if (h > activeThreshold) {
+                        discard;
+                    }
+
+                    // Tropfen- bzw. Schneeflocken-Geometrie
+                    float rDist = length(vec2(cell.x * 2.2, cell.y));
+                    float rainDot = smoothstep(0.38, 0.08, rDist);
+
+                    float sDist = length(cell);
+                    float snowDot = smoothstep(0.36, 0.08, sDist);
+
+                    float dotAlpha = mix(rainDot, snowDot, isSnow);
+                    if (dotAlpha <= 0.02) {
+                        discard;
+                    }
+
+                    // Farbpalette: Blau für Regen, Weiß für Schnee
+                    vec3 rainColor = vec3(0.22, 0.74, 1.0);
+                    vec3 snowColor = vec3(1.0, 1.0, 1.0);
+                    vec3 col = mix(rainColor, snowColor, isSnow);
+
+                    float finalAlpha = dotAlpha * mix(0.85, 0.98, isSnow) * u_opacity;
+                    gl_FragColor = vec4(col, finalAlpha);
+                }
+            `,
+            uniforms: {
+                u_cloudA: { value: (cloudTextures && cloudTextures[0]) ? cloudTextures[0] : null },
+                u_cloudB: { value: (cloudTextures && cloudTextures[0]) ? cloudTextures[0] : null },
+                u_cloudBlend: { value: 0.0 },
+                u_cloudMax: { value: useFloat ? maxCloudRange : 1.0 },
+                u_tempA: { value: (tempTextures && tempTextures[0]) ? tempTextures[0] : null },
+                u_tempB: { value: (tempTextures && tempTextures[0]) ? tempTextures[0] : null },
+                u_tempBlend: { value: 0.0 },
+                u_tempMin: { value: minTempRange },
+                u_tempMax: { value: maxTempRange },
+                u_useFloat: { value: useFloat ? 1.0 : 0.0 },
+                u_time: { value: 0.0 },
+                u_opacity: { value: 0.92 }
+            },
+            transparent: true,
+            depthWrite: false
+        });
+        const precipMesh = new THREE.Mesh(precipGeometry, precipMaterial);
+        precipMesh.rotation.y = -Math.PI / 2;
+        precipMesh.renderOrder = 1.8; // Liegt über Basiskarte/Relief (1) und Schatten (1.5), unter Wolken (2)
+        precipMesh.visible = true;
+        scene.add(precipMesh);
 
         function lon2tile(lon, zoom) {
             return Math.floor((lon + 180) / 360 * Math.pow(2, zoom));
@@ -6348,6 +6475,9 @@
             if (typeof cloudMaterial !== 'undefined' && cloudMaterial && cloudMaterial.uniforms && cloudMaterial.uniforms.u_time) {
                 cloudMaterial.uniforms.u_time.value = performance.now() * 0.001;
             }
+            if (typeof precipMaterial !== 'undefined' && precipMaterial && precipMaterial.uniforms && precipMaterial.uniforms.u_time) {
+                precipMaterial.uniforms.u_time.value = performance.now() * 0.001;
+            }
 
             // Dynamische, seidenweiche hypsometrische Höhenanpassung (LERP - verhindert jegliches Ruckeln/Farbspringen beim Wischen)
             if (currentCelestialBody === 'earth' && currentMode === 'topo' && currentTopoProvider === 'hypsometric') {
@@ -6479,6 +6609,7 @@
 
         const overlayState = {
             clouds: true,   // Wolkendecke & Zugbahn (Tag & Nacht)
+            precip: true,   // Animierte Regen- & Schnee-Schraffierung (Punktmuster)
             ht: true,       // Hoch- & Tiefdruckgebiete (H / T)
             isobars: true,  // Luftdruck-Isobaren
             wind: true,     // Windströmungs-Partikel
@@ -6939,6 +7070,13 @@
                 }
                 if (typeof cloudShadowMesh !== 'undefined' && cloudShadowMesh) {
                     cloudShadowMesh.visible = isAct && currentCelestialBody !== 'moon' && currentMode === 'solar';
+                }
+                if (isAct && typeof updateActiveData === 'function') {
+                    updateActiveData();
+                }
+            } else if (type === 'precip') {
+                if (typeof precipMesh !== 'undefined' && precipMesh) {
+                    precipMesh.visible = isAct && currentCelestialBody !== 'moon';
                 }
                 if (isAct && typeof updateActiveData === 'function') {
                     updateActiveData();
@@ -15385,6 +15523,24 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 }
             }
 
+            // Stufenlose Aktualisierung der animierten Niederschlags-Schraffierung (Regen & Schnee)
+            const precipActive = overlayState.precip && currentCelestialBody !== 'moon';
+            if (typeof precipMesh !== 'undefined' && precipMesh) {
+                precipMesh.visible = precipActive;
+            }
+            if (precipActive && typeof precipMaterial !== 'undefined' && precipMaterial && precipMaterial.uniforms) {
+                if (typeof cloudTextures !== 'undefined' && cloudTextures[cloudIdx0] && cloudTextures[cloudIdx1]) {
+                    precipMaterial.uniforms.u_cloudA.value = cloudTextures[cloudIdx0];
+                    precipMaterial.uniforms.u_cloudB.value = cloudTextures[cloudIdx1];
+                    precipMaterial.uniforms.u_cloudBlend.value = cloudBlend;
+                }
+                if (typeof tempTextures !== 'undefined' && tempTextures[tempIdx0] && tempTextures[tempIdx1]) {
+                    precipMaterial.uniforms.u_tempA.value = tempTextures[tempIdx0];
+                    precipMaterial.uniforms.u_tempB.value = tempTextures[tempIdx1];
+                    precipMaterial.uniforms.u_tempBlend.value = tempBlend;
+                }
+            }
+
             const titleEl = document.getElementById('timeDisplayTitle');
             if (titleEl) {
                 titleEl.innerText = formatDisplayTime(activeTemp, currentHourOffset);
@@ -15685,6 +15841,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 if (typeof isobarGroup !== 'undefined' && isobarGroup) isobarGroup.visible = false;
                 if (typeof cloudMesh !== 'undefined' && cloudMesh) cloudMesh.visible = false;
                 if (typeof cloudShadowMesh !== 'undefined' && cloudShadowMesh) cloudShadowMesh.visible = false;
+                if (typeof precipMesh !== 'undefined' && precipMesh) precipMesh.visible = false;
 
                 // Wetter-Overlays Dropdown schließen
                 const overlayPanel = document.getElementById('overlay-menu-panel');
@@ -15782,6 +15939,9 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 }
                 if (typeof cloudShadowMesh !== 'undefined' && cloudShadowMesh) {
                     cloudShadowMesh.visible = (typeof overlayState !== 'undefined') ? (overlayState.clouds && currentMode === 'solar') : false;
+                }
+                if (typeof precipMesh !== 'undefined' && precipMesh) {
+                    precipMesh.visible = (typeof overlayState !== 'undefined') ? overlayState.precip : true;
                 }
                 const overlayPills = document.querySelectorAll('.overlay-pill, .overlay-divider');
                 overlayPills.forEach(p => p.style.display = '');
