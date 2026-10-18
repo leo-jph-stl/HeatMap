@@ -4042,14 +4042,14 @@
                         discard;
                     }
 
-                    // Zelluläre Quellwolken-Körnigkeit (Altocumulus / Stratocumulus Billows)
-                    float billow = 1.0 - abs(noise2(p * 2.8 + q) * 2.0 - 1.0);
-                    float fbmDetail = fbm(p * 2.2 + 1.8 * rWarp);
+                    // Zelluläre Quellwolken-Körnigkeit & Wirbel (Altocumulus / Stratocumulus Billows)
+                    float billow = 1.0 - abs(noise2(p * 3.2 + q) * 2.0 - 1.0);
+                    float fbmDetail = fbm(p * 2.5 + 1.8 * rWarp);
 
                     // Organische Dichte-Modulation: Ränder zerfasern fedrig (Cirren), Kern bleibt wolkig
                     float edgeMask = smoothstep(0.015, 0.45, rawCloud);
-                    float edgeWisp = (fbmDetail - 0.46) * 0.38 * edgeMask;
-                    float cellWisp = (billow - 0.50) * 0.18 * edgeMask;
+                    float edgeWisp = (fbmDetail - 0.46) * 0.42 * edgeMask;
+                    float cellWisp = (billow - 0.50) * 0.22 * edgeMask;
                     float cloudDensity = clamp(rawCloud + edgeWisp + cellWisp, 0.0, 1.0);
 
                     if (cloudDensity < 0.012) {
@@ -4064,21 +4064,21 @@
                     float cD = mix(sampleSmoothCloud(u_cloudA, warpedUv + dV), sampleSmoothCloud(u_cloudB, warpedUv + dV), u_blend) / u_cloudMax;
                     float cU = mix(sampleSmoothCloud(u_cloudA, warpedUv - dV), sampleSmoothCloud(u_cloudB, warpedUv - dV), u_blend) / u_cloudMax;
 
-                    float gradU = (cR - cL) * 3.2 + (fbm(p + vec2(0.8, 0.0)) - fbm(p - vec2(0.8, 0.0))) * 0.28;
-                    float gradV = (cD - cU) * 3.2 + (fbm(p + vec2(0.0, 0.8)) - fbm(p - vec2(0.0, 0.8))) * 0.28;
+                    float gradU = (cR - cL) * 3.8 + (fbm(p + vec2(0.8, 0.0)) - fbm(p - vec2(0.8, 0.0))) * 0.35;
+                    float gradV = (cD - cU) * 3.8 + (fbm(p + vec2(0.0, 0.8)) - fbm(p - vec2(0.0, 0.8))) * 0.35;
 
-                    // Plastisches 3D-Oberlicht (wie bei echten Satellitenaufnahmen):
-                    // Licht fällt schräg von oben-links ein, erzeugt helle Kämme und sanft schattierte Täler
+                    // Plastisches 3D-Oberlicht: Erzeugt helle Kämme und plastisch schattierte Täler
                     vec2 lightDir = normalize(vec2(-0.55, 0.83));
-                    float hillLight = clamp(0.74 + dot(vec2(gradU, gradV), lightDir) * 0.28 + (billow - 0.5) * 0.20, 0.52, 1.0);
+                    float hillLight = clamp(0.70 + dot(vec2(gradU, gradV), lightDir) * 0.36 + (billow - 0.5) * 0.24, 0.44, 1.0);
 
-                    // Feine Wolkenpalette: Helle, strahlende Wolken mit plastischem Volumen und Schattierung
-                    vec3 shadowBase = vec3(0.72, 0.77, 0.84); // Weiche, kühle Tiefenschattierung in Wolkentälern
-                    vec3 cloudBody  = vec3(0.92, 0.94, 0.97); // Natürlicher Wolkenkörper
+                    // Feine, kontrastreiche Wolkenpalette:
+                    // Deeper shadowBase verhindert das 'Verwaschen' auf grellem Gelb/Grün
+                    vec3 shadowBase = vec3(0.55, 0.62, 0.72); // Plastisch kühle Tiefenschattierung
+                    vec3 cloudBody  = vec3(0.94, 0.96, 0.98); // Natürlicher, reiner Wolkenkörper
                     vec3 cloudPeak  = vec3(1.00, 1.00, 1.00); // Strahlend weiße Wolkenkämme
 
-                    vec3 cloudCol = mix(shadowBase, cloudBody, smoothstep(0.52, 0.78, hillLight));
-                    cloudCol = mix(cloudCol, cloudPeak, pow(smoothstep(0.70, 1.0, hillLight), 1.6) * 0.45 + smoothstep(0.45, 0.95, cloudDensity) * 0.25);
+                    vec3 cloudCol = mix(shadowBase, cloudBody, smoothstep(0.44, 0.74, hillLight));
+                    cloudCol = mix(cloudCol, cloudPeak, pow(smoothstep(0.65, 1.0, hillLight), 1.5) * 0.55 + smoothstep(0.38, 0.88, cloudDensity) * 0.35);
 
                     // Sanfter Dämmerungsglanz an der Tag-/Nachtgrenze
                     vec3 sphereNorm = normalize(vNormal);
@@ -4086,11 +4086,12 @@
                     float twilight = (1.0 - abs(sunDot) / 0.15) * step(abs(sunDot), 0.15);
                     cloudCol = mix(cloudCol, cloudCol * vec3(1.0, 0.84, 0.70), twilight * 0.25);
 
-                    // Natürliche Transparenz-Progression:
-                    // Dünne Wolkenbänder und Dunst lassen die Temperaturfarben elegant durchscheinen (alpha 0.12..0.45),
-                    // dichte Sturmfronten sind substantiell, aber niemals eine undurchdringliche Wand
-                    float alpha = smoothstep(0.012, 0.90, cloudDensity);
-                    alpha = pow(alpha, 0.92) * 0.80 * u_opacity;
+                    // Fotorealistische zweistufige Deckkraftkurve:
+                    // Dünne Cirren (0.012 .. 0.40) lassen Temperaturfarben durch (alpha 0.18..0.55)
+                    // Dichte Fronten & Sturmkerne (0.40 .. 0.85) werden massiv, strahlend weiß (alpha 0.85..0.98)
+                    float alphaThin = smoothstep(0.012, 0.45, cloudDensity) * 0.60;
+                    float alphaDense = smoothstep(0.35, 0.82, cloudDensity) * 0.40;
+                    float alpha = clamp((alphaThin + alphaDense) * u_opacity, 0.0, 0.98);
 
                     gl_FragColor = vec4(cloudCol, alpha);
                 }
@@ -4100,7 +4101,7 @@
                 u_cloudB: { value: (cloudTextures && cloudTextures[0]) ? cloudTextures[0] : null },
                 u_blend: { value: 0.0 },
                 u_cloudMax: { value: useFloat ? maxCloudRange : 1.0 },
-                u_opacity: { value: 0.88 },
+                u_opacity: { value: 0.98 },
                 u_sunDirection: { value: new THREE.Vector3(1, 0, 0) },
                 u_time: { value: 0.0 }
             },
