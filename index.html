@@ -1463,11 +1463,91 @@
             font-size: 10px;
         }
 
+        /* ⚡ STROMNETZ-PROGNOSE (SOLAR & WIND) CONTAINER */
+        #grid-forecast-container {
+            position: absolute;
+            top: 76px;
+            right: 24px;
+            width: 440px;
+            max-width: calc(100vw - 48px);
+            max-height: calc(100vh - 96px);
+            overflow-y: auto;
+            overflow-x: hidden;
+            overscroll-behavior: contain;
+            scrollbar-width: thin;
+            background: rgba(13, 17, 28, 0.92);
+            border: 1px solid rgba(255, 219, 0, 0.35);
+            border-radius: 16px;
+            box-shadow: 0 14px 44px rgba(0, 0, 0, 0.7), 0 0 28px rgba(255, 219, 0, 0.12);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 14px 16px;
+            z-index: 1000;
+            display: none;
+            transition: opacity 0.25s ease;
+        }
+        #grid-forecast-container::-webkit-scrollbar { width: 4px; }
+        #grid-forecast-container::-webkit-scrollbar-thumb { background: rgba(255, 219, 0, 0.35); border-radius: 4px; }
+        #grid-forecast-container .forecast-header {
+            position: sticky;
+            top: -14px;
+            margin: -14px -16px 8px -16px;
+            padding: 12px 16px 6px 16px;
+            background: rgba(18, 18, 24, 0.98);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            z-index: 10;
+            border-top-left-radius: 16px;
+            border-top-right-radius: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .grid-region-btn {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #ccc;
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-size: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.15s ease;
+            user-select: none;
+        }
+        .grid-region-btn:hover {
+            background: rgba(255, 219, 0, 0.15);
+            color: #fff;
+            border-color: rgba(255, 219, 0, 0.4);
+        }
+        .grid-region-btn.active {
+            background: rgba(255, 219, 0, 0.22);
+            color: #ffdb00;
+            border-color: #ffdb00;
+            box-shadow: 0 0 10px rgba(255, 219, 0, 0.3);
+        }
+        .grid-kpi-card {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 6px 8px;
+            text-align: center;
+        }
+        .grid-kpi-label {
+            font-size: 9.5px;
+            font-weight: 700;
+            margin-bottom: 2px;
+        }
+        .grid-kpi-val {
+            font-size: 14px;
+            font-weight: 800;
+            line-height: 1.2;
+            margin-bottom: 2px;
+        }
+
         @media (max-width: 1260px) {
-            #route-container, #area-measure-container {
+            #route-container, #area-measure-container, #grid-forecast-container {
                 right: 12px;
                 top: 86px;
-                width: 360px;
+                width: 380px;
                 max-width: calc(100vw - 24px);
             }
             #pv-history-container-zun {
@@ -2671,6 +2751,82 @@
         </div>
     </div>
     
+    <!-- ⚡ STROMNETZ-PROGNOSE: SOLAR- & WINDKRAFT (SMARD / BUNDESNETZAGENTUR & ENERGY-CHARTS) -->
+    <div id="grid-forecast-container" style="display: none;">
+        <div class="forecast-header">
+            <div class="forecast-title-box">
+                <div class="forecast-place" style="color: #ffdb00; display: flex; align-items: center; gap: 6px;">
+                    <span class="drag-grip" title="Fenster verschieben">⋮⋮</span> ⚡ Stromnetz-Prognose
+                </div>
+                <div class="forecast-sub">Solar- &amp; Windenergie (SMARD / Bundesnetzagentur)</div>
+            </div>
+            <div class="forecast-btn-group">
+                <button id="gridForecastCloseBtn" class="forecast-action-btn" title="Schließen" onclick="toggleGridForecast(false)">✕</button>
+            </div>
+        </div>
+
+        <div id="gridForecastBody">
+            <!-- Regionen-Auswahl Tabs -->
+            <div style="display: flex; gap: 4px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px; scrollbar-width: none;">
+                <button type="button" class="grid-region-btn active" data-region="DE" onclick="setGridRegion('DE')">🇩🇪 Deutschland</button>
+                <button type="button" class="grid-region-btn" data-region="50Hertz" onclick="setGridRegion('50Hertz')">50Hertz (Ost)</button>
+                <button type="button" class="grid-region-btn" data-region="Amprion" onclick="setGridRegion('Amprion')">Amprion (West)</button>
+                <button type="button" class="grid-region-btn" data-region="TenneT" onclick="setGridRegion('TenneT')">TenneT (Nord/Süd)</button>
+                <button type="button" class="grid-region-btn" data-region="TransnetBW" onclick="setGridRegion('TransnetBW')">TransnetBW (SW)</button>
+                <button type="button" class="grid-region-btn" data-region="AT" onclick="setGridRegion('AT')">🇦🇹 Österreich</button>
+                <button type="button" class="grid-region-btn" data-region="FR" onclick="setGridRegion('FR')">🇫🇷 Frankreich</button>
+            </div>
+
+            <!-- KPI-Cards Grid -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px;">
+                <div class="grid-kpi-card" style="background: rgba(255, 219, 0, 0.08); border-color: rgba(255, 219, 0, 0.3);">
+                    <div class="grid-kpi-label" style="color: #ffdb00;">☀️ Solar (PV)</div>
+                    <div id="gridKpiSolar" class="grid-kpi-val" style="color: #fff;">-- GW</div>
+                    <div id="gridKpiSolarSub" style="font-size: 8.5px; color: #aaa;">Peak: -- GW</div>
+                </div>
+                <div class="grid-kpi-card" style="background: rgba(0, 229, 255, 0.08); border-color: rgba(0, 229, 255, 0.3);">
+                    <div class="grid-kpi-label" style="color: #00e5ff;">💨 Windkraft</div>
+                    <div id="gridKpiWind" class="grid-kpi-val" style="color: #fff;">-- GW</div>
+                    <div id="gridKpiWindSub" style="font-size: 8.5px; color: #aaa;">On: -- / Off: --</div>
+                </div>
+                <div class="grid-kpi-card" style="background: rgba(0, 255, 136, 0.08); border-color: rgba(0, 255, 136, 0.3);">
+                    <div class="grid-kpi-label" style="color: #00ff88;">🟢 Erneuerbare</div>
+                    <div id="gridKpiTotal" class="grid-kpi-val" style="color: #fff;">-- GW</div>
+                    <div id="gridKpiTotalSub" style="font-size: 8.5px; color: #aaa;">Peak: -- GW</div>
+                </div>
+            </div>
+
+            <!-- Strompreis & Synchronisations-Hinweis -->
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 9px; margin-bottom: 8px; font-size: 10px;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="color: #ffaa00;">💶 Börsenpreis (EPEX):</span>
+                    <strong id="gridCurrentPrice" style="color: #fff;">-- ct/kWh</strong>
+                </div>
+                <div id="gridHoverTime" style="color: #aaa; font-size: 9px;">Live / Jetzt</div>
+            </div>
+
+            <!-- Interaktiver Erzeugungs-Chart -->
+            <div style="background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px; margin-bottom: 8px; position: relative;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 9.5px; color: #888;">
+                    <span style="display: flex; align-items: center; gap: 8px;">
+                        <span style="display: inline-flex; align-items: center; gap: 3px;"><span style="width:8px; height:8px; background:#ffdb00; border-radius:2px; display:inline-block;"></span> Solar</span>
+                        <span style="display: inline-flex; align-items: center; gap: 3px;"><span style="width:8px; height:8px; background:#00e5ff; border-radius:2px; display:inline-block;"></span> Wind Onshore</span>
+                        <span id="gridLegendOffshore" style="display: inline-flex; align-items: center; gap: 3px;"><span style="width:8px; height:8px; background:#3b82f6; border-radius:2px; display:inline-block;"></span> Wind Offshore</span>
+                        <span style="display: inline-flex; align-items: center; gap: 3px;"><span style="width:10px; height:2px; background:#ffaa00; display:inline-block;"></span> Preis</span>
+                    </span>
+                    <span id="gridChartRange" style="color: #aaa; font-size: 8.5px;"></span>
+                </div>
+                <svg id="gridForecastChart" viewBox="0 0 380 130" preserveAspectRatio="none" style="width: 100%; height: 130px; display: block; overflow: visible; touch-action: none; cursor: crosshair; user-select: none;"></svg>
+                <div id="gridChartTooltip" style="display:none; position:absolute; pointer-events:none; background:rgba(10,14,24,0.95); border:1px solid rgba(0,229,255,0.4); border-radius:6px; padding:5px 8px; font-size:9.5px; z-index:20; box-shadow:0 4px 12px rgba(0,0,0,0.5);"></div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; color: #666;">
+                <span>Quelle: SMARD.de (Bundesnetzagentur) &amp; Energy-Charts</span>
+                <span id="gridLastUpdated">Aktualisiert: --</span>
+            </div>
+        </div>
+    </div>
+    
     <!-- Schlankes, vereintes Bottom-Dock (Zeitleiste + Farblegende) -->
     <div id="timeline-container">
         <div class="timeline-top-row">
@@ -2682,6 +2838,7 @@
                     <button type="button" id="celestial-btn-earth" class="celestial-btn active" onclick="switchCelestialBody('earth')">🌍 Erde</button>
                     <button type="button" id="celestial-btn-moon" class="celestial-btn" onclick="switchCelestialBody('moon')">🌙 Mond</button>
                 </div>
+                <button id="gridQuickBtn" class="pv-badge-btn" onclick="toggleGridForecast()" title="Offizielle Stromnetz-Prognose (Solar &amp; Windenergie)" style="border-color: rgba(255, 219, 0, 0.4); background: rgba(255, 219, 0, 0.12); color: #ffdb00;">⚡ Netz</button>
                 <button id="pvQuickBtn" class="pv-badge-btn" title="Login für PV-Anlagendetails">🔒 PV-Login</button>
                 <button id="pvZunQuickBtn" class="pv-badge-btn" style="display:none; border-color: rgba(0, 229, 255, 0.4); background: rgba(0, 229, 255, 0.12); color: #00e5ff;">☀️</button>
             </div>
@@ -2733,6 +2890,7 @@
                 <button id="btn-overlay-menu" class="layer-toggle-btn overlay-pill" onclick="toggleOverlayMenu()" title="Zusätzliche Wetter-Ebenen &amp; Overlays anpassen">🥞 Ebenen ▾</button>
                 <div class="dock-divider"></div>
                 <div class="dock-btn-group">
+                    <button id="btn-grid-vis" class="layer-toggle-btn" onclick="toggleGridForecast()" title="Offizielle PV- &amp; Windkraft-Netzprognose (Deutschland &amp; Nachbarländer)">⚡ Netz</button>
                     <button id="btn-route-vis" class="layer-toggle-btn" onclick="toggleRoutePlanner()" title="3D-Routenplaner &amp; Höhenprofil öffnen">🧭 Route</button>
                     <button id="btn-area-vis" class="layer-toggle-btn" onclick="toggleAreaMeasure()" title="3D-Flächenmessung &amp; Formbestimmung">📐 Fläche</button>
                 </div>
@@ -2846,6 +3004,7 @@
     <script src="solar_climatology_data.js"></script>
     <script src="solar_data.js"></script>
     <script src="cloud_data.js"></script>
+    <script src="grid_forecast.js"></script>
     <script src="lakes_data.js"></script>
     <script src="rivers_data.js"></script>
     <script src="roads_data.js"></script>
@@ -15618,6 +15777,9 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             }
 
             updatePopupContent();
+            if (typeof updateGridForecastMarker === 'function') {
+                updateGridForecastMarker();
+            }
         }
 
         // Die Fetch-Skripte verankern "-24h..+72h" am Abrufzeitpunkt, nicht am Anzeigezeitpunkt -
@@ -16385,6 +16547,404 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             if (typeof renderCityLabels === 'function') {
                 renderCityLabels();
             }
+        }
+
+        // =========================================================================
+        // ⚡ STROMNETZ-PROGNOSE: SOLAR- & WINDKRAFT (SMARD.DE & ENERGY-CHARTS)
+        // =========================================================================
+        let activeGridRegion = 'DE';
+        let cachedGridData = (typeof gridForecastData !== 'undefined') ? gridForecastData : null;
+        let gridHoveredTime = null;
+
+        async function loadGridForecastData() {
+            if (!cachedGridData) {
+                try {
+                    const res = await fetch('grid_forecast.json?_t=' + Date.now());
+                    if (res.ok) cachedGridData = await res.json();
+                } catch (e) {
+                    console.warn('Grid forecast data konnte nicht geladen werden:', e);
+                }
+            }
+            return cachedGridData;
+        }
+
+        function toggleGridForecast(show) {
+            const container = document.getElementById('grid-forecast-container');
+            const btnVis = document.getElementById('btn-grid-vis');
+            const btnQuick = document.getElementById('gridQuickBtn');
+            if (!container) return;
+            const willShow = (show !== undefined) ? !!show : (container.style.display === 'none' || !container.style.display);
+            container.style.display = willShow ? 'block' : 'none';
+            if (btnVis) {
+                btnVis.className = 'layer-toggle-btn' + (willShow ? ' active' : '');
+            }
+            if (btnQuick) {
+                btnQuick.style.background = willShow ? 'rgba(255, 219, 0, 0.28)' : 'rgba(255, 219, 0, 0.12)';
+                btnQuick.style.boxShadow = willShow ? '0 0 12px rgba(255, 219, 0, 0.4)' : 'none';
+            }
+            if (willShow) {
+                loadGridForecastData().then(() => {
+                    renderGridForecast();
+                });
+            }
+        }
+        window.toggleGridForecast = toggleGridForecast;
+
+        function setGridRegion(regionId) {
+            activeGridRegion = regionId;
+            document.querySelectorAll('.grid-region-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.region === regionId);
+            });
+            renderGridForecast();
+        }
+        window.setGridRegion = setGridRegion;
+
+        function getActiveGridRegionData() {
+            if (!cachedGridData) return null;
+            if (activeGridRegion === 'DE') return cachedGridData.germany;
+            if (cachedGridData.regions && cachedGridData.regions[activeGridRegion]) return cachedGridData.regions[activeGridRegion];
+            if (cachedGridData.neighbors && cachedGridData.neighbors[activeGridRegion]) return cachedGridData.neighbors[activeGridRegion];
+            return cachedGridData.germany;
+        }
+
+        function formatGwOrMw(mw) {
+            if (mw === null || mw === undefined || isNaN(mw)) return '--';
+            if (Math.abs(mw) >= 1000) {
+                return (mw / 1000).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' GW';
+            }
+            return Math.round(mw).toLocaleString('de-DE') + ' MW';
+        }
+
+        function findPointAtTime(series, targetMs) {
+            if (!series || !series.length) return null;
+            let closest = series[0];
+            let minDiff = Math.abs(series[0].t - targetMs);
+            for (let i = 1; i < series.length; i++) {
+                const diff = Math.abs(series[i].t - targetMs);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closest = series[i];
+                }
+            }
+            return closest;
+        }
+
+        function renderGridForecast() {
+            const data = getActiveGridRegionData();
+            const container = document.getElementById('grid-forecast-container');
+            if (!data || !container || container.style.display === 'none') return;
+
+            const targetTime = (gridHoveredTime !== null) 
+                ? gridHoveredTime 
+                : (Date.now() + currentHourOffset * 3600000);
+
+            // Aktuelle Punkte finden
+            const ptSolar = findPointAtTime(data.solar, targetTime);
+            const ptWindOn = findPointAtTime(data.windOnshore, targetTime);
+            const ptWindOff = findPointAtTime(data.windOffshore, targetTime);
+            const ptWindTot = findPointAtTime(data.windTotal, targetTime);
+            const ptTot = findPointAtTime(data.totalRenewable, targetTime);
+
+            const curSolar = ptSolar ? ptSolar.mw : 0;
+            const curWindOn = ptWindOn ? ptWindOn.mw : 0;
+            const curWindOff = ptWindOff ? ptWindOff.mw : 0;
+            const curWindTot = ptWindTot ? ptWindTot.mw : (curWindOn + curWindOff);
+            const curTot = ptTot ? ptTot.mw : (curSolar + curWindTot);
+
+            // Peaks über das relevante Zeitfenster ermitteln
+            const now = Date.now();
+            const futureWindow = (p) => p.t >= now - 6 * 3600000 && p.t <= now + 36 * 3600000;
+            const peakSolar = Math.max(0, ...(data.solar || []).filter(futureWindow).map(p => p.mw));
+            const peakWind = Math.max(0, ...(data.windTotal || []).filter(futureWindow).map(p => p.mw));
+            const peakTot = Math.max(0, ...(data.totalRenewable || []).filter(futureWindow).map(p => p.mw));
+
+            // KPI-Karten aktualisieren
+            const solarEl = document.getElementById('gridKpiSolar');
+            const solarSubEl = document.getElementById('gridKpiSolarSub');
+            if (solarEl) solarEl.innerText = formatGwOrMw(curSolar);
+            if (solarSubEl) solarSubEl.innerText = `Peak: ${formatGwOrMw(peakSolar)}`;
+
+            const windEl = document.getElementById('gridKpiWind');
+            const windSubEl = document.getElementById('gridKpiWindSub');
+            if (windEl) windEl.innerText = formatGwOrMw(curWindTot);
+            if (windSubEl) {
+                if (data.windOffshore && data.windOffshore.length > 0) {
+                    windSubEl.innerText = `On: ${formatGwOrMw(curWindOn)} / Off: ${formatGwOrMw(curWindOff)}`;
+                } else {
+                    windSubEl.innerText = `Peak: ${formatGwOrMw(peakWind)}`;
+                }
+            }
+
+            const totalEl = document.getElementById('gridKpiTotal');
+            const totalSubEl = document.getElementById('gridKpiTotalSub');
+            if (totalEl) totalEl.innerText = formatGwOrMw(curTot);
+            if (totalSubEl) totalSubEl.innerText = `Peak: ${formatGwOrMw(peakTot)}`;
+
+            // Strompreis zu diesem Zeitpunkt
+            const priceVal = (typeof getPriceAtTime === 'function') ? getPriceAtTime(targetTime) : null;
+            const priceEl = document.getElementById('gridCurrentPrice');
+            if (priceEl) {
+                if (priceVal !== null && !isNaN(priceVal)) {
+                    const col = priceVal < 0 ? '#ef4444' : (priceVal < 5 ? '#22c55e' : (priceVal > 15 ? '#f97316' : '#fff'));
+                    priceEl.style.color = col;
+                    priceEl.innerText = `${priceVal.toFixed(2)} ct/kWh`;
+                } else {
+                    priceEl.style.color = '#888';
+                    priceEl.innerText = '-- ct/kWh';
+                }
+            }
+
+            // Zeit-Label
+            const timeEl = document.getElementById('gridHoverTime');
+            if (timeEl) {
+                const d = new Date(targetTime);
+                const isNow = Math.abs(targetTime - Date.now()) < 30 * 60 * 1000;
+                timeEl.innerText = isNow 
+                    ? `Live (${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr)` 
+                    : d.toLocaleString('de-DE', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' Uhr';
+            }
+
+            // Offshore-Legende anpassen
+            const offLegend = document.getElementById('gridLegendOffshore');
+            if (offLegend) {
+                offLegend.style.display = (data.windOffshore && data.windOffshore.length > 0) ? 'inline-flex' : 'none';
+            }
+
+            const updatedEl = document.getElementById('gridLastUpdated');
+            if (updatedEl && cachedGridData && cachedGridData.updatedAt) {
+                updatedEl.innerText = `Aktualisiert: ${new Date(cachedGridData.updatedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`;
+            }
+
+            drawGridForecastChart(data, targetTime);
+        }
+
+        function drawGridForecastChart(data, targetTime) {
+            const svg = document.getElementById('gridForecastChart');
+            if (!svg || !data) return;
+
+            // Zeitfenster: letzte 24h bis max. +40h
+            const now = Date.now();
+            const minT = now - 24 * 3600000;
+            const maxT = now + 40 * 3600000;
+
+            const solar = (data.solar || []).filter(p => p.t >= minT && p.t <= maxT);
+            const windOn = (data.windOnshore || []).filter(p => p.t >= minT && p.t <= maxT);
+            const windOff = (data.windOffshore || []).filter(p => p.t >= minT && p.t <= maxT);
+            const total = (data.totalRenewable || []).filter(p => p.t >= minT && p.t <= maxT);
+
+            if (!total.length) {
+                svg.innerHTML = '<text x="190" y="65" text-anchor="middle" fill="#666" font-size="11">Keine Daten verfügbar</text>';
+                return;
+            }
+
+            const tStart = total[0].t;
+            const tEnd = total[total.length - 1].t;
+            const tSpan = Math.max(1, tEnd - tStart);
+
+            // Maximalwert für Y-Achse
+            let maxMw = Math.max(...total.map(p => p.mw), 1000);
+            maxMw = Math.ceil((maxMw * 1.15) / 5000) * 5000;
+
+            const W = 380, H = 130;
+            const padL = 28, padR = 10, padT = 10, padB = 20;
+            const chartW = W - padL - padR;
+            const chartH = H - padT - padB;
+
+            const xForT = (t) => padL + ((t - tStart) / tSpan) * chartW;
+            const yForMw = (mw) => padT + chartH - (Math.max(0, mw) / maxMw) * chartH;
+
+            // Maps für Koordinaten
+            const windOnMap = new Map(windOn.map(p => [p.t, p.mw]));
+            const windOffMap = new Map(windOff.map(p => [p.t, p.mw]));
+            const solarMap = new Map(solar.map(p => [p.t, p.mw]));
+
+            let svgHtml = '';
+
+            // Y-Ticks
+            for (let step = 1; step <= 3; step++) {
+                const tickMw = (maxMw / 3) * step;
+                const y = yForMw(tickMw);
+                const label = (tickMw >= 1000) ? (tickMw / 1000).toFixed(0) + 'GW' : Math.round(tickMw) + 'M';
+                svgHtml += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="rgba(255,255,255,0.07)" stroke-width="1" stroke-dasharray="3 3"/>`;
+                svgHtml += `<text x="${padL - 4}" y="${y + 3}" text-anchor="end" fill="#777" font-size="7.5">${label}</text>`;
+            }
+
+            // X-Ticks
+            total.forEach(p => {
+                const d = new Date(p.t);
+                const h = d.getHours();
+                if (h === 0 || h === 12) {
+                    const x = xForT(p.t);
+                    svgHtml += `<line x1="${x}" y1="${padT}" x2="${x}" y2="${padT + chartH}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>`;
+                    const dayLabel = (h === 0) ? d.toLocaleDateString('de-DE', { weekday: 'short' }) : '12h';
+                    svgHtml += `<text x="${x}" y="${H - 5}" text-anchor="middle" fill="#666" font-size="7.5">${dayLabel}</text>`;
+                }
+            });
+
+            // Gestapelte Flächen
+            const timestamps = total.map(p => p.t);
+
+            const buildAreaPath = (basePoints, topPoints) => {
+                let d = `M ${xForT(topPoints[0].t)} ${yForMw(topPoints[0].y)}`;
+                for (let i = 1; i < topPoints.length; i++) {
+                    d += ` L ${xForT(topPoints[i].t)} ${yForMw(topPoints[i].y)}`;
+                }
+                for (let i = basePoints.length - 1; i >= 0; i--) {
+                    d += ` L ${xForT(basePoints[i].t)} ${yForMw(basePoints[i].y)}`;
+                }
+                d += ' Z';
+                return d;
+            };
+
+            const zeros = timestamps.map(t => ({ t, y: 0 }));
+            const windOnTops = timestamps.map(t => ({ t, y: windOnMap.get(t) || 0 }));
+            const windTotTops = timestamps.map(t => ({ t, y: (windOnMap.get(t) || 0) + (windOffMap.get(t) || 0) }));
+            const solarTops = timestamps.map(t => ({ t, y: (windOnMap.get(t) || 0) + (windOffMap.get(t) || 0) + (solarMap.get(t) || 0) }));
+
+            // Wind Onshore (Cyan)
+            const pathWindOn = buildAreaPath(zeros, windOnTops);
+            svgHtml += `<path d="${pathWindOn}" fill="rgba(0, 229, 255, 0.45)"/>`;
+
+            // Wind Offshore (Blau)
+            if (windOff.length > 0) {
+                const pathWindOff = buildAreaPath(windOnTops, windTotTops);
+                svgHtml += `<path d="${pathWindOff}" fill="rgba(59, 130, 246, 0.6)"/>`;
+            }
+
+            // Solar (Warmgelb)
+            const pathSolar = buildAreaPath(windTotTops, solarTops);
+            svgHtml += `<path d="${pathSolar}" fill="rgba(255, 219, 0, 0.72)"/>`;
+
+            // Top Contour Line
+            let pathTopLine = `M ${xForT(solarTops[0].t)} ${yForMw(solarTops[0].y)}`;
+            for (let i = 1; i < solarTops.length; i++) {
+                pathTopLine += ` L ${xForT(solarTops[i].t)} ${yForMw(solarTops[i].y)}`;
+            }
+            svgHtml += `<path d="${pathTopLine}" fill="none" stroke="#ffffff" stroke-width="1.2" opacity="0.6"/>`;
+
+            // Strompreis-Linie (Orange gestrichelt)
+            if (typeof priceData !== 'undefined' && priceData.length > 0) {
+                const prices = priceData.filter(p => p.t >= tStart && p.t <= tEnd);
+                if (prices.length > 1) {
+                    const minPrice = -5;
+                    const maxPrice = 30;
+                    const yForPrice = (pVal) => padT + chartH - ((pVal - minPrice) / (maxPrice - minPrice)) * chartH;
+                    let priceD = '';
+                    prices.forEach((p, idx) => {
+                        const x = xForT(p.t);
+                        const y = Math.max(padT, Math.min(padT + chartH, yForPrice(p.priceCt)));
+                        priceD += (idx === 0) ? `M ${x} ${y}` : ` L ${x} ${y}`;
+                    });
+                    svgHtml += `<path d="${priceD}" fill="none" stroke="#ffaa00" stroke-width="1.2" stroke-dasharray="3 2" opacity="0.85"/>`;
+                }
+            }
+
+            // Marker
+            const curX = Math.max(padL, Math.min(W - padR, xForT(targetTime)));
+            svgHtml += `
+                <g id="gridChartMarkerGroup">
+                    <line x1="${curX}" y1="${padT - 2}" x2="${curX}" y2="${padT + chartH + 2}" stroke="#ffffff" stroke-width="1.8" stroke-dasharray="2 2"/>
+                    <circle cx="${curX}" cy="${padT}" r="3.5" fill="#ffdb00" stroke="#000" stroke-width="1"/>
+                </g>
+            `;
+
+            svg.innerHTML = svgHtml;
+
+            // Zeitbereich
+            const rangeEl = document.getElementById('gridChartRange');
+            if (rangeEl) {
+                const dStart = new Date(tStart);
+                const dEnd = new Date(tEnd);
+                rangeEl.innerText = `${dStart.toLocaleDateString('de-DE', { day: '2-digit', month: 'short' })} - ${dEnd.toLocaleDateString('de-DE', { day: '2-digit', month: 'short' })}`;
+            }
+        }
+
+        function updateGridForecastMarker() {
+            const container = document.getElementById('grid-forecast-container');
+            if (!container || container.style.display === 'none') return;
+            renderGridForecast();
+        }
+
+        function initGridForecastInteraction() {
+            const svg = document.getElementById('gridForecastChart');
+            const tooltip = document.getElementById('gridChartTooltip');
+            const container = document.getElementById('grid-forecast-container');
+            if (!svg || !container) return;
+
+            if (typeof makeDraggable === 'function') {
+                makeDraggable(container, '.forecast-header');
+            }
+
+            const handlePointer = (e) => {
+                const data = getActiveGridRegionData();
+                if (!data || !data.totalRenewable || !data.totalRenewable.length) return;
+
+                const rect = svg.getBoundingClientRect();
+                const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+                if (clientX === undefined) return;
+
+                const relX = clientX - rect.left;
+                const frac = Math.max(0, Math.min(1, (relX - 28) / (rect.width - 38)));
+
+                const now = Date.now();
+                const minT = now - 24 * 3600000;
+                const maxT = now + 40 * 3600000;
+                const total = (data.totalRenewable || []).filter(p => p.t >= minT && p.t <= maxT);
+                if (!total.length) return;
+
+                const tStart = total[0].t;
+                const tEnd = total[total.length - 1].t;
+                const hoverT = tStart + frac * (tEnd - tStart);
+
+                gridHoveredTime = hoverT;
+                renderGridForecast();
+
+                if (tooltip) {
+                    const ptSolar = findPointAtTime(data.solar, hoverT);
+                    const ptWindTot = findPointAtTime(data.windTotal, hoverT);
+                    const ptTot = findPointAtTime(data.totalRenewable, hoverT);
+                    const pVal = (typeof getPriceAtTime === 'function') ? getPriceAtTime(hoverT) : null;
+
+                    const d = new Date(hoverT);
+                    const timeStr = d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: 'short' }) + ', ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr';
+                    
+                    const sVal = ptSolar ? formatGwOrMw(ptSolar.mw) : '--';
+                    const wVal = ptWindTot ? formatGwOrMw(ptWindTot.mw) : '--';
+                    const tVal = ptTot ? formatGwOrMw(ptTot.mw) : '--';
+                    const pStr = (pVal !== null && !isNaN(pVal)) ? `${pVal.toFixed(2)} ct/kWh` : '--';
+
+                    tooltip.innerHTML = `
+                        <div style="font-weight:700; color:#fff; margin-bottom:3px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:2px;">${timeStr}</div>
+                        <div style="display:flex; justify-content:space-between; gap:10px; color:#ffdb00;"><span>☀️ Solar:</span><strong>${sVal}</strong></div>
+                        <div style="display:flex; justify-content:space-between; gap:10px; color:#00e5ff;"><span>💨 Wind:</span><strong>${wVal}</strong></div>
+                        <div style="display:flex; justify-content:space-between; gap:10px; color:#00ff88;"><span>🟢 Gesamt:</span><strong>${tVal}</strong></div>
+                        <div style="display:flex; justify-content:space-between; gap:10px; color:#ffaa00; margin-top:2px; border-top:1px solid rgba(255,255,255,0.08); padding-top:2px;"><span>💶 Börsenpreis:</span><strong>${pStr}</strong></div>
+                    `;
+                    tooltip.style.display = 'block';
+                    const boxX = Math.max(10, Math.min(rect.width - 130, relX - 60));
+                    tooltip.style.left = boxX + 'px';
+                    tooltip.style.top = '14px';
+                }
+            };
+
+            svg.addEventListener('pointermove', handlePointer);
+            svg.addEventListener('pointerleave', () => {
+                gridHoveredTime = null;
+                if (tooltip) tooltip.style.display = 'none';
+                renderGridForecast();
+            });
+
+            // Klick auf den Chart synchronisiert den 3D-Globus auf diese Stunde!
+            svg.addEventListener('click', () => {
+                if (gridHoveredTime !== null) {
+                    const offset = (gridHoveredTime - Date.now()) / 3600000;
+                    if (typeof setHourOffset === 'function') {
+                        setHourOffset(offset);
+                        const slider = document.getElementById('timeSlider');
+                        if (slider) slider.value = Math.round(offset);
+                    }
+                }
+            });
         }
 
         function initRoutePlanner() {
@@ -18024,6 +18584,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
         initPvCalibrationToggle();
         initRoutePlanner();
         initAreaMeasure();
+        initGridForecastInteraction();
 
         // INIT
         if (typeof tempMetadata !== 'undefined' && tempMetadata.nx < 1440) {
@@ -18041,6 +18602,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             }
         });
         loadPriceData();
+        loadGridForecastData();
         animate();
         detectUserLocationAndFly();
         checkWeatherUpdate();
@@ -18048,6 +18610,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
         setInterval(loadPvData, 60 * 1000); // FoxESS Daten alle 60 Sek. aktualisieren (No-Op ohne Login)
         setInterval(loadPvForecastLog, 30 * 60 * 1000); // Log wächst nur stündlich, seltener nachladen reicht
         setInterval(loadPriceData, 30 * 60 * 1000); // Preise ändern sich ebenfalls nur stündlich/täglich
+        setInterval(loadGridForecastData, 30 * 60 * 1000); // Netzprognose alle 30 Min. auffrischen
 
     </script>
 </body>
