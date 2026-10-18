@@ -12952,18 +12952,36 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 cityCtx.textBaseline = 'middle';
                 cityCtx.lineJoin = 'round';
 
-                const isZoomedOut = dist > 210;
+                const isFarZoom = dist > 175;
+                const isMediumZoom = dist > 125;
+                let isobarLabelsCount = 0;
+                const maxIsobarBudget = isFarZoom ? 12 : (isMediumZoom ? 18 : 26);
+
                 for (let i = 0; i < isobarsToRender.length; i++) {
+                    if (isobarLabelsCount >= maxIsobarBudget) break;
                     const item = isobarsToRender[i];
                     const levelVal = item.level;
-                    // Bei weitem Zoom nur 8er-Schritte beschriften um Überladung zu verhindern
-                    if (isZoomedOut && (levelVal % 8 !== 0)) continue;
+
+                    // Gestaffelte Isobaren-Beschriftung (verhindert Zahlenfriedhöfe & Überladung):
+                    // - Im Weltraum/Überblick (dist > 175): Nur markante Haupt-Isobaren (16er-Schritte: 984, 1000, 1016, 1032)
+                    // - Im Kontinentalblick (dist > 125): 8er-Schritte (976, 984, 992, 1000, 1008, 1016, 1024, 1032)
+                    // - Erst bei tiefem Nah-Zoom (dist <= 125): 4er-Schritte
+                    if (isFarZoom && (levelVal % 16 !== 0 && levelVal !== 1000 && levelVal !== 1016)) continue;
+                    if (isMediumZoom && (levelVal % 8 !== 0)) continue;
 
                     const lblList = item.labels ? item.labels : [item];
                     const txt = `${levelVal}`;
 
                     for (let j = 0; j < lblList.length; j++) {
+                        if (isobarLabelsCount >= maxIsobarBudget) break;
                         const lbl = lblList[j];
+
+                        // POL-DÄMPFUNG: Längengrade konvergieren an den Polen extrem stark.
+                        // Verhindert das dichte Zahlen-Gedränge an der Antarktis und Arktis!
+                        const absLat = Math.abs(lbl.lat);
+                        if (absLat > 70 && (Math.abs(Math.round(lbl.lon)) % 72 > 8)) continue;
+                        if (absLat > 55 && (Math.abs(Math.round(lbl.lon)) % 36 > 8)) continue;
+
                         const localV = latLngToSphereVertex(lbl.lat, lbl.lon, surfaceRadius);
                         const worldV = localV.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
                         const cosA = (worldV.x * cx + worldV.y * cy + worldV.z * cz) / (surfaceRadius * dist);
@@ -12974,13 +12992,14 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
 
                         const sx = (tempCityVec.x * 0.5 + 0.5) * screenW;
                         const sy = (-tempCityVec.y * 0.5 + 0.5) * screenH;
-                        if (sx < 25 || sx > screenW - 25 || sy < 25 || sy > screenH - 25) continue;
+                        if (sx < 30 || sx > screenW - 30 || sy < 30 || sy > screenH - 30) continue;
 
-                        // Kollisionsprüfung mit bereits platzierten Elementen
+                        // Großzügige Kollisionsprüfung (55px horizontal, 34px vertikal)
+                        // Verhindert das vertikale Aufreihen von Zahlenleitern in steilen Druckgradienten
                         let coll = false;
                         for (let k = 0; k < placed.length; k++) {
                             const p = placed[k];
-                            if (Math.abs(sx - p.x) < 26 && Math.abs(sy - p.y) < 14) {
+                            if (Math.abs(sx - p.x) < 55 && Math.abs(sy - p.y) < 34) {
                                 coll = true;
                                 break;
                             }
@@ -12994,7 +13013,8 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                         cityCtx.fillStyle = '#ffffff';
                         cityCtx.fillText(txt, sx, sy);
 
-                        placed.push({ x: sx, y: sy, spacingX: 24, spacingY: 14 });
+                        placed.push({ x: sx, y: sy, spacingX: 55, spacingY: 34 });
+                        isobarLabelsCount++;
                     }
                 }
             }
