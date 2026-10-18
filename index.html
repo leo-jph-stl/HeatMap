@@ -3050,6 +3050,9 @@
         // High-res dark earth texture from three-globe
         const earthTexture = textureLoader.load('https://unpkg.com/three-globe/example/img/earth-dark.jpg');
         const earthMaterial = new THREE.MeshBasicMaterial({ map: earthTexture });
+        // Auf der Erde bleibt die Basiskugel unsichtbar, da dataMesh und topoBaseMesh als vollwertige Schalen fungieren.
+        // Verhindert jegliches Z-Fighting / Flackern aus größerer Distanz.
+        earthMaterial.visible = false;
         const earthMesh = new THREE.Mesh(earthGeometry, earthMaterial);
         
         // Rotate earth to match typical map coordinates (Prime Meridian in center)
@@ -3731,11 +3734,11 @@
                         vec3 nightColor = mix(nightClear, nightCloud, cloud);
                         float dayFactor = smoothstep(0.0, u_nightThreshold, valSafe);
                         vec3 col = mix(nightColor, dayColor, dayFactor);
-                        gl_FragColor = vec4(col, u_opacity);
+                        gl_FragColor = vec4(col, 1.0);
                         return;
                     }
 
-                    gl_FragColor = vec4(dayColor, u_opacity);
+                    gl_FragColor = vec4(dayColor, 1.0);
                 }
             `,
             uniforms: {
@@ -3746,7 +3749,7 @@
                 u_blend: { value: 0.0 },
                 u_minVal: { value: useFloat ? minTempRange : 0.0 },
                 u_maxVal: { value: useFloat ? maxTempRange : 1.0 },
-                u_opacity: { value: 0.90 },
+                u_opacity: { value: 1.0 },
                 u_cloudA: { value: cloudTextures[0] || null },
                 u_cloudB: { value: cloudTextures[0] || null },
                 u_showNightClouds: { value: 0.0 },
@@ -3756,8 +3759,8 @@
                 u_nightThreshold: { value: useFloat ? nightCloudThreshold : nightCloudThreshold / maxSolarRange },
                 u_cloudMax: { value: useFloat ? maxCloudRange : 1.0 }
             },
-            transparent: true,
-            depthWrite: false
+            transparent: false,
+            depthWrite: true
         });
         const dataMesh = new THREE.Mesh(dataGeometry, dataMaterial);
         dataMesh.rotation.y = -Math.PI / 2;
@@ -6113,6 +6116,15 @@
                     controls.dampingFactor = 0.08;
                 }
                 controls.update();
+            }
+
+            // DYNAMISCHE KAMERA-CLIPPING-PLANES (Verhindert Z-Fighting & Flimmern aus dem Weltraum)
+            const curDist = camera.position.length();
+            const curH = Math.max(0.01, curDist - surfaceRadius);
+            const targetNear = Math.max(0.02, Math.min(5.0, curH * 0.035));
+            if (Math.abs(camera.near - targetNear) > 0.005) {
+                camera.near = targetNear;
+                camera.updateProjectionMatrix();
             }
             
             const delta = Math.min(clock.getDelta(), 0.05);
@@ -15280,6 +15292,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
 
                 // Im Topographie- & Satelliten-Modus die darunterliegende Wetter-Raster-Sphäre und den Hillshade-Layer
                 // ausblenden, um jegliches Z-Fighting vollständig zu eliminieren.
+                if (earthMesh && currentCelestialBody === 'earth') earthMesh.material.visible = false;
                 dataMesh.visible = false;
                 hillshadeGroup.visible = false;
                 if (typeof topoBaseMesh !== 'undefined' && topoBaseMesh) topoBaseMesh.visible = true;
@@ -15308,6 +15321,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 const topoTicks = document.getElementById('topo-legend-ticks');
                 if (topoTicks) topoTicks.style.display = 'none';
 
+                if (earthMesh && currentCelestialBody === 'earth') earthMesh.material.visible = false;
                 topoTileGroup.visible = false;
                 if (typeof topoBaseMesh !== 'undefined' && topoBaseMesh) topoBaseMesh.visible = false;
                 dataMesh.visible = true;
@@ -15454,6 +15468,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 // Mond-Textur & hochauflösendes Kachelrelief aktivieren
                 if (earthMesh) {
                     earthMesh.visible = true;
+                    earthMesh.material.visible = true;
                     earthMesh.material.map = (currentMoonLayer === 'topo') ? getMoonTopoBaseTexture() : ((currentMoonLayer === 'shade') ? getMoonShadeBaseTexture() : moonTexture);
                     earthMesh.material.needsUpdate = true;
                 }
@@ -15519,8 +15534,9 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                     activeMoonHttpCount = 0;
                 }
 
-                // Erd-Textur wiederherstellen
+                // Erd-Textur wiederherstellen (auf der Erde bleibt die Basiskugel unsichtbar, um Z-Fighting zu verhindern)
                 if (earthMesh) {
+                    earthMesh.material.visible = false;
                     earthMesh.material.map = earthTexture;
                     earthMesh.material.needsUpdate = true;
                 }
