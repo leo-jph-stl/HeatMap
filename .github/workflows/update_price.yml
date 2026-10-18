@@ -34,15 +34,18 @@ jobs:
       - name: Fetch Day-Ahead Electricity Price (aWATTar)
         run: node fetch_electricity_price.js
 
+      - name: Fetch Day-Ahead Grid PV & Wind Forecast (SMARD & Energy-Charts)
+        run: node fetch_grid_forecast.js
+
       - name: Commit and push if changed
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add electricity_price.js electricity_price.json
+          git add electricity_price.js electricity_price.json grid_forecast.js grid_forecast.json
           if git diff --staged --quiet; then
-            echo 'No changes in price data.'
+            echo 'No changes in price or grid forecast data.'
           else
-            git commit -m 'chore(price): auto-update day-ahead electricity price [skip ci]'
+            git commit -m 'chore(grid): auto-update electricity price & grid forecast [skip ci]'
             pushed=0
             for i in 1 2 3 4 5; do
               git fetch --depth=50 origin main
