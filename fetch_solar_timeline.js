@@ -5,10 +5,18 @@
 // Wichtig: Diese Radiations-Variable liegt auf der "time3"-Achse.
 // Im GFS GRIB2-Modell sind Strahlungsflüsse Intervall-Mittelwerte bezüglich des
 // jeweiligen 6-stündigen Zyklus (00Z, 06Z, 12Z, 18Z):
-// - Gerader Index 2k: Intervall [6k, 6k+3] -> direkter 3h-Mittelwert A_0-3
+// - Gerader Index 2k: Intervall [6k, 6k+3] -> direkter 3h-Mittelwert A_0-3 (Midpoint: +1.5h)
 // - Ungerader Index 2k+1: Intervall [6k, 6k+6] -> 6h-Mittelwert A_0-6
 // Um ein lückenloses 3h-Raster zu erhalten, wird der zweite 3h-Schritt [6k+3, 6k+6]
-// per Dekonvolution berechnet: A_3-6 = max(0, 2 * A_0-6 - A_0-3).
+// per Dekonvolution berechnet: A_3-6 = max(0, 2 * A_0-6 - A_0-3) (Midpoint: +4.5h).
+//
+// ZEITSTEMPEL-AUSRICHTUNG (WICHTIG):
+// Da GFS-Strahlungsflüsse zeitliche Intervall-Mittelwerte sind und keine Momentanwerte,
+// entspricht der berechnete Fluss physikalisch dem Mittelpunkt des jeweiligen 3h-Fensters
+// (z.B. für das Intervall [18Z, 21Z] dem Sonnenstand um 19:30Z). timeMs und timestamp
+// werden daher exakt auf den Intervall-Mittelpunkt (+1.5h bzw. +4.5h nach Zyklusbeginn)
+// gesetzt, damit die lineare Shader- und Kurven-Interpolation zur aktuellen Uhrzeit (Date.now())
+// astronomisch exakt mit dem wahren Sonnenstand (Subsolar-Punkt) übereinstimmt.
 //
 // CLI-Override für schnelle Tests: `node fetch_solar_timeline.js --steps=3 --stride=4`
 const fs = require('fs');
@@ -108,22 +116,29 @@ async function fetchTimeIndices() {
         const idxB = cycle * 2 + 1;
         if (idxB >= times.length) break;
 
+        // Da GFS-Flüsse 3h-Mittelwerte [cycleStartHour, cycleStartHour + 3] sind, liegt der
+        // physikalische Mittelpunkt bei +1.5h. timeMs/timestamp müssen diesen Mittelpunkt
+        // abbilden, damit die lineare Interpolation exakt zur astronomischen Sonnenposition passt.
+        const midHour0 = cycleStartHour + 1.5;
         rawSteps.push({
             cycle,
             substep: 0,
             threddsIdxA: idxA,
             forecastHour: cycleStartHour,
-            timestamp: new Date(baseDate + cycleStartHour * 3600000).toISOString(),
-            timeMs: baseDate + cycleStartHour * 3600000
+            midpointHour: midHour0,
+            timestamp: new Date(baseDate + midHour0 * 3600000).toISOString(),
+            timeMs: baseDate + midHour0 * 3600000
         });
+        const midHour1 = cycleStartHour + 4.5;
         rawSteps.push({
             cycle,
             substep: 1,
             threddsIdxA: idxA,
             threddsIdxB: idxB,
             forecastHour: cycleStartHour + 3,
-            timestamp: new Date(baseDate + (cycleStartHour + 3) * 3600000).toISOString(),
-            timeMs: baseDate + (cycleStartHour + 3) * 3600000
+            midpointHour: midHour1,
+            timestamp: new Date(baseDate + midHour1 * 3600000).toISOString(),
+            timeMs: baseDate + midHour1 * 3600000
         });
     }
 
