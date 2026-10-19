@@ -12,7 +12,10 @@ function fetchJson(url, retries = 3) {
         const attempt = (n) => {
             https.get(url, { headers: { 'User-Agent': 'HeatMap-WeatherGlobe/1.0' }, timeout: 15000 }, (res) => {
                 if (res.statusCode !== 200) {
-                    if (n > 1) return setTimeout(() => attempt(n - 1), 1000);
+                    if (n > 1) {
+                        const waitTime = (res.statusCode === 429) ? 3000 : 1200;
+                        return setTimeout(() => attempt(n - 1), waitTime);
+                    }
                     return resolve(null);
                 }
                 let data = '';
@@ -21,7 +24,7 @@ function fetchJson(url, retries = 3) {
                     try { resolve(JSON.parse(data)); } catch (e) { resolve(null); }
                 });
             }).on('error', err => {
-                if (n > 1) return setTimeout(() => attempt(n - 1), 1000);
+                if (n > 1) return setTimeout(() => attempt(n - 1), 1200);
                 resolve(null);
             });
         };
@@ -151,8 +154,8 @@ async function run() {
         };
     }));
 
-    // 3. Europäische Nachbarländer (Österreich via SMARD, Frankreich via Energy-Charts)
-    console.log('Lade europäische Nachbarn (Österreich & Frankreich)...');
+    // 3. Europäische Länder (Österreich via SMARD, Frankreich, Spanien, Italien, Belgien via Energy-Charts)
+    console.log('Lade europäische Länder (Österreich, Frankreich, Spanien, Italien, Belgien)...');
     try {
         const [atSolar, atWind] = await Promise.all([
             fetchSmardSeries(125, 'AT'),
@@ -172,24 +175,68 @@ async function run() {
         console.warn('Österreich-Abruf fehlgeschlagen:', e.message);
     }
 
-    try {
-        const [frSolar, frWind] = await Promise.all([
-            fetchEnergyChartsSeries('fr', 'solar'),
-            fetchEnergyChartsSeries('fr', 'wind_onshore')
-        ]);
-        if (frSolar.length || frWind.length) {
-            output.neighbors['FR'] = {
-                name: 'Frankreich',
-                solar: frSolar,
-                windOnshore: frWind,
-                windOffshore: [],
-                windTotal: frWind,
-                totalRenewable: mergeSeriesAdd(frSolar, frWind)
-            };
+    const euTargets = [
+        { id: 'FR', name: 'Frankreich', code: 'fr', hasWind: true },
+        { id: 'ES', name: 'Spanien', code: 'es', hasWind: true },
+        { id: 'IT', name: 'Italien', code: 'it', hasWind: true },
+        { id: 'BE', name: 'Belgien', code: 'be', hasWind: true }
+    ];
+
+    for (const target of euTargets) {
+        try {
+            console.log(`Lade ${target.name} (${target.id})...`);
+            const solar = await fetchEnergyChartsSeries(target.code, 'solar');
+            await new Promise(r => setTimeout(r, 1500));
+            let wind = [];
+            if (target.hasWind) {
+                wind = await fetchEnergyChartsSeries(target.code, 'wind_onshore');
+                await new Promise(r => setTimeout(r, 1500));
+            }
+            if (solar.length || wind.length) {
+                output.neighbors[target.id] = {
+                    name: target.name,
+                    solar,
+                    windOnshore: wind,
+                    windOffshore: [],
+                    windTotal: wind,
+                    totalRenewable: mergeSeriesAdd(solar, wind)
+                };
+            }
+        } catch (e) {
+            console.warn(`Abruf für ${target.name} fehlgeschlagen:`, e.message);
         }
-    } catch (e) {
-        console.warn('Frankreich-Abruf fehlgeschlagen:', e.message);
     }
+
+    // 4. Europa (Aggregierte Gesamtsumme aller erfassten europäischen Netze)
+    console.log('Aggregiere europäisches Gesamtsystem...');
+    let euSolar = output.germany.solar || [];
+    let euWindOn = output.germany.windOnshore || [];
+    let euWindOff = output.germany.windOffshore || [];
+
+    Object.values(output.neighbors).forEach(neighbor => {
+        if (neighbor.solar && neighbor.solar.length) {
+            euSolar = mergeSeriesAdd(euSolar, neighbor.solar);
+        }
+        if (neighbor.windOnshore && neighbor.windOnshore.length) {
+            euWindOn = mergeSeriesAdd(euWindOn, neighbor.windOnshore);
+        }
+        if (neighbor.windOffshore && neighbor.windOffshore.length) {
+            euWindOff = mergeSeriesAdd(euWindOff, neighbor.windOffshore);
+        }
+    });
+
+    const euWindTot = mergeSeriesAdd(euWindOn, euWindOff);
+    const euTotalRen = mergeSeriesAdd(euSolar, euWindTot);
+
+    output.europe = {
+        name: 'Europa (Aggregiert)',
+        solar: euSolar,
+        windOnshore: euWindOn,
+        windOffshore: euWindOff,
+        windTotal: euWindTot,
+        totalRenewable: euTotalRen,
+        includedCountries: ['DE', 'AT', ...Object.keys(output.neighbors)]
+    };
 
     // Speichern
     const jsonStr = JSON.stringify(output);

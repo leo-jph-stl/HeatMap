@@ -2758,7 +2758,7 @@
                 <div class="forecast-place" style="color: #ffdb00; display: flex; align-items: center; gap: 6px;">
                     <span class="drag-grip" title="Fenster verschieben">⋮⋮</span> ⚡ Stromnetz-Prognose
                 </div>
-                <div class="forecast-sub">Solar- &amp; Windenergie (SMARD / Bundesnetzagentur)</div>
+                <div class="forecast-sub" id="gridForecastSub">Solar- &amp; Windenergie (SMARD &amp; Energy-Charts)</div>
             </div>
             <div class="forecast-btn-group">
                 <button id="gridForecastCloseBtn" class="forecast-action-btn" title="Schließen" onclick="toggleGridForecast(false)">✕</button>
@@ -2768,6 +2768,7 @@
         <div id="gridForecastBody">
             <!-- Regionen-Auswahl Tabs -->
             <div style="display: flex; gap: 4px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px; scrollbar-width: none;">
+                <button type="button" class="grid-region-btn" data-region="EU" onclick="setGridRegion('EU')">🇪🇺 Europa (Gesamt)</button>
                 <button type="button" class="grid-region-btn active" data-region="DE" onclick="setGridRegion('DE')">🇩🇪 Deutschland</button>
                 <button type="button" class="grid-region-btn" data-region="50Hertz" onclick="setGridRegion('50Hertz')">50Hertz (Ost)</button>
                 <button type="button" class="grid-region-btn" data-region="Amprion" onclick="setGridRegion('Amprion')">Amprion (West)</button>
@@ -2775,6 +2776,9 @@
                 <button type="button" class="grid-region-btn" data-region="TransnetBW" onclick="setGridRegion('TransnetBW')">TransnetBW (SW)</button>
                 <button type="button" class="grid-region-btn" data-region="AT" onclick="setGridRegion('AT')">🇦🇹 Österreich</button>
                 <button type="button" class="grid-region-btn" data-region="FR" onclick="setGridRegion('FR')">🇫🇷 Frankreich</button>
+                <button type="button" class="grid-region-btn" data-region="ES" onclick="setGridRegion('ES')">🇪🇸 Spanien</button>
+                <button type="button" class="grid-region-btn" data-region="IT" onclick="setGridRegion('IT')">🇮🇹 Italien</button>
+                <button type="button" class="grid-region-btn" data-region="BE" onclick="setGridRegion('BE')">🇧🇪 Belgien</button>
             </div>
 
             <!-- KPI-Cards Grid -->
@@ -16595,12 +16599,23 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             document.querySelectorAll('.grid-region-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.region === regionId);
             });
+            const subEl = document.getElementById('gridForecastSub');
+            if (subEl) {
+                if (regionId === 'EU' || regionId === 'EUROPE') {
+                    subEl.innerText = 'Europäisches Verbundnetz (Aggregiert: DE, ES, FR, IT, AT, BE)';
+                } else if (['FR', 'ES', 'IT', 'BE'].includes(regionId)) {
+                    subEl.innerText = 'Nationale Solar- & Windprognose (Fraunhofer ISE Energy-Charts)';
+                } else {
+                    subEl.innerText = 'Solar- & Windenergie (SMARD / Bundesnetzagentur)';
+                }
+            }
             renderGridForecast();
         }
         window.setGridRegion = setGridRegion;
 
         function getActiveGridRegionData() {
             if (!cachedGridData) return null;
+            if (activeGridRegion === 'EU' || activeGridRegion === 'EUROPE') return cachedGridData.europe;
             if (activeGridRegion === 'DE') return cachedGridData.germany;
             if (cachedGridData.regions && cachedGridData.regions[activeGridRegion]) return cachedGridData.regions[activeGridRegion];
             if (cachedGridData.neighbors && cachedGridData.neighbors[activeGridRegion]) return cachedGridData.neighbors[activeGridRegion];
