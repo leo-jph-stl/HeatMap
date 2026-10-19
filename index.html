@@ -1543,8 +1543,48 @@
             margin-bottom: 2px;
         }
 
+        /* 🏭 EINZELPARK- & CLUSTER-PROGNOSE CONTAINER */
+        #park-forecast-container {
+            position: absolute;
+            top: 76px;
+            left: 24px;
+            width: 440px;
+            max-width: calc(100vw - 48px);
+            max-height: calc(100vh - 96px);
+            overflow-y: auto;
+            overflow-x: hidden;
+            overscroll-behavior: contain;
+            scrollbar-width: thin;
+            background: rgba(13, 20, 24, 0.94);
+            border: 1px solid rgba(0, 255, 136, 0.35);
+            border-radius: 16px;
+            box-shadow: 0 14px 44px rgba(0, 0, 0, 0.7), 0 0 28px rgba(0, 255, 136, 0.12);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 14px 16px;
+            z-index: 1000;
+            display: none;
+            transition: opacity 0.25s ease;
+            color: #fff;
+        }
+        #park-forecast-container::-webkit-scrollbar { width: 4px; }
+        #park-forecast-container::-webkit-scrollbar-thumb { background: rgba(0, 255, 136, 0.35); border-radius: 4px; }
+        #park-forecast-container .forecast-header {
+            position: sticky;
+            top: -14px;
+            margin: -14px -16px 8px -16px;
+            padding: 12px 16px 6px 16px;
+            background: rgba(16, 24, 22, 0.98);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            z-index: 10;
+            border-top-left-radius: 16px;
+            border-top-right-radius: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
         @media (max-width: 1260px) {
-            #route-container, #area-measure-container, #grid-forecast-container {
+            #route-container, #area-measure-container, #grid-forecast-container, #park-forecast-container {
                 right: 12px;
                 top: 86px;
                 width: 380px;
@@ -2831,6 +2871,96 @@
         </div>
     </div>
     
+    <!-- 🏭 EINZELPARK- & CLUSTER-PROGNOSE (SOLAR-, WIND- & OFFSHORE-PARKS) -->
+    <div id="park-forecast-container" style="display: none;">
+        <div class="forecast-header">
+            <div class="forecast-title-box">
+                <div class="forecast-place" style="color: #00ff88; display: flex; align-items: center; gap: 6px;">
+                    <span class="drag-grip" title="Fenster verschieben">⋮⋮</span> <span id="parkForecastTypeIcon">☀️</span> <span id="parkForecastTitle">Park-Erzeugungsprognose</span>
+                </div>
+                <div class="forecast-sub" id="parkForecastSubtitle">Standortspezifisches Wetter- &amp; Erzeugungsmodell</div>
+            </div>
+            <div class="forecast-btn-group">
+                <button id="parkForecastCloseBtn" class="forecast-action-btn" title="Schließen" onclick="toggleParkForecast(false)">✕</button>
+            </div>
+        </div>
+
+        <div id="parkForecastBody">
+            <!-- Park-Schnellauswahl Dropdown -->
+            <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 10px; color: #aaa; white-space: nowrap;">Schnellwahl:</span>
+                <select id="parkQuickSelect" onchange="openParkForecast(this.value)" style="flex: 1; background: rgba(0,0,0,0.5); border: 1px solid rgba(0,255,136,0.35); color: #fff; border-radius: 6px; padding: 4px 8px; font-size: 11px; outline: none; cursor: pointer;">
+                    <!-- Wird dynamisch aus RENEWABLE_PARKS_DATA befüllt -->
+                </select>
+            </div>
+
+            <!-- KPI-Cards Grid -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px;">
+                <div class="grid-kpi-card" style="background: rgba(0, 255, 136, 0.08); border-color: rgba(0, 255, 136, 0.3);">
+                    <div class="grid-kpi-label" style="color: #00ff88;">⚡ Nennleistung</div>
+                    <div id="parkKpiCapacity" class="grid-kpi-val" style="color: #fff;">-- MW</div>
+                    <div id="parkKpiCapacitySub" style="font-size: 8.5px; color: #aaa;">Brutto / Nennwert</div>
+                </div>
+                <div class="grid-kpi-card" style="background: rgba(255, 219, 0, 0.08); border-color: rgba(255, 219, 0, 0.3);">
+                    <div class="grid-kpi-label" style="color: #ffdb00;">🔴 Erzeugung Jetzt</div>
+                    <div id="parkKpiCurrentPower" class="grid-kpi-val" style="color: #fff;">-- MW</div>
+                    <div id="parkKpiLoadFactor" style="font-size: 8.5px; color: #aaa;">Auslastung: -- %</div>
+                </div>
+                <div class="grid-kpi-card" style="background: rgba(0, 229, 255, 0.08); border-color: rgba(0, 229, 255, 0.3);">
+                    <div class="grid-kpi-label" style="color: #00e5ff;">🏆 Tages-Peak</div>
+                    <div id="parkKpiPeak" class="grid-kpi-val" style="color: #fff;">-- MW</div>
+                    <div id="parkKpiPeakTime" style="font-size: 8.5px; color: #aaa;">um -- Uhr</div>
+                </div>
+            </div>
+
+            <!-- Lokales Wetter am Parkstandort -->
+            <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 9px; margin-bottom: 8px; font-size: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                    <span style="color: #ffdb00; font-weight: 600;">🌤️ Wetter am Standort:</span>
+                    <span id="parkWeatherSummary" style="color: #ddd;">--</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 9px; color: #888;">
+                    <span id="parkWeatherDetailLeft">Globalstrahlung: -- W/m²</span>
+                    <span id="parkWeatherDetailRight">Wind 100m: -- km/h</span>
+                </div>
+            </div>
+
+            <!-- 48h-Erzeugungschart SVG -->
+            <div style="background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px; margin-bottom: 8px; position: relative;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 9.5px; color: #888;">
+                    <span style="display: flex; align-items: center; gap: 8px;">
+                        <span style="display: inline-flex; align-items: center; gap: 3px;"><span style="width:8px; height:8px; background:#00ff88; border-radius:2px; display:inline-block;"></span> Park-Erzeugung (MW)</span>
+                        <span id="parkChartLegendSec" style="display: inline-flex; align-items: center; gap: 3px;"><span style="width:10px; height:2px; background:#ffdb00; display:inline-block;"></span> Wetter-Potential</span>
+                    </span>
+                    <span id="parkChartTimeRange" style="color: #aaa; font-size: 8.5px;">48h-Prognose</span>
+                </div>
+                <svg id="parkForecastChart" viewBox="0 0 380 130" preserveAspectRatio="none" style="width: 100%; height: 130px; display: block; overflow: visible; touch-action: none; cursor: crosshair; user-select: none;"></svg>
+                <div id="parkChartTooltip" style="display:none; position:absolute; pointer-events:none; background:rgba(10,14,24,0.95); border:1px solid rgba(0,255,136,0.4); border-radius:6px; padding:5px 8px; font-size:9.5px; z-index:20; box-shadow:0 4px 12px rgba(0,0,0,0.5);"></div>
+            </div>
+
+            <!-- TSO-Netzabgleich & Curtailment-Box -->
+            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 7px 9px; margin-bottom: 8px; font-size: 9.5px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="color: #aaa;">Regelzone / Übertragungsnetz:</span>
+                    <strong id="parkTsoZone" style="color: #00e5ff;">50Hertz</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="color: #aaa;">Beitrag zur Regelzone:</span>
+                    <strong id="parkTsoShare" style="color: #00ff88;">-- %</strong>
+                </div>
+                <div id="parkCurtailmentWarning" style="display: none; background: rgba(255, 60, 60, 0.15); border: 1px solid rgba(255, 60, 60, 0.4); color: #ff8888; border-radius: 6px; padding: 4px 7px; margin-top: 4px; font-size: 9px;">
+                    ⚠️ Negativer Börsenpreis erwartet – Mögliche Einspeisedrosselung (Curtailment)
+                </div>
+            </div>
+
+            <!-- Footer & Info -->
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; color: #666;">
+                <span id="parkOperatorInfo">Betreiber: --</span>
+                <span id="parkCommissioningInfo">Inbetriebnahme: --</span>
+            </div>
+        </div>
+    </div>
+    
     <!-- Schlankes, vereintes Bottom-Dock (Zeitleiste + Farblegende) -->
     <div id="timeline-container">
         <div class="timeline-top-row">
@@ -2843,6 +2973,7 @@
                     <button type="button" id="celestial-btn-moon" class="celestial-btn" onclick="switchCelestialBody('moon')">🌙 Mond</button>
                 </div>
                 <button id="gridQuickBtn" class="pv-badge-btn" onclick="toggleGridForecast()" title="Offizielle Stromnetz-Prognose (Solar &amp; Windenergie)" style="border-color: rgba(255, 219, 0, 0.4); background: rgba(255, 219, 0, 0.12); color: #ffdb00;">⚡ Netz</button>
+                <button id="parksQuickBtn" class="pv-badge-btn" onclick="toggleRenewableParksOverlay()" title="Erneuerbare Parks &amp; Großanlagen (Solar, Wind &amp; Offshore)" style="border-color: rgba(0, 255, 136, 0.4); background: rgba(0, 255, 136, 0.12); color: #00ff88;">🏭 Parks</button>
                 <button id="pvQuickBtn" class="pv-badge-btn" title="Login für PV-Anlagendetails">🔒 PV-Login</button>
                 <button id="pvZunQuickBtn" class="pv-badge-btn" style="display:none; border-color: rgba(0, 229, 255, 0.4); background: rgba(0, 229, 255, 0.12); color: #00e5ff;">☀️</button>
             </div>
@@ -2895,6 +3026,7 @@
                 <div class="dock-divider"></div>
                 <div class="dock-btn-group">
                     <button id="btn-grid-vis" class="layer-toggle-btn" onclick="toggleGridForecast()" title="Offizielle PV- &amp; Windkraft-Netzprognose (Deutschland &amp; Nachbarländer)">⚡ Netz</button>
+                    <button id="btn-parks-vis" class="layer-toggle-btn active" onclick="toggleRenewableParksOverlay()" title="Erneuerbare Parks &amp; Großanlagen (Solar &amp; Wind)">🏭 Parks</button>
                     <button id="btn-route-vis" class="layer-toggle-btn" onclick="toggleRoutePlanner()" title="3D-Routenplaner &amp; Höhenprofil öffnen">🧭 Route</button>
                     <button id="btn-area-vis" class="layer-toggle-btn" onclick="toggleAreaMeasure()" title="3D-Flächenmessung &amp; Formbestimmung">📐 Fläche</button>
                 </div>
@@ -2979,6 +3111,14 @@
                         <small>Ländergrenzen, Küsten &amp; weltweite Ortsschilder</small>
                     </div>
                 </label>
+                <label class="overlay-checkbox-row">
+                    <input type="checkbox" id="chk-overlay-parks" checked onchange="toggleRenewableParksOverlay(this.checked)">
+                    <span class="overlay-icon">⚡</span>
+                    <div class="overlay-text">
+                        <strong>Erneuerbare Parks &amp; Großanlagen</strong>
+                        <small>Solar-, Wind- &amp; Offshore-Parks und Bundesland-Cluster</small>
+                    </div>
+                </label>
             </div>
         </div>
         <div id="legend" style="display: flex; flex-direction: column; width: 100%;">
@@ -3009,6 +3149,7 @@
     <script src="solar_data.js"></script>
     <script src="cloud_data.js"></script>
     <script src="grid_forecast.js"></script>
+    <script src="renewable_parks_data.js"></script>
     <script src="lakes_data.js"></script>
     <script src="rivers_data.js"></script>
     <script src="roads_data.js"></script>
@@ -13753,6 +13894,113 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 }
             }
 
+            // 6. ⚡ ERNEUERBARE PARKS & GROSSANLAGEN (SOLAR, WIND & CLUSTER)
+            if (typeof RENEWABLE_PARKS_DATA !== 'undefined' && RENEWABLE_PARKS_DATA && (typeof renewableParksOverlayVisible === 'undefined' || renewableParksOverlayVisible)) {
+                const parks = RENEWABLE_PARKS_DATA;
+                for (let pIdx = 0; pIdx < parks.length; pIdx++) {
+                    const park = parks[pIdx];
+                    if (!park.worldPos) {
+                        const localV = latLngToSphereVertex(park.lat, park.lng, surfaceRadius);
+                        park.worldPos = localV.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
+                    }
+                    const cosA = (park.worldPos.x * cx + park.worldPos.y * cy + park.worldPos.z * cz) / (surfaceRadius * dist);
+                    if (cosA < horizonThreshold) {
+                        park._screenX = undefined;
+                        park._screenY = undefined;
+                        continue;
+                    }
+
+                    tempCityVec.copy(park.worldPos).project(camera);
+                    if (tempCityVec.z > 1.0) {
+                        park._screenX = undefined;
+                        park._screenY = undefined;
+                        continue;
+                    }
+
+                    const sx = (tempCityVec.x * 0.5 + 0.5) * screenW;
+                    const sy = (-tempCityVec.y * 0.5 + 0.5) * screenH;
+                    if (sx < 20 || sx > screenW - 20 || sy < 20 || sy > screenH - 20) {
+                        park._screenX = undefined;
+                        park._screenY = undefined;
+                        continue;
+                    }
+
+                    park._screenX = sx;
+                    park._screenY = sy;
+
+                    const isSolar = (park.type === 'solar');
+                    const isOffshore = (park.type === 'wind_offshore');
+                    const isCluster = (park.type === 'cluster');
+                    const color = isSolar ? '#ffdb00' : (isOffshore ? '#00e5ff' : (isCluster ? '#c084fc' : '#00ff88'));
+                    const badgeText = isCluster ? `${park.name.split(' ')[0]} ${Math.round(park.capacityMw / 1000)}GW` : `${park.capacityMw} MW`;
+
+                    // Zoomfilterung für saubere Lesbarkeit
+                    if (dist > 185 && !isCluster && park.capacityMw < 300) continue;
+
+                    cityCtx.save();
+
+                    // Dezente pulsierende Aura
+                    const pulse = (Math.sin(Date.now() * 0.004 + pIdx * 0.8) + 1) * 0.5;
+                    cityCtx.beginPath();
+                    cityCtx.arc(sx, sy, 8.5 + pulse * 3.5, 0, Math.PI * 2);
+                    cityCtx.fillStyle = isSolar 
+                        ? `rgba(255, 219, 0, ${0.12 + pulse * 0.16})` 
+                        : (isOffshore ? `rgba(0, 229, 255, ${0.12 + pulse * 0.16})` : (isCluster ? `rgba(192, 132, 252, ${0.12 + pulse * 0.16})` : `rgba(0, 255, 136, ${0.12 + pulse * 0.16})`));
+                    cityCtx.fill();
+
+                    // Pin-Kreis mit weißem Rand
+                    cityCtx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                    cityCtx.shadowBlur = 6;
+                    cityCtx.beginPath();
+                    cityCtx.arc(sx, sy, isCluster ? 8.5 : 7.0, 0, Math.PI * 2);
+                    cityCtx.fillStyle = color;
+                    cityCtx.fill();
+                    cityCtx.strokeStyle = '#ffffff';
+                    cityCtx.lineWidth = 1.6;
+                    cityCtx.stroke();
+                    cityCtx.shadowColor = 'transparent';
+
+                    // Label-Badge rechts daneben
+                    cityCtx.font = '700 9.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                    const tw = cityCtx.measureText(badgeText).width;
+                    const bw = tw + 10;
+                    const bh = 16;
+                    const bx = sx + 9;
+                    const by = sy - 8;
+
+                    cityCtx.fillStyle = 'rgba(12, 16, 24, 0.88)';
+                    cityCtx.strokeStyle = color;
+                    cityCtx.lineWidth = 1.0;
+                    cityCtx.beginPath();
+                    if (typeof cityCtx.roundRect === 'function') {
+                        cityCtx.roundRect(bx, by, bw, bh, 5);
+                    } else {
+                        cityCtx.rect(bx, by, bw, bh);
+                    }
+                    cityCtx.fill();
+                    cityCtx.stroke();
+
+                    cityCtx.fillStyle = '#ffffff';
+                    cityCtx.textAlign = 'left';
+                    cityCtx.textBaseline = 'middle';
+                    cityCtx.fillText(badgeText, bx + 5, by + bh / 2 + 0.5);
+
+                    // Parkname oberhalb (wenn Zoom nah genug ist, dist < 165)
+                    if (dist < 165) {
+                        cityCtx.font = '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                        cityCtx.fillStyle = '#ffffff';
+                        cityCtx.textAlign = 'center';
+                        cityCtx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+                        cityCtx.shadowBlur = 4;
+                        const shortName = park.name.length > 20 ? park.name.slice(0, 18) + '…' : park.name;
+                        cityCtx.fillText(shortName, sx, sy - 12);
+                    }
+
+                    cityCtx.restore();
+                    placed.push({ x: sx, y: sy, spacingX: bw + 15, spacingY: 28 });
+                }
+            }
+
             // PHASE 1: Schnelle Sichtbarkeitsprüfung & Fokus-Distanzberechnung
             const candidates = [];
             const halfW = screenW * 0.5;
@@ -15410,6 +15658,36 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                     return;
                 }
 
+                // ERNEUERBARE PARKS & GROSSANLAGEN PICKING INTERCEPTION
+                if (typeof RENEWABLE_PARKS_DATA !== 'undefined' && RENEWABLE_PARKS_DATA && (typeof renewableParksOverlayVisible === 'undefined' || renewableParksOverlayVisible)) {
+                    let nearestPark = null;
+                    let minParkDistSq = Infinity;
+                    for (let i = 0; i < RENEWABLE_PARKS_DATA.length; i++) {
+                        const p = RENEWABLE_PARKS_DATA[i];
+                        if (p._screenX !== undefined && p._screenY !== undefined) {
+                            const dx = clientX - p._screenX;
+                            const dy = clientY - p._screenY;
+                            const dSq = dx * dx + dy * dy;
+                            if (dSq < 900 && dSq < minParkDistSq) { // 30px Klickradius
+                                minParkDistSq = dSq;
+                                nearestPark = p;
+                            }
+                        } else {
+                            const dLat = clickedPopupPoint.lat - p.lat;
+                            const dLng = (clickedPopupPoint.lng - p.lng) * Math.cos(clickedPopupPoint.lat * Math.PI / 180);
+                            const dGeoSq = dLat * dLat + dLng * dLng;
+                            if (dGeoSq < 0.06 && dGeoSq < minParkDistSq) {
+                                minParkDistSq = dGeoSq;
+                                nearestPark = p;
+                            }
+                        }
+                    }
+                    if (nearestPark) {
+                        openParkForecast(nearestPark.id);
+                        return; // Interception erfolgreich: Dedizierte Park-Prognose anzeigen
+                    }
+                }
+
                 clickedPopupTileElevation = directTileElev;
                 popupEl.style.display = 'block';
                 popupEl.style.left = clientX + 'px';
@@ -15783,6 +16061,9 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             updatePopupContent();
             if (typeof updateGridForecastMarker === 'function') {
                 updateGridForecastMarker();
+            }
+            if (typeof updateParkForecastMarker === 'function') {
+                updateParkForecastMarker();
             }
         }
 
@@ -16961,6 +17242,504 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 }
             });
         }
+
+        // =========================================================================
+        // 🏭 EINZELPARK- & CLUSTER-PROGNOSE (SOLAR-, WIND- & OFFSHORE-PARKS)
+        // =========================================================================
+        let renewableParksOverlayVisible = true;
+        let activeParkId = null;
+        let cachedParkWeather = {};
+        let parkHoveredTime = null;
+
+        function toggleRenewableParksOverlay(show) {
+            if (show !== undefined) {
+                renewableParksOverlayVisible = !!show;
+            } else {
+                renewableParksOverlayVisible = !renewableParksOverlayVisible;
+            }
+            const btn = document.getElementById('btn-parks-vis');
+            if (btn) btn.classList.toggle('active', renewableParksOverlayVisible);
+            const chk = document.getElementById('chk-overlay-parks');
+            if (chk) chk.checked = renewableParksOverlayVisible;
+            const btnQuick = document.getElementById('parksQuickBtn');
+            if (btnQuick) {
+                btnQuick.style.background = renewableParksOverlayVisible ? 'rgba(0, 255, 136, 0.28)' : 'rgba(0, 255, 136, 0.12)';
+                btnQuick.style.boxShadow = renewableParksOverlayVisible ? '0 0 12px rgba(0, 255, 136, 0.4)' : 'none';
+            }
+            if (typeof renderCityLabels === 'function') renderCityLabels();
+        }
+        window.toggleRenewableParksOverlay = toggleRenewableParksOverlay;
+
+        function toggleParkForecast(show) {
+            const container = document.getElementById('park-forecast-container');
+            if (!container) return;
+            const willShow = (show !== undefined) ? !!show : (container.style.display === 'none' || !container.style.display);
+            container.style.display = willShow ? 'block' : 'none';
+            if (willShow && !activeParkId && typeof RENEWABLE_PARKS_DATA !== 'undefined' && RENEWABLE_PARKS_DATA.length > 0) {
+                openParkForecast(RENEWABLE_PARKS_DATA[0].id);
+            }
+        }
+        window.toggleParkForecast = toggleParkForecast;
+
+        function populateParkQuickSelect() {
+            const sel = document.getElementById('parkQuickSelect');
+            if (!sel || sel.options.length > 0 || typeof RENEWABLE_PARKS_DATA === 'undefined') return;
+
+            const groups = {
+                solar: document.createElement('optgroup'),
+                wind_offshore: document.createElement('optgroup'),
+                wind_onshore: document.createElement('optgroup'),
+                cluster: document.createElement('optgroup')
+            };
+            groups.solar.label = '☀️ Große Solarparks (Freiflächen-PV)';
+            groups.wind_offshore.label = '🌊 Offshore-Windparks (Nord- & Ostsee)';
+            groups.wind_onshore.label = '💨 Onshore-Windparks';
+            groups.cluster.label = '🏛️ Regionale Cluster (Bundesländer)';
+
+            RENEWABLE_PARKS_DATA.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                const icon = p.type === 'solar' ? '☀️' : (p.type === 'wind_offshore' ? '🌊' : (p.type === 'cluster' ? '🏛️' : '💨'));
+                opt.textContent = `${icon} ${p.name} (${p.capacityMw} MW)`;
+                if (groups[p.type]) groups[p.type].appendChild(opt);
+            });
+
+            Object.values(groups).forEach(g => {
+                if (g.children.length > 0) sel.appendChild(g);
+            });
+        }
+        window.populateParkQuickSelect = populateParkQuickSelect;
+
+        function calculateParkPowerSeries(park, hourly) {
+            if (!hourly || !hourly.time) return [];
+            const count = hourly.time.length;
+            const series = [];
+
+            for (let i = 0; i < count; i++) {
+                const tMs = new Date(hourly.time[i]).getTime();
+                const ghi = Math.max(0, (hourly.shortwave_radiation_instant && hourly.shortwave_radiation_instant[i] !== null) 
+                    ? hourly.shortwave_radiation_instant[i] : 0);
+                const temp = (hourly.temperature_2m && hourly.temperature_2m[i] !== null) 
+                    ? hourly.temperature_2m[i] : 15;
+                const windSpeed100m = (hourly.wind_speed_100m && hourly.wind_speed_100m[i] !== null)
+                    ? hourly.wind_speed_100m[i]
+                    : ((hourly.wind_speed_10m && hourly.wind_speed_10m[i] !== null) ? hourly.wind_speed_10m[i] * 1.35 : 15);
+                const windMs = windSpeed100m / 3.6; // km/h -> m/s
+
+                let mw = 0;
+                let potentialMw = 0;
+
+                if (park.type === 'solar') {
+                    // PV-Modell: Temperaturkoeffizient ~0.38%/°C über 25°C, PR ~0.84
+                    const tCell = temp + (25 / 800) * ghi;
+                    const etaTemp = Math.max(0.75, 1 - 0.0038 * (tCell - 25));
+                    potentialMw = park.capacityMw * (ghi / 1000);
+                    mw = Math.min(park.capacityMw, potentialMw * etaTemp * 0.84);
+                } else if (park.type === 'wind_onshore' || park.type === 'wind_offshore') {
+                    // Windmodell mit realistischer Nennleistungskurve
+                    const isOffshore = (park.type === 'wind_offshore');
+                    const cutIn = isOffshore ? 3.0 : 2.8;
+                    const rated = isOffshore ? 11.5 : 12.5;
+                    const cutOut = isOffshore ? 27.0 : 25.0;
+
+                    let cf = 0;
+                    if (windMs >= cutIn && windMs < rated) {
+                        cf = Math.pow((windMs - cutIn) / (rated - cutIn), isOffshore ? 2.2 : 2.4);
+                    } else if (windMs >= rated && windMs <= cutOut) {
+                        cf = 1.0;
+                    } else {
+                        cf = 0;
+                    }
+                    potentialMw = park.capacityMw * cf;
+                    mw = potentialMw * (isOffshore ? 0.96 : 0.93);
+                } else if (park.type === 'cluster') {
+                    // Bundesland-Cluster: Solar + Wind
+                    const tCell = temp + (25 / 800) * ghi;
+                    const etaTemp = Math.max(0.75, 1 - 0.0038 * (tCell - 25));
+                    const solarMw = Math.min(park.solarCapMw, (park.solarCapMw * (ghi / 1000)) * etaTemp * 0.83);
+
+                    const cutIn = 3.0, rated = 12.5, cutOut = 25.0;
+                    let cf = 0;
+                    if (windMs >= cutIn && windMs < rated) {
+                        cf = Math.pow((windMs - cutIn) / (rated - cutIn), 2.4);
+                    } else if (windMs >= rated && windMs <= cutOut) {
+                        cf = 1.0;
+                    }
+                    const windMw = park.windCapMw * cf * 0.92;
+
+                    mw = solarMw + windMw;
+                    potentialMw = (park.solarCapMw * (ghi / 1000)) + (park.windCapMw * cf);
+                }
+
+                series.push({
+                    t: tMs,
+                    mw: Math.round(mw * 10) / 10,
+                    potentialMw: Math.round(potentialMw * 10) / 10,
+                    ghi: Math.round(ghi),
+                    temp: Math.round(temp * 10) / 10,
+                    windSpeedKm: Math.round(windSpeed100m * 10) / 10,
+                    windSpeedMs: Math.round(windMs * 10) / 10
+                });
+            }
+            return series;
+        }
+
+        async function openParkForecast(parkId) {
+            if (typeof RENEWABLE_PARKS_DATA === 'undefined') return;
+            const park = RENEWABLE_PARKS_DATA.find(p => p.id === parkId);
+            if (!park) return;
+            activeParkId = parkId;
+
+            const container = document.getElementById('park-forecast-container');
+            if (container) {
+                container.style.display = 'block';
+                if (typeof makeDraggable === 'function') makeDraggable(container, '.forecast-header');
+            }
+
+            populateParkQuickSelect();
+            const sel = document.getElementById('parkQuickSelect');
+            if (sel) sel.value = parkId;
+
+            // Kamera sanft auf den Park zentrieren
+            if (typeof flyToLocation === 'function') {
+                flyToLocation(park.lat, park.lng, park.name);
+            }
+
+            // Header-Felder aktualisieren
+            const typeIcon = park.type === 'solar' ? '☀️' : (park.type === 'wind_offshore' ? '🌊' : (park.type === 'cluster' ? '🏛️' : '💨'));
+            const typeLabel = park.type === 'solar' ? 'Solarpark (PV)' : (park.type === 'wind_offshore' ? 'Offshore-Windpark' : (park.type === 'cluster' ? 'Bundesland-Cluster' : 'Onshore-Windpark'));
+            
+            const iconEl = document.getElementById('parkForecastTypeIcon');
+            if (iconEl) iconEl.innerText = typeIcon;
+            const titleEl = document.getElementById('parkForecastTitle');
+            if (titleEl) titleEl.innerText = park.name;
+            const subEl = document.getElementById('parkForecastSubtitle');
+            if (subEl) subEl.innerText = `${typeLabel} · ${park.state} (${park.capacityMw.toLocaleString('de-DE')} MW)`;
+
+            const capEl = document.getElementById('parkKpiCapacity');
+            if (capEl) capEl.innerText = `${park.capacityMw.toLocaleString('de-DE')} MW`;
+
+            const opEl = document.getElementById('parkOperatorInfo');
+            if (opEl) opEl.innerText = `Betreiber: ${park.operator || park.desc || '--'}`;
+            const commEl = document.getElementById('parkCommissioningInfo');
+            if (commEl) commEl.innerText = park.commissioningYear ? `Inbetriebnahme: ${park.commissioningYear}` : `Region: ${park.country}`;
+
+            const tsoEl = document.getElementById('parkTsoZone');
+            if (tsoEl) tsoEl.innerText = park.tso || 'Übertragungsnetz';
+
+            // Wetterdaten laden (Open-Meteo oder Cache)
+            let weatherData = cachedParkWeather[parkId];
+            if (!weatherData || (Date.now() - weatherData.ts > 3600000)) {
+                try {
+                    const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${park.lat.toFixed(4)}&longitude=${park.lng.toFixed(4)}&hourly=shortwave_radiation_instant,temperature_2m,wind_speed_10m,wind_speed_100m,wind_direction_100m,cloud_cover&forecast_days=3`);
+                    if (res.ok) {
+                        const json = await res.json();
+                        weatherData = { ts: Date.now(), hourly: json.hourly };
+                        cachedParkWeather[parkId] = weatherData;
+                    }
+                } catch (e) {
+                    console.warn('Wetterabruf für Park fehlgeschlagen, nutze Fallback:', e);
+                }
+            }
+
+            // Fallback erzeugen, falls Open-Meteo offline ist
+            if (!weatherData || !weatherData.hourly) {
+                const nowMs = Math.floor(Date.now() / 3600000) * 3600000;
+                const times = [];
+                const rad = [];
+                const wind = [];
+                const temp = [];
+                for (let h = -24; h <= 48; h++) {
+                    const t = new Date(nowMs + h * 3600000);
+                    times.push(t.toISOString().slice(0, 16));
+                    const hour = t.getHours();
+                    const sunElev = Math.max(0, Math.sin((hour - 6) / 12 * Math.PI));
+                    rad.push(Math.round(sunElev * 750));
+                    wind.push(35 + Math.sin(h * 0.2) * 15);
+                    temp.push(14 + Math.sin(h * 0.15) * 6);
+                }
+                weatherData = {
+                    ts: Date.now(),
+                    hourly: {
+                        time: times,
+                        shortwave_radiation_instant: rad,
+                        wind_speed_100m: wind,
+                        temperature_2m: temp
+                    }
+                };
+            }
+
+            park._series = calculateParkPowerSeries(park, weatherData.hourly);
+            renderParkForecast();
+        }
+        window.openParkForecast = openParkForecast;
+
+        function renderParkForecast() {
+            if (!activeParkId || typeof RENEWABLE_PARKS_DATA === 'undefined') return;
+            const park = RENEWABLE_PARKS_DATA.find(p => p.id === activeParkId);
+            if (!park || !park._series || !park._series.length) return;
+
+            const targetTime = (parkHoveredTime !== null)
+                ? parkHoveredTime
+                : (Date.now() + currentHourOffset * 3600000);
+
+            // Nächsten Datenpunkt finden
+            let curPoint = park._series[0];
+            let minDiff = Math.abs(park._series[0].t - targetTime);
+            for (let i = 1; i < park._series.length; i++) {
+                const d = Math.abs(park._series[i].t - targetTime);
+                if (d < minDiff) {
+                    minDiff = d;
+                    curPoint = park._series[i];
+                }
+            }
+
+            // Peaks ermitteln
+            const now = Date.now();
+            const futureWindow = (p) => p.t >= now - 6 * 3600000 && p.t <= now + 36 * 3600000;
+            const relevant = park._series.filter(futureWindow);
+            let peakPoint = relevant[0] || park._series[0];
+            relevant.forEach(p => {
+                if (p.mw > peakPoint.mw) peakPoint = p;
+            });
+
+            // KPIs aktualisieren
+            const curEl = document.getElementById('parkKpiCurrentPower');
+            if (curEl) curEl.innerText = formatGwOrMw(curPoint.mw);
+
+            const loadEl = document.getElementById('parkKpiLoadFactor');
+            if (loadEl) {
+                const pct = (park.capacityMw > 0) ? Math.min(100, Math.round((curPoint.mw / park.capacityMw) * 100)) : 0;
+                loadEl.innerText = `Auslastung: ${pct} %`;
+            }
+
+            const peakEl = document.getElementById('parkKpiPeak');
+            if (peakEl) peakEl.innerText = formatGwOrMw(peakPoint.mw);
+
+            const peakTimeEl = document.getElementById('parkKpiPeakTime');
+            if (peakTimeEl) {
+                const dPeak = new Date(peakPoint.t);
+                peakTimeEl.innerText = `Peak: ${dPeak.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`;
+            }
+
+            // Lokales Wetter am Standort
+            const wSumEl = document.getElementById('parkWeatherSummary');
+            if (wSumEl) {
+                const isSolar = (park.type === 'solar');
+                wSumEl.innerText = isSolar 
+                    ? `${curPoint.ghi} W/m² · ${curPoint.temp}°C` 
+                    : `${curPoint.windSpeedKm} km/h Wind (100m) · ${curPoint.temp}°C`;
+            }
+
+            const wLeftEl = document.getElementById('parkWeatherDetailLeft');
+            if (wLeftEl) wLeftEl.innerText = `Globalstrahlung: ${curPoint.ghi} W/m²`;
+
+            const wRightEl = document.getElementById('parkWeatherDetailRight');
+            if (wRightEl) wRightEl.innerText = `Wind in 100m: ${curPoint.windSpeedKm} km/h (${curPoint.windSpeedMs} m/s)`;
+
+            // TSO-Netzabgleich
+            const tsoShareEl = document.getElementById('parkTsoShare');
+            const curtailWarnEl = document.getElementById('parkCurtailmentWarning');
+            const priceVal = (typeof getPriceAtTime === 'function') ? getPriceAtTime(targetTime) : null;
+
+            if (tsoShareEl && cachedGridData) {
+                const tsoData = (park.tso && cachedGridData.regions && cachedGridData.regions[park.tso]) 
+                    ? cachedGridData.regions[park.tso] 
+                    : cachedGridData.germany;
+                if (tsoData) {
+                    const refSeries = (park.type === 'solar') ? tsoData.solar : (park.type.startsWith('wind') ? tsoData.windTotal : tsoData.totalRenewable);
+                    const refPt = findPointAtTime(refSeries, targetTime);
+                    if (refPt && refPt.mw > 0) {
+                        const share = (curPoint.mw / refPt.mw) * 100;
+                        tsoShareEl.innerText = (share >= 0.05) ? `${share.toFixed(1)} % (${park.tso})` : `< 0.1 % (${park.tso})`;
+                    } else {
+                        tsoShareEl.innerText = '-- %';
+                    }
+                }
+            }
+
+            if (curtailWarnEl) {
+                const isNegative = (priceVal !== null && priceVal < 0);
+                curtailWarnEl.style.display = isNegative ? 'block' : 'none';
+                if (isNegative) {
+                    curtailWarnEl.innerText = `⚠️ Negativer Börsenpreis (${priceVal.toFixed(2)} ct/kWh) – Mögliche Einspeisedrosselung (Curtailment)!`;
+                }
+            }
+
+            drawParkForecastChart(park, targetTime);
+        }
+        window.renderParkForecast = renderParkForecast;
+
+        function drawParkForecastChart(park, targetTime) {
+            const svg = document.getElementById('parkForecastChart');
+            if (!svg || !park || !park._series || !park._series.length) return;
+
+            const now = Date.now();
+            const minT = now - 24 * 3600000;
+            const maxT = now + 40 * 3600000;
+            const series = park._series.filter(p => p.t >= minT && p.t <= maxT);
+            if (!series.length) {
+                svg.innerHTML = '<text x="190" y="65" text-anchor="middle" fill="#666" font-size="11">Keine Prognosedaten verfügbar</text>';
+                return;
+            }
+
+            const tStart = series[0].t;
+            const tEnd = series[series.length - 1].t;
+            const tSpan = Math.max(1, tEnd - tStart);
+
+            let maxMw = Math.max(...series.map(p => p.mw), park.capacityMw * 0.1, 10);
+            maxMw = Math.ceil((maxMw * 1.15) / 50) * 50;
+
+            const W = 380, H = 130;
+            const padL = 34, padR = 10, padT = 12, padB = 22;
+            const chartW = W - padL - padR;
+            const chartH = H - padT - padB;
+
+            const xForT = (t) => padL + ((t - tStart) / tSpan) * chartW;
+            const yForMw = (mw) => padT + chartH - (Math.max(0, mw) / maxMw) * chartH;
+
+            let svgHtml = '';
+
+            // Horizontale Gitterlinien
+            const steps = 4;
+            for (let i = 0; i <= steps; i++) {
+                const mwVal = (maxMw / steps) * i;
+                const y = yForMw(mwVal);
+                svgHtml += `
+                    <line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+                    <text x="${padL - 4}" y="${y + 3}" text-anchor="end" fill="#666" font-size="8.5">${Math.round(mwVal)}</text>
+                `;
+            }
+
+            // Tag/Nacht-Hintergrund & Tageswechsel-Linien
+            for (let t = tStart; t <= tEnd; t += 3600000) {
+                const d = new Date(t);
+                if (d.getHours() === 0) {
+                    const x = xForT(t);
+                    svgHtml += `
+                        <line x1="${x}" y1="${padT}" x2="${x}" y2="${padT + chartH}" stroke="rgba(255,255,255,0.2)" stroke-width="1" stroke-dasharray="3 3"/>
+                        <text x="${x + 3}" y="${padT + chartH + 14}" fill="#aaa" font-size="8.5">${d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit' })}</text>
+                    `;
+                }
+            }
+
+            // Flächenpfad Park-Erzeugung
+            const areaPoints = series.map(p => `${xForT(p.t)},${yForMw(p.mw)}`).join(' ');
+            const fillD = `M ${xForT(series[0].t)},${padT + chartH} L ${areaPoints} L ${xForT(series[series.length - 1].t)},${padT + chartH} Z`;
+
+            const mainCol = (park.type === 'solar') ? '#ffdb00' : (park.type === 'wind_offshore' ? '#00e5ff' : (park.type === 'cluster' ? '#c084fc' : '#00ff88'));
+            const fillCol = (park.type === 'solar') ? 'rgba(255, 219, 0, 0.45)' : (park.type === 'wind_offshore' ? 'rgba(0, 229, 255, 0.45)' : (park.type === 'cluster' ? 'rgba(192, 132, 252, 0.4)' : 'rgba(0, 255, 136, 0.45)'));
+
+            svgHtml += `<path d="${fillD}" fill="${fillCol}"/>`;
+
+            // Konturlinie
+            let lineD = `M ${xForT(series[0].t)} ${yForMw(series[0].mw)}`;
+            for (let i = 1; i < series.length; i++) {
+                lineD += ` L ${xForT(series[i].t)} ${yForMw(series[i].mw)}`;
+            }
+            svgHtml += `<path d="${lineD}" fill="none" stroke="${mainCol}" stroke-width="2.0"/>`;
+
+            // Marker für aktuelle Zeit
+            const curX = Math.max(padL, Math.min(W - padR, xForT(targetTime)));
+            svgHtml += `
+                <g id="parkChartMarkerGroup">
+                    <line x1="${curX}" y1="${padT - 2}" x2="${curX}" y2="${padT + chartH + 2}" stroke="#ffffff" stroke-width="1.8" stroke-dasharray="2 2"/>
+                    <circle cx="${curX}" cy="${padT}" r="3.5" fill="${mainCol}" stroke="#000" stroke-width="1"/>
+                </g>
+            `;
+
+            svg.innerHTML = svgHtml;
+        }
+
+        function initParkForecastInteraction() {
+            const svg = document.getElementById('parkForecastChart');
+            const tooltip = document.getElementById('parkChartTooltip');
+            const container = document.getElementById('park-forecast-container');
+            if (!svg || !container) return;
+
+            if (typeof makeDraggable === 'function') {
+                makeDraggable(container, '.forecast-header');
+            }
+
+            const handlePointer = (e) => {
+                if (!activeParkId || typeof RENEWABLE_PARKS_DATA === 'undefined') return;
+                const park = RENEWABLE_PARKS_DATA.find(p => p.id === activeParkId);
+                if (!park || !park._series || !park._series.length) return;
+
+                const rect = svg.getBoundingClientRect();
+                const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+                if (clientX === undefined) return;
+
+                const relX = clientX - rect.left;
+                const frac = Math.max(0, Math.min(1, (relX - 34) / (rect.width - 44)));
+
+                const now = Date.now();
+                const minT = now - 24 * 3600000;
+                const maxT = now + 40 * 3600000;
+                const series = park._series.filter(p => p.t >= minT && p.t <= maxT);
+                if (!series.length) return;
+
+                const tStart = series[0].t;
+                const tEnd = series[series.length - 1].t;
+                const hoverT = tStart + frac * (tEnd - tStart);
+
+                parkHoveredTime = hoverT;
+                renderParkForecast();
+
+                if (tooltip) {
+                    let closest = series[0];
+                    let minDiff = Math.abs(series[0].t - hoverT);
+                    for (let i = 1; i < series.length; i++) {
+                        const d = Math.abs(series[i].t - hoverT);
+                        if (d < minDiff) { minDiff = d; closest = series[i]; }
+                    }
+
+                    const d = new Date(hoverT);
+                    const timeStr = d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: 'short' }) + ', ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr';
+                    const cf = (park.capacityMw > 0) ? Math.round((closest.mw / park.capacityMw) * 100) : 0;
+                    const weatherSub = (park.type === 'solar') 
+                        ? `☀️ ${closest.ghi} W/m² · ${closest.temp}°C` 
+                        : `💨 ${closest.windSpeedKm} km/h (100m) · ${closest.temp}°C`;
+
+                    tooltip.innerHTML = `
+                        <div style="font-weight:700; color:#fff; margin-bottom:3px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:2px;">${timeStr}</div>
+                        <div style="display:flex; justify-content:space-between; gap:10px; color:#00ff88;"><span>Leistung:</span><strong>${closest.mw} MW</strong></div>
+                        <div style="display:flex; justify-content:space-between; gap:10px; color:#aaa;"><span>Auslastung:</span><strong>${cf} %</strong></div>
+                        <div style="color:#ffdb00; font-size:8.5px; margin-top:2px;">${weatherSub}</div>
+                    `;
+                    tooltip.style.display = 'block';
+                    const boxX = Math.max(10, Math.min(rect.width - 130, relX - 60));
+                    tooltip.style.left = boxX + 'px';
+                    tooltip.style.top = '14px';
+                }
+            };
+
+            svg.addEventListener('pointermove', handlePointer);
+            svg.addEventListener('pointerleave', () => {
+                parkHoveredTime = null;
+                if (tooltip) tooltip.style.display = 'none';
+                renderParkForecast();
+            });
+
+            svg.addEventListener('click', () => {
+                if (parkHoveredTime !== null) {
+                    const offset = (parkHoveredTime - Date.now()) / 3600000;
+                    if (typeof setHourOffset === 'function') {
+                        setHourOffset(offset);
+                        const slider = document.getElementById('timeSlider');
+                        if (slider) slider.value = Math.round(offset);
+                    }
+                }
+            });
+        }
+        window.initParkForecastInteraction = initParkForecastInteraction;
+
+        function updateParkForecastMarker() {
+            const container = document.getElementById('park-forecast-container');
+            if (!container || container.style.display === 'none') return;
+            renderParkForecast();
+        }
+        window.updateParkForecastMarker = updateParkForecastMarker;
 
         function initRoutePlanner() {
             const container = document.getElementById('route-container');
@@ -18600,6 +19379,8 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
         initRoutePlanner();
         initAreaMeasure();
         initGridForecastInteraction();
+        initParkForecastInteraction();
+        populateParkQuickSelect();
 
         // INIT
         if (typeof tempMetadata !== 'undefined' && tempMetadata.nx < 1440) {
