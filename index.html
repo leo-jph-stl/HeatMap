@@ -13498,45 +13498,9 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 }
             }
 
-            // Städte-Namen erst bei Zoom einblenden (ab dist < 165) und nur wenn overlayState.borders aktiv ist
-            if (dist > 165 || citiesData.length === 0 || (typeof overlayState !== 'undefined' && !overlayState.borders)) {
-                cityCtx.restore();
-                return;
-            }
-
-            const fadeAlpha = Math.min((165 - dist) / 25, 0.85);
-
-            // Dynamische Staffelung & Budgetierung nach Zoom-Tiefe:
-            let maxScanRank = 2;
-            let maxVisiblePlaces = 18;
-
-            if (dist <= 102.0) {
-                maxScanRank = 9;
-                maxVisiblePlaces = 34;
-            } else if (dist <= 103.5) {
-                maxScanRank = 8;
-                maxVisiblePlaces = 32;
-            } else if (dist <= 105.5) {
-                maxScanRank = 7;
-                maxVisiblePlaces = 30;
-            } else if (dist <= 110.0) {
-                maxScanRank = 6;
-                maxVisiblePlaces = 28;
-            } else if (dist <= 120.0) {
-                maxScanRank = 5;
-                maxVisiblePlaces = 26;
-            } else if (dist <= 135.0) {
-                maxScanRank = 4;
-                maxVisiblePlaces = 24;
-            } else if (dist <= 150.0) {
-                maxScanRank = 3;
-                maxVisiblePlaces = 20;
-            } else {
-                maxScanRank = 2;
-                maxVisiblePlaces = 16;
-            }
-
-            cityCtx.globalAlpha = fadeAlpha;
+            // POI- & Infrastruktur-Elemente (PV-Anlagen, Routen, Messungen, Erneuerbare Parks)
+            // mit voller Deckkraft rendern (unabhängig von Städte-Grenzfiltern)
+            cityCtx.globalAlpha = 1.0;
             cityCtx.textBaseline = 'middle';
 
             // 1. PV-ANLAGE HOCHHEIM (Leuchtender Solar-Marker)
@@ -13934,8 +13898,11 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                     const color = isSolar ? '#ffdb00' : (isOffshore ? '#00e5ff' : (isCluster ? '#c084fc' : '#00ff88'));
                     const badgeText = isCluster ? `${park.name.split(' ')[0]} ${Math.round(park.capacityMw / 1000)}GW` : `${park.capacityMw} MW`;
 
-                    // Zoomfilterung für saubere Lesbarkeit
-                    if (dist > 185 && !isCluster && park.capacityMw < 300) continue;
+                    // Gestaffelte Zoomfilterung nach Kapazität für klare, saubere Darstellung auf allen Zoomstufen:
+                    if (dist > 225 && !isCluster) continue; // Sehr weite Weltkugel-Ansicht: Nur Länder-Cluster
+                    if (dist > 195 && !isCluster && park.capacityMw < 400) continue; // Kontinentale Großansicht Europa: Ab 400 MW
+                    if (dist > 175 && !isCluster && park.capacityMw < 150) continue; // Europa-Übersicht: Ab 150 MW
+                    if (dist > 155 && !isCluster && park.capacityMw < 60) continue;  // Mittlerer Zoom: Ab 60 MW
 
                     cityCtx.save();
 
@@ -13985,8 +13952,8 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                     cityCtx.textBaseline = 'middle';
                     cityCtx.fillText(badgeText, bx + 5, by + bh / 2 + 0.5);
 
-                    // Parkname oberhalb (wenn Zoom nah genug ist, dist < 165)
-                    if (dist < 165) {
+                    // Parkname oberhalb (wenn Zoom nah genug ist, dist < 175)
+                    if (dist < 175) {
                         cityCtx.font = '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
                         cityCtx.fillStyle = '#ffffff';
                         cityCtx.textAlign = 'center';
@@ -14000,6 +13967,46 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                     placed.push({ x: sx, y: sy, spacingX: bw + 15, spacingY: 28 });
                 }
             }
+
+            // =========================================================================
+            // 7. STÄDTE-NAMEN & TEMPERATUREN (erst ab dist <= 165 einblenden)
+            // =========================================================================
+            if (dist <= 165 && citiesData.length > 0 && (typeof overlayState === 'undefined' || overlayState.borders)) {
+                const fadeAlpha = Math.min((165 - dist) / 25, 0.85);
+
+                // Dynamische Staffelung & Budgetierung nach Zoom-Tiefe:
+                let maxScanRank = 2;
+                let maxVisiblePlaces = 18;
+
+                if (dist <= 102.0) {
+                    maxScanRank = 9;
+                    maxVisiblePlaces = 34;
+                } else if (dist <= 103.5) {
+                    maxScanRank = 8;
+                    maxVisiblePlaces = 32;
+                } else if (dist <= 105.5) {
+                    maxScanRank = 7;
+                    maxVisiblePlaces = 30;
+                } else if (dist <= 110.0) {
+                    maxScanRank = 6;
+                    maxVisiblePlaces = 28;
+                } else if (dist <= 120.0) {
+                    maxScanRank = 5;
+                    maxVisiblePlaces = 26;
+                } else if (dist <= 135.0) {
+                    maxScanRank = 4;
+                    maxVisiblePlaces = 24;
+                } else if (dist <= 150.0) {
+                    maxScanRank = 3;
+                    maxVisiblePlaces = 20;
+                } else {
+                    maxScanRank = 2;
+                    maxVisiblePlaces = 16;
+                }
+
+                cityCtx.save();
+                cityCtx.globalAlpha = fadeAlpha;
+                cityCtx.textBaseline = 'middle';
 
             // PHASE 1: Schnelle Sichtbarkeitsprüfung & Fokus-Distanzberechnung
             const candidates = [];
@@ -14116,6 +14123,8 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 cityCtx.fillStyle = isMajor ? '#0a0a0a' : (isMedium ? '#111111' : '#2a2a2a');
                 cityCtx.fillText(tempStr, cand.sx, cand.sy + (isMajor ? 9.0 : 7.5));
                 cityCtx.shadowColor = 'transparent';
+            }
+                cityCtx.restore();
             }
             cityCtx.restore();
         }
@@ -17285,22 +17294,30 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             const sel = document.getElementById('parkQuickSelect');
             if (!sel || sel.options.length > 0 || typeof RENEWABLE_PARKS_DATA === 'undefined') return;
 
+            const flagMap = {
+                DE: '🇩🇪', ES: '🇪🇸', FR: '🇫🇷', IT: '🇮🇹', GB: '🇬🇧',
+                NL: '🇳🇱', BE: '🇧🇪', DK: '🇩🇰', AT: '🇦🇹', CH: '🇨🇭',
+                PL: '🇵🇱', PT: '🇵🇹', GR: '🇬🇷', SE: '🇸🇪', NO: '🇳🇴'
+            };
+
             const groups = {
                 solar: document.createElement('optgroup'),
                 wind_offshore: document.createElement('optgroup'),
                 wind_onshore: document.createElement('optgroup'),
                 cluster: document.createElement('optgroup')
             };
-            groups.solar.label = '☀️ Große Solarparks (Freiflächen-PV)';
-            groups.wind_offshore.label = '🌊 Offshore-Windparks (Nord- & Ostsee)';
-            groups.wind_onshore.label = '💨 Onshore-Windparks';
-            groups.cluster.label = '🏛️ Regionale Cluster (Bundesländer)';
+            groups.solar.label = '☀️ Große Solarparks in Europa (Utility-Scale PV)';
+            groups.wind_offshore.label = '🌊 Offshore-Windparks (Nord- & Ostsee, Atlantik)';
+            groups.wind_onshore.label = '💨 Onshore-Windparks in Europa';
+            groups.cluster.label = '🏛️ Regionale & Nationale Cluster (Bundesländer / Staaten)';
 
             RENEWABLE_PARKS_DATA.forEach(p => {
                 const opt = document.createElement('option');
                 opt.value = p.id;
+                const flag = flagMap[p.country] || '';
                 const icon = p.type === 'solar' ? '☀️' : (p.type === 'wind_offshore' ? '🌊' : (p.type === 'cluster' ? '🏛️' : '💨'));
-                opt.textContent = `${icon} ${p.name} (${p.capacityMw} MW)`;
+                const capStr = p.capacityMw >= 1000 ? `${(p.capacityMw / 1000).toFixed(1)} GW` : `${p.capacityMw} MW`;
+                opt.textContent = `${flag} ${icon} ${p.name} (${capStr})`;
                 if (groups[p.type]) groups[p.type].appendChild(opt);
             });
 
@@ -17407,14 +17424,15 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
 
             // Header-Felder aktualisieren
             const typeIcon = park.type === 'solar' ? '☀️' : (park.type === 'wind_offshore' ? '🌊' : (park.type === 'cluster' ? '🏛️' : '💨'));
-            const typeLabel = park.type === 'solar' ? 'Solarpark (PV)' : (park.type === 'wind_offshore' ? 'Offshore-Windpark' : (park.type === 'cluster' ? 'Bundesland-Cluster' : 'Onshore-Windpark'));
+            const typeLabel = park.type === 'solar' ? 'Solarpark (PV)' : (park.type === 'wind_offshore' ? 'Offshore-Windpark' : (park.type === 'cluster' ? (park.country === 'DE' ? 'Bundesland-Cluster' : 'Nationales Cluster') : 'Onshore-Windpark'));
             
             const iconEl = document.getElementById('parkForecastTypeIcon');
             if (iconEl) iconEl.innerText = typeIcon;
             const titleEl = document.getElementById('parkForecastTitle');
             if (titleEl) titleEl.innerText = park.name;
             const subEl = document.getElementById('parkForecastSubtitle');
-            if (subEl) subEl.innerText = `${typeLabel} · ${park.state} (${park.capacityMw.toLocaleString('de-DE')} MW)`;
+            const locationLabel = (park.state && park.state !== park.country) ? `${park.state}, ${park.country}` : park.country;
+            if (subEl) subEl.innerText = `${typeLabel} · ${locationLabel} (${park.capacityMw.toLocaleString('de-DE')} MW)`;
 
             const capEl = document.getElementById('parkKpiCapacity');
             if (capEl) capEl.innerText = `${park.capacityMw.toLocaleString('de-DE')} MW`;

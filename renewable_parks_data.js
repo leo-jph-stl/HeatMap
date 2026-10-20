@@ -1,13 +1,15 @@
 // ============================================================================
-// ⚡ ERNEUERBARE PARKS & ANLAGEN (STANDORTE & KAPAZITÄTEN)
+// ⚡ ERNEUERBARE PARKS & ANLAGEN IN EUROPA (STANDORTE & PRODUKTIONSKAPAZITÄTEN)
 // Offizielle Geodaten aus Marktstammdatenregister (MaStR / Bundesnetzagentur),
-// BSH (Bundesamt für Seeschifffahrt und Hydrographie) und OPSD.
+// BSH (Bundesamt für Seeschifffahrt und Hydrographie), OPSD & ENTSO-E.
 // ============================================================================
 
 const RENEWABLE_PARKS_DATA = [
-    // ------------------------------------------------------------------------
-    // ☀️ GROSSE FREIFLÄCHEN-SOLARPARKS (UTILITY-SCALE PV)
-    // ------------------------------------------------------------------------
+    // ========================================================================
+    // ☀️ GROSSE FREIFLÄCHEN-SOLARPARKS IN EUROPA (UTILITY-SCALE PV)
+    // ========================================================================
+    
+    // --- DEUTSCHLAND ---
     {
         id: 'witznitz',
         name: 'Energiepark Witznitz',
@@ -218,6 +220,8 @@ const RENEWABLE_PARKS_DATA = [
         operator: 'Juwi',
         desc: 'Militärflugplatz Brandis bei Leipzig.'
     },
+
+    // --- SPANIEN (SOLAR-SUPERMACHT) ---
     {
         id: 'francisco_pizarro',
         name: 'Solarpark Francisco Pizarro',
@@ -230,7 +234,7 @@ const RENEWABLE_PARKS_DATA = [
         tso: 'REE',
         commissioningYear: 2022,
         operator: 'Iberdrola',
-        desc: 'Einer der größten Solarparks Europas in Spanien mit über 1,5 Mio. Modulen.'
+        desc: 'Einer der größten Solarparks Europas in Spanien (1,5 Mio. Solarmodule zwischen Torrecillas de la Tiesa und Aldeacentenera).'
     },
     {
         id: 'nunez_balboa',
@@ -244,8 +248,66 @@ const RENEWABLE_PARKS_DATA = [
         tso: 'REE',
         commissioningYear: 2020,
         operator: 'Iberdrola',
-        desc: 'Spanischer Megapark nahe Usagre.'
+        desc: 'Spanischer Megapark nahe Usagre in der sonnenreichsten Region Europas.'
     },
+    {
+        id: 'mula_solar',
+        name: 'Solarpark Mula',
+        type: 'solar',
+        capacityMw: 494,
+        lat: 38.041,
+        lng: -1.490,
+        state: 'Murcia',
+        country: 'ES',
+        tso: 'REE',
+        commissioningYear: 2019,
+        operator: 'Northland Power',
+        desc: 'Riesige Freiflächenanlage in der Region Murcia im Südosten Spaniens.'
+    },
+    {
+        id: 'talasol',
+        name: 'Solarpark Talasol',
+        type: 'solar',
+        capacityMw: 300,
+        lat: 39.860,
+        lng: -5.420,
+        state: 'Cáceres',
+        country: 'ES',
+        tso: 'REE',
+        commissioningYear: 2021,
+        operator: 'Ellomay Capital',
+        desc: 'Großsolarpark in Talaván, Extremadura.'
+    },
+    {
+        id: 'don_rodrigo',
+        name: 'Solarpark Don Rodrigo',
+        type: 'solar',
+        capacityMw: 175,
+        lat: 37.210,
+        lng: -5.850,
+        state: 'Sevilla / Andalusien',
+        country: 'ES',
+        tso: 'REE',
+        commissioningYear: 2019,
+        operator: 'BayWa r.e.',
+        desc: 'Erster förderfreier Großsolarpark Spaniens bei Alcalá de Guadaíra.'
+    },
+    {
+        id: 'puertollano',
+        name: 'Solarpark Puertollano',
+        type: 'solar',
+        capacityMw: 100,
+        lat: 38.687,
+        lng: -4.108,
+        state: 'Kastilien-La Mancha',
+        country: 'ES',
+        tso: 'REE',
+        commissioningYear: 2022,
+        operator: 'Iberdrola',
+        desc: 'Innovativer Solarpark kombiniert mit Europas größter grüner Wasserstoffanlage.'
+    },
+
+    // --- FRANKREICH ---
     {
         id: 'cestas',
         name: 'Solarpark Cestas',
@@ -258,8 +320,52 @@ const RENEWABLE_PARKS_DATA = [
         tso: 'RTE',
         commissioningYear: 2015,
         operator: 'Neoen',
-        desc: 'Größter Solarpark Frankreichs bei Bordeaux.'
+        desc: 'Größter Solarpark Frankreichs bei Bordeaux mit optimaler Ost-West-Ausrichtung.'
     },
+    {
+        id: 'marville_solar',
+        name: 'Solarpark Marville',
+        type: 'solar',
+        capacityMw: 152,
+        lat: 49.448,
+        lng: 5.422,
+        state: 'Grand Est / Meuse',
+        country: 'FR',
+        tso: 'RTE',
+        commissioningYear: 2021,
+        operator: 'Engie',
+        desc: 'Konversionsanlage auf dem ehemaligen NATO-Militärflugplatz Marville-Montmédy.'
+    },
+    {
+        id: 'toul_rosieres',
+        name: 'Solarpark Toul-Rosières',
+        type: 'solar',
+        capacityMw: 115,
+        lat: 48.783,
+        lng: 5.983,
+        state: 'Grand Est / Meurthe-et-Moselle',
+        country: 'FR',
+        tso: 'RTE',
+        commissioningYear: 2012,
+        operator: 'EDF Renewables',
+        desc: 'Ehemaliger Militärflugplatz Rosières-en-Haye in Lothringen.'
+    },
+    {
+        id: 'curbans_solar',
+        name: 'Solarpark Curbans',
+        type: 'solar',
+        capacityMw: 33,
+        lat: 44.428,
+        lng: 6.038,
+        state: 'Provence-Alpes-Côte d’Azur',
+        country: 'FR',
+        tso: 'RTE',
+        commissioningYear: 2011,
+        operator: 'ENGIE',
+        desc: 'Hochgelegene Alpen-Solaranlage auf 1.000m Höhe mit sehr hoher Strahlungsintensität.'
+    },
+
+    // --- ITALIEN ---
     {
         id: 'troia',
         name: 'Solarpark Troia',
@@ -272,12 +378,245 @@ const RENEWABLE_PARKS_DATA = [
         tso: 'Terna',
         commissioningYear: 2020,
         operator: 'European Energy',
-        desc: 'Süditalienischer Großsolarpark in der sonnenreichen Region Foggia.'
+        desc: 'Großsolarpark in der sonnenreichsten Ebene Süditaliens bei Foggia.'
+    },
+    {
+        id: 'montalto_castro',
+        name: 'Solarpark Montalto di Castro',
+        type: 'solar',
+        capacityMw: 84,
+        lat: 42.350,
+        lng: 11.608,
+        state: 'Latium / Viterbo',
+        country: 'IT',
+        tso: 'Terna',
+        commissioningYear: 2010,
+        operator: 'Octopus Energy',
+        desc: 'Früher Pionierpark Italiens nahe dem nicht fertiggestellten Atomkraftwerk Montalto.'
+    },
+    {
+        id: 'san_bellino',
+        name: 'Solarpark San Bellino',
+        type: 'solar',
+        capacityMw: 70,
+        lat: 45.030,
+        lng: 11.590,
+        state: 'Venetien / Rovigo',
+        country: 'IT',
+        tso: 'Terna',
+        commissioningYear: 2010,
+        operator: 'SunEdison',
+        desc: 'Großflächige Solaranlage in der Po-Ebene.'
     },
 
-    // ------------------------------------------------------------------------
-    // 🌊 OFFSHORE-WINDPARKS (NORDSEE & OSTSEE)
-    // ------------------------------------------------------------------------
+    // --- ÖSTERREICH & SCHWEIZ ---
+    {
+        id: 'nickelsdorf_solar',
+        name: 'Solarpark Nickelsdorf',
+        type: 'solar',
+        capacityMw: 120,
+        lat: 47.933,
+        lng: 17.067,
+        state: 'Burgenland',
+        country: 'AT',
+        tso: 'APG',
+        commissioningYear: 2024,
+        operator: 'Burgenland Energie',
+        desc: 'Größter Solarpark Österreichs an der ungarischen Grenze.'
+    },
+    {
+        id: 'muttsee_solar',
+        name: 'Alpin-Solarpark Muttsee',
+        type: 'solar',
+        capacityMw: 2.2,
+        lat: 46.852,
+        lng: 9.022,
+        state: 'Glarus',
+        country: 'CH',
+        tso: 'Swissgrid',
+        commissioningYear: 2022,
+        operator: 'Axpo',
+        desc: 'Europas höchstgelegene Solaranlage an der Staumauer des Muttsees auf 2.500m (hoher Winter-Albedo-Ertrag).'
+    },
+
+    // --- NIEDERLANDE, BELGIEN, DÄNEMARK, POLEN, PORTUGAL & GRIECHENLAND ---
+    {
+        id: 'dorhout_mees',
+        name: 'Solarpark Dorhout Mees',
+        type: 'solar',
+        capacityMw: 144,
+        lat: 52.417,
+        lng: 5.617,
+        state: 'Flevoland',
+        country: 'NL',
+        tso: 'TenneT NL',
+        commissioningYear: 2022,
+        operator: 'Solarfields',
+        desc: 'Größter Solarpark der Niederlande bei Biddinghuizen.'
+    },
+    {
+        id: 'vlagtwedde',
+        name: 'Solarpark Vlagtwedde',
+        type: 'solar',
+        capacityMw: 110,
+        lat: 53.028,
+        lng: 7.108,
+        state: 'Groningen',
+        country: 'NL',
+        tso: 'TenneT NL',
+        commissioningYear: 2020,
+        operator: 'Powerfield',
+        desc: 'Niederländischer Megapark nahe der deutschen Grenze.'
+    },
+    {
+        id: 'kristal_solar',
+        name: 'Kristal Solar Park',
+        type: 'solar',
+        capacityMw: 100,
+        lat: 51.220,
+        lng: 5.310,
+        state: 'Limburg / Flandern',
+        country: 'BE',
+        tso: 'Elia',
+        commissioningYear: 2019,
+        operator: 'LRM',
+        desc: 'Größter Solarpark der Benelux-Region im Gewerbegebiet Lommel.'
+    },
+    {
+        id: 'kassoe_solar',
+        name: 'Solarpark Kassø',
+        type: 'solar',
+        capacityMw: 300,
+        lat: 55.033,
+        lng: 9.283,
+        state: 'Süddänemark',
+        country: 'DK',
+        tso: 'Energinet',
+        commissioningYear: 2022,
+        operator: 'European Energy',
+        desc: 'Größter Solarpark Skandinaviens bei Aabenraa; liefert Strom für Europas größte e-Methanol-Anlage.'
+    },
+    {
+        id: 'zwartowo_solar',
+        name: 'Solarpark Zwartowo',
+        type: 'solar',
+        capacityMw: 204,
+        lat: 54.717,
+        lng: 17.850,
+        state: 'Pommern',
+        country: 'PL',
+        tso: 'PSE',
+        commissioningYear: 2022,
+        operator: 'Goldbeck Solar / Respect Energy',
+        desc: 'Größter Solarpark Polens und Mittelosteuropas nahe der Ostseeküste.'
+    },
+    {
+        id: 'solara4_solar',
+        name: 'Solarpark Solara 4',
+        type: 'solar',
+        capacityMw: 219,
+        lat: 37.471,
+        lng: -7.472,
+        state: 'Algarve / Alcoutim',
+        country: 'PT',
+        tso: 'REN',
+        commissioningYear: 2021,
+        operator: 'Allianz Capital Partners / WElink',
+        desc: 'Großanlage in der sonnenreichsten Bergregion Portugals an der spanischen Grenze.'
+    },
+    {
+        id: 'kozani_solar',
+        name: 'Solarpark Kozani',
+        type: 'solar',
+        capacityMw: 204,
+        lat: 40.300,
+        lng: 21.783,
+        state: 'Westmakedonien',
+        country: 'GR',
+        tso: 'IPTO',
+        commissioningYear: 2022,
+        operator: 'HELLENiQ ENERGY',
+        desc: 'Größter bifazialer Solarpark Südosteuropas auf ehemaligen Braunkohleflächen.'
+    },
+
+
+    // ========================================================================
+    // 🌊 OFFSHORE-WINDPARKS (NORDSEE, OSTSEE, ATLANTIK & MITTELMEER)
+    // ========================================================================
+
+    // --- GROSSBRITANNIEN (WELTFÜHRENDER OFFSHORE-MARKT) ---
+    {
+        id: 'hornsea_cluster',
+        name: 'OWP Hornsea 1 & 2',
+        type: 'wind_offshore',
+        capacityMw: 2604,
+        lat: 53.883,
+        lng: 1.833,
+        state: 'Nordsee (UK)',
+        country: 'GB',
+        tso: 'National Grid ESO',
+        commissioningYear: 2022,
+        operator: 'Ørsted',
+        desc: 'Größter Offshore-Windpark-Komplex der Welt ca. 89 km vor der Küste von Yorkshire (versorgt >2,3 Mio. Haushalte).'
+    },
+    {
+        id: 'dogger_bank',
+        name: 'OWP Dogger Bank (Phase A & B)',
+        type: 'wind_offshore',
+        capacityMw: 2400,
+        lat: 54.750,
+        lng: 1.900,
+        state: 'Nordsee (UK)',
+        country: 'GB',
+        tso: 'National Grid ESO',
+        commissioningYear: 2024,
+        operator: 'SSE Renewables / Equinor / Vårgrønn',
+        desc: 'Riesenprojekt auf der Doggerbank mit GE Haliade-X 13-14 MW Giganten-Turbinen.'
+    },
+    {
+        id: 'seagreen',
+        name: 'OWP Seagreen',
+        type: 'wind_offshore',
+        capacityMw: 1075,
+        lat: 56.583,
+        lng: -1.833,
+        state: 'Nordsee / Schottland',
+        country: 'GB',
+        tso: 'National Grid ESO',
+        commissioningYear: 2023,
+        operator: 'TotalEnergies / SSE',
+        desc: 'Größter Offshore-Windpark Schottlands 27 km vor der Küste von Angus.'
+    },
+    {
+        id: 'east_anglia_one',
+        name: 'OWP East Anglia ONE',
+        type: 'wind_offshore',
+        capacityMw: 714,
+        lat: 52.233,
+        lng: 2.483,
+        state: 'Nordsee (UK)',
+        country: 'GB',
+        tso: 'National Grid ESO',
+        commissioningYear: 2020,
+        operator: 'ScottishPower Renewables (Iberdrola)',
+        desc: '102 7-MW-Turbinen 43 km vor der Küste von Suffolk.'
+    },
+    {
+        id: 'london_array',
+        name: 'OWP London Array',
+        type: 'wind_offshore',
+        capacityMw: 630,
+        lat: 51.633,
+        lng: 1.500,
+        state: 'Themsemündung (UK)',
+        country: 'GB',
+        tso: 'National Grid ESO',
+        commissioningYear: 2013,
+        operator: 'RWE / Masdar / Orsted',
+        desc: 'Historischer Pionier-Großwindpark 20 km vor den Küsten von Kent und Essex.'
+    },
+
+    // --- DEUTSCHE NORDSEE ---
     {
         id: 'borkum_riffgrund_3',
         name: 'OWP Borkum Riffgrund 3',
@@ -319,20 +658,6 @@ const RENEWABLE_PARKS_DATA = [
         commissioningYear: 2016,
         operator: 'Ørsted',
         desc: '97 Turbinen ca. 45 km vor Juist und Norderney.'
-    },
-    {
-        id: 'baltic_eagle',
-        name: 'OWP Baltic Eagle',
-        type: 'wind_offshore',
-        capacityMw: 476,
-        lat: 54.810,
-        lng: 13.840,
-        state: 'Ostsee (AWZ)',
-        country: 'DE',
-        tso: '50Hertz',
-        commissioningYear: 2024,
-        operator: 'Iberdrola',
-        desc: '50 Offshore-Turbinen nordöstlich der Insel Rügen.'
     },
     {
         id: 'borkum_riffgrund_2',
@@ -389,34 +714,6 @@ const RENEWABLE_PARKS_DATA = [
         commissioningYear: 2015,
         operator: 'Trianel',
         desc: 'Gemeinschaftsprojekt von 33 Stadtwerken in der Nordsee.'
-    },
-    {
-        id: 'arkona',
-        name: 'OWP Arkona',
-        type: 'wind_offshore',
-        capacityMw: 385,
-        lat: 54.783,
-        lng: 14.117,
-        state: 'Ostsee (AWZ)',
-        country: 'DE',
-        tso: '50Hertz',
-        commissioningYear: 2019,
-        operator: 'RWE / Equinor',
-        desc: '60 6-MW-Turbinen 35 km nordöstlich von Rügen.'
-    },
-    {
-        id: 'wikinger',
-        name: 'OWP Wikinger',
-        type: 'wind_offshore',
-        capacityMw: 350,
-        lat: 54.833,
-        lng: 14.067,
-        state: 'Ostsee (AWZ)',
-        country: 'DE',
-        tso: '50Hertz',
-        commissioningYear: 2017,
-        operator: 'Iberdrola',
-        desc: '70 Adwen 5-MW-Turbinen in der deutschen Ostsee.'
     },
     {
         id: 'kaskasi',
@@ -531,6 +828,64 @@ const RENEWABLE_PARKS_DATA = [
         desc: '72 Siemens 4-MW-Turbinen 90 km vor Sylt.'
     },
     {
+        id: 'alpha_ventus',
+        name: 'OWP Alpha Ventus',
+        type: 'wind_offshore',
+        capacityMw: 60,
+        lat: 54.008,
+        lng: 6.598,
+        state: 'Nordsee (AWZ)',
+        country: 'DE',
+        tso: 'TenneT',
+        commissioningYear: 2010,
+        operator: 'DOTI (EWE, E.ON, Vattenfall)',
+        desc: 'Historischer erster deutscher Offshore-Testwindpark 45 km vor Borkum.'
+    },
+
+    // --- DEUTSCHE OSTSEE ---
+    {
+        id: 'baltic_eagle',
+        name: 'OWP Baltic Eagle',
+        type: 'wind_offshore',
+        capacityMw: 476,
+        lat: 54.810,
+        lng: 13.840,
+        state: 'Ostsee (AWZ)',
+        country: 'DE',
+        tso: '50Hertz',
+        commissioningYear: 2024,
+        operator: 'Iberdrola',
+        desc: '50 Offshore-Turbinen nordöstlich der Insel Rügen.'
+    },
+    {
+        id: 'arkona',
+        name: 'OWP Arkona',
+        type: 'wind_offshore',
+        capacityMw: 385,
+        lat: 54.783,
+        lng: 14.117,
+        state: 'Ostsee (AWZ)',
+        country: 'DE',
+        tso: '50Hertz',
+        commissioningYear: 2019,
+        operator: 'RWE / Equinor',
+        desc: '60 6-MW-Turbinen 35 km nordöstlich von Rügen.'
+    },
+    {
+        id: 'wikinger',
+        name: 'OWP Wikinger',
+        type: 'wind_offshore',
+        capacityMw: 350,
+        lat: 54.833,
+        lng: 14.067,
+        state: 'Ostsee (AWZ)',
+        country: 'DE',
+        tso: '50Hertz',
+        commissioningYear: 2017,
+        operator: 'Iberdrola',
+        desc: '70 Adwen 5-MW-Turbinen in der deutschen Ostsee.'
+    },
+    {
         id: 'baltic_2',
         name: 'OWP EnBW Baltic 2',
         type: 'wind_offshore',
@@ -559,20 +914,6 @@ const RENEWABLE_PARKS_DATA = [
         desc: '27 Vestas 9.5-MW-Turbinen nordöstlich von Rügen.'
     },
     {
-        id: 'alpha_ventus',
-        name: 'OWP Alpha Ventus',
-        type: 'wind_offshore',
-        capacityMw: 60,
-        lat: 54.008,
-        lng: 6.598,
-        state: 'Nordsee (AWZ)',
-        country: 'DE',
-        tso: 'TenneT',
-        commissioningYear: 2010,
-        operator: 'DOTI (EWE, E.ON, Vattenfall)',
-        desc: 'Historischer erster deutscher Offshore-Testwindpark 45 km vor Borkum.'
-    },
-    {
         id: 'baltic_1',
         name: 'OWP EnBW Baltic 1',
         type: 'wind_offshore',
@@ -586,6 +927,8 @@ const RENEWABLE_PARKS_DATA = [
         operator: 'EnBW',
         desc: 'Erster kommerzieller deutscher Ostsee-Windpark 16 km vor Darß.'
     },
+
+    // --- NIEDERLANDE, DÄNEMARK, BELGIEN, FRANKREICH & PORTUGAL ---
     {
         id: 'borssele',
         name: 'OWP Borssele 1-4',
@@ -598,7 +941,21 @@ const RENEWABLE_PARKS_DATA = [
         tso: 'TenneT NL',
         commissioningYear: 2020,
         operator: 'Ørsted / Blauwwind',
-        desc: 'Einer der größten Offshore-Windparks der Niederlande.'
+        desc: 'Einer der größten Offshore-Windparks der Niederlande vor der Küste Zeelands.'
+    },
+    {
+        id: 'hollandse_kust_zuid',
+        name: 'OWP Hollandse Kust Zuid 1-4',
+        type: 'wind_offshore',
+        capacityMw: 1500,
+        lat: 52.333,
+        lng: 4.050,
+        state: 'Nordsee',
+        country: 'NL',
+        tso: 'TenneT NL',
+        commissioningYear: 2023,
+        operator: 'Vattenfall / BASF / Allianz',
+        desc: 'Förderfreier Riesen-Windpark vor Den Haag und Zandvoort.'
     },
     {
         id: 'horns_rev',
@@ -614,10 +971,97 @@ const RENEWABLE_PARKS_DATA = [
         operator: 'Vattenfall / Ørsted',
         desc: 'Dänischer Riesen-Offshore-Komplex vor der Küste Esbjergs.'
     },
+    {
+        id: 'kriegers_flak',
+        name: 'OWP Kriegers Flak',
+        type: 'wind_offshore',
+        capacityMw: 600,
+        lat: 55.033,
+        lng: 12.967,
+        state: 'Ostsee',
+        country: 'DK',
+        tso: 'Energinet',
+        commissioningYear: 2021,
+        operator: 'Vattenfall',
+        desc: 'Größter Offshore-Windpark Dänemarks im Dreiländereck DK/DE/SE.'
+    },
+    {
+        id: 'seamade',
+        name: 'OWP SeaMade',
+        type: 'wind_offshore',
+        capacityMw: 487,
+        lat: 51.717,
+        lng: 2.850,
+        state: 'Nordsee',
+        country: 'BE',
+        tso: 'Elia',
+        commissioningYear: 2020,
+        operator: 'Otary RS / Engie',
+        desc: 'Größter Offshore-Windpark Belgiens ca. 50 km vor Ostende.'
+    },
+    {
+        id: 'saint_nazaire',
+        name: 'OWP Saint-Nazaire (Banc de Guérande)',
+        type: 'wind_offshore',
+        capacityMw: 480,
+        lat: 47.167,
+        lng: -2.633,
+        state: 'Atlantik / Loire-Atlantique',
+        country: 'FR',
+        tso: 'RTE',
+        commissioningYear: 2022,
+        operator: 'EDF Renewables / Enbridge',
+        desc: 'Erster kommerzieller Offshore-Windpark Frankreichs 12 km vor der Halbinsel Guérande.'
+    },
+    {
+        id: 'fecamp',
+        name: 'OWP Fécamp',
+        type: 'wind_offshore',
+        capacityMw: 500,
+        lat: 49.883,
+        lng: 0.217,
+        state: 'Ärmelkanal / Normandie',
+        country: 'FR',
+        tso: 'RTE',
+        commissioningYear: 2024,
+        operator: 'EDF Renewables',
+        desc: '71 Windräder 13 km vor Fécamp mit massiven Schwerkraftfundamenten.'
+    },
+    {
+        id: 'windfloat_atlantic',
+        name: 'OWP Windfloat Atlantic (Schwimmend)',
+        type: 'wind_offshore',
+        capacityMw: 25,
+        lat: 41.700,
+        lng: -9.000,
+        state: 'Atlantik',
+        country: 'PT',
+        tso: 'REN',
+        commissioningYear: 2020,
+        operator: 'Ocean Winds (EDPR / Engie)',
+        desc: 'Erster halbtauchender schwimmender Offshore-Windpark Europas vor Viana do Castelo.'
+    },
+    {
+        id: 'beleolico_taranto',
+        name: 'OWP Beleolico (Taranto)',
+        type: 'wind_offshore',
+        capacityMw: 30,
+        lat: 40.483,
+        lng: 17.183,
+        state: 'Mittelmeer / Ionisches Meer',
+        country: 'IT',
+        tso: 'Terna',
+        commissioningYear: 2022,
+        operator: 'Renexia',
+        desc: 'Erster Offshore-Windpark des gesamten Mittelmeerraums vor dem Hafen von Tarent.'
+    },
 
-    // ------------------------------------------------------------------------
-    // 💨 GROSSE ONSHORE-WINDPARKS
-    // ------------------------------------------------------------------------
+
+    // ========================================================================
+    // 💨 GROSSE ONSHORE-WINDPARKS IN EUROPA
+    // ========================================================================
+
+    // --- DEUTSCHLAND ---
     {
         id: 'reussenkoege',
         name: 'Bürgerwindpark Reußenköge',
@@ -773,9 +1217,324 @@ const RENEWABLE_PARKS_DATA = [
         desc: 'Küstenwindpark in Nordfriesland nahe Dagebüll.'
     },
 
-    // ------------------------------------------------------------------------
-    // 🏛️ REGIONALE CLUSTER (DIE 16 BUNDESLÄNDER MIT INSTALLIERTER GESAMTKAPAZITÄT)
-    // ------------------------------------------------------------------------
+    // --- EUROPA ONSHORE ---
+    {
+        id: 'markbygden',
+        name: 'Windpark Markbygden',
+        type: 'wind_onshore',
+        capacityMw: 1400,
+        lat: 65.350,
+        lng: 20.600,
+        state: 'Norrbotten / Piteå',
+        country: 'SE',
+        tso: 'Svenska Kraftnät',
+        commissioningYear: 2022,
+        operator: 'Svevind / Enercon',
+        desc: 'Eines der größten zusammenhängenden Onshore-Windkraftprojekte der Welt in den dichten Wäldern Nordschwedens.'
+    },
+    {
+        id: 'fosen_vind',
+        name: 'Windpark-Cluster Fosen Vind',
+        type: 'wind_onshore',
+        capacityMw: 1057,
+        lat: 63.700,
+        lng: 10.200,
+        state: 'Trøndelag',
+        country: 'NO',
+        tso: 'Statnett',
+        commissioningYear: 2020,
+        operator: 'Statkraft / BKW',
+        desc: 'Europas größter küstennaher Onshore-Windkomplex auf der Fosen-Halbinsel in Norwegen.'
+    },
+    {
+        id: 'whitelee',
+        name: 'Whitelee Wind Farm',
+        type: 'wind_onshore',
+        capacityMw: 539,
+        lat: 55.683,
+        lng: -4.267,
+        state: 'Schottland / Glasgow',
+        country: 'GB',
+        tso: 'National Grid ESO',
+        commissioningYear: 2009,
+        operator: 'ScottishPower Renewables',
+        desc: 'Größter Onshore-Windpark Großbritanniens mit 215 Turbinen auf dem Hochmoor südlich von Glasgow.'
+    },
+    {
+        id: 'san_lorenzo_wind',
+        name: 'Windpark San Lorenzo',
+        type: 'wind_onshore',
+        capacityMw: 450,
+        lat: 41.900,
+        lng: -4.100,
+        state: 'Kastilien und León',
+        country: 'ES',
+        tso: 'REE',
+        commissioningYear: 2010,
+        operator: 'Iberdrola',
+        desc: 'Großflächiger Hochebenen-Windkomplex im Norden Spaniens.'
+    },
+    {
+        id: 'maranchon_wind',
+        name: 'Windpark Maranchón',
+        type: 'wind_onshore',
+        capacityMw: 208,
+        lat: 41.050,
+        lng: -2.200,
+        state: 'Guadalajara',
+        country: 'ES',
+        tso: 'REE',
+        commissioningYear: 2006,
+        operator: 'Iberdrola',
+        desc: 'Großwindpark auf der iberischen Hochebene in Zentralspanien.'
+    },
+    {
+        id: 'marquesado_wind',
+        name: 'Windpark El Marquesado',
+        type: 'wind_onshore',
+        capacityMw: 198,
+        lat: 37.283,
+        lng: -3.100,
+        state: 'Granada / Andalusien',
+        country: 'ES',
+        tso: 'REE',
+        commissioningYear: 2008,
+        operator: 'Iberdrola',
+        desc: 'Großwindanlage auf der Hochebene nördlich der Sierra Nevada.'
+    },
+    {
+        id: 'andau_halbturn',
+        name: 'Windpark Andau / Halbturn',
+        type: 'wind_onshore',
+        capacityMw: 240,
+        lat: 47.783,
+        lng: 17.033,
+        state: 'Burgenland',
+        country: 'AT',
+        tso: 'APG',
+        commissioningYear: 2014,
+        operator: 'Energie Burgenland',
+        desc: 'Größter Onshore-Windpark Österreichs im windstarken Seewinkel nahe dem Neusiedler See.'
+    },
+    {
+        id: 'potegowo_wind',
+        name: 'Windpark Potęgowo',
+        type: 'wind_onshore',
+        capacityMw: 219,
+        lat: 54.483,
+        lng: 17.483,
+        state: 'Pommern',
+        country: 'PL',
+        tso: 'PSE',
+        commissioningYear: 2020,
+        operator: 'Mashav Energia',
+        desc: 'Größter Onshore-Windpark Polens mit 81 GE-Turbinen nahe Słupsk.'
+    },
+    {
+        id: 'alto_minho',
+        name: 'Windpark Alto Minho',
+        type: 'wind_onshore',
+        capacityMw: 240,
+        lat: 41.950,
+        lng: -8.550,
+        state: 'Viana do Castelo',
+        country: 'PT',
+        tso: 'REN',
+        commissioningYear: 2008,
+        operator: 'EDPR',
+        desc: 'Bergwindpark im gebirgigen Norden Portugals.'
+    },
+    {
+        id: 'agrigento_wind',
+        name: 'Parco Eolico Agrigento',
+        type: 'wind_onshore',
+        capacityMw: 130,
+        lat: 37.550,
+        lng: 13.500,
+        state: 'Sizilien',
+        country: 'IT',
+        tso: 'Terna',
+        commissioningYear: 2011,
+        operator: 'EGP',
+        desc: 'Große Windfarm auf den sizilianischen Hügeln.'
+    },
+
+
+    // ========================================================================
+    // 🏛️ EUROPÄISCHE LÄNDER-CLUSTER & DEUTSCHE BUNDESLÄNDER (MAKRO-EBENE)
+    // ========================================================================
+
+    // --- EUROPÄISCHE NATIONALE ENERGIE-CLUSTER ---
+    {
+        id: 'cluster_es',
+        name: 'Spanien (Gesamtnetz)',
+        type: 'cluster',
+        solarCapMw: 32000,
+        windCapMw: 31000,
+        capacityMw: 63000,
+        lat: 40.400,
+        lng: -3.700,
+        state: 'Spanien',
+        country: 'ES',
+        tso: 'REE',
+        desc: 'Europas Sonnenkraftwerk Nr. 1 und starker Windkrafterzeuger mit über 63 GW installierter Leistung.'
+    },
+    {
+        id: 'cluster_fr',
+        name: 'Frankreich (Gesamtnetz)',
+        type: 'cluster',
+        solarCapMw: 21000,
+        windCapMw: 23000,
+        capacityMw: 44000,
+        lat: 46.600,
+        lng: 2.200,
+        state: 'Frankreich',
+        country: 'FR',
+        tso: 'RTE',
+        desc: 'Stark wachsender Ausbau von Offshore-Wind und Südfrankreich-Photovoltaik im RTE-Netz.'
+    },
+    {
+        id: 'cluster_it',
+        name: 'Italien (Gesamtnetz)',
+        type: 'cluster',
+        solarCapMw: 30000,
+        windCapMw: 12500,
+        capacityMw: 42500,
+        lat: 42.500,
+        lng: 12.500,
+        state: 'Italien',
+        country: 'IT',
+        tso: 'Terna',
+        desc: 'Sehr hohe Solarstrahlung in Süditalien, Sizilien und Apulien im Terna-Netz.'
+    },
+    {
+        id: 'cluster_gb',
+        name: 'Großbritannien (Gesamtnetz)',
+        type: 'cluster',
+        solarCapMw: 16000,
+        windCapMw: 30000,
+        capacityMw: 46000,
+        lat: 53.500,
+        lng: -2.000,
+        state: 'Großbritannien',
+        country: 'GB',
+        tso: 'National Grid ESO',
+        desc: 'Weltweit führender Offshore-Windmarkt mit riesigen Nordsee-Parks und Schottland-Wind.'
+    },
+    {
+        id: 'cluster_nl',
+        name: 'Niederlande (Gesamtnetz)',
+        type: 'cluster',
+        solarCapMw: 24000,
+        windCapMw: 11000,
+        capacityMw: 35000,
+        lat: 52.200,
+        lng: 5.300,
+        state: 'Niederlande',
+        country: 'NL',
+        tso: 'TenneT NL',
+        desc: 'Weltweit höchste Pro-Kopf-Solardichte in Kombination mit großen Nordsee-Offshore-Parks.'
+    },
+    {
+        id: 'cluster_pl',
+        name: 'Polen (Gesamtnetz)',
+        type: 'cluster',
+        solarCapMw: 17500,
+        windCapMw: 10200,
+        capacityMw: 27700,
+        lat: 52.000,
+        lng: 19.500,
+        state: 'Polen',
+        country: 'PL',
+        tso: 'PSE',
+        desc: 'Rasanter Solarausbau und starke Ostsee-Küstenwindparks im PSE-Netz.'
+    },
+    {
+        id: 'cluster_be',
+        name: 'Belgien (Gesamtnetz)',
+        type: 'cluster',
+        solarCapMw: 8500,
+        windCapMw: 5500,
+        capacityMw: 14000,
+        lat: 50.800,
+        lng: 4.400,
+        state: 'Belgien',
+        country: 'BE',
+        tso: 'Elia',
+        desc: 'Dichte Solaranlagen auf Gewerbe- und Wohndächern plus belgische Nordsee-Offshore-Zonen.'
+    },
+    {
+        id: 'cluster_at',
+        name: 'Österreich (Gesamtnetz)',
+        type: 'cluster',
+        solarCapMw: 5200,
+        windCapMw: 4100,
+        capacityMw: 9300,
+        lat: 47.600,
+        lng: 14.100,
+        state: 'Österreich',
+        country: 'AT',
+        tso: 'APG',
+        desc: 'Burgenland-Windkraft und florierender Solarausbau im alpinen APG-Verbundnetz.'
+    },
+    {
+        id: 'cluster_dk',
+        name: 'Dänemark (Gesamtnetz)',
+        type: 'cluster',
+        solarCapMw: 4000,
+        windCapMw: 7500,
+        capacityMw: 11500,
+        lat: 56.000,
+        lng: 9.500,
+        state: 'Dänemark',
+        country: 'DK',
+        tso: 'Energinet',
+        desc: 'Pionierland der Windkraft: Erzeugt rechnerisch über 60% seines Bedarfs aus Windenergie.'
+    },
+    {
+        id: 'cluster_se',
+        name: 'Schweden (Gesamtnetz)',
+        type: 'cluster',
+        solarCapMw: 3500,
+        windCapMw: 16500,
+        capacityMw: 20000,
+        lat: 60.000,
+        lng: 15.000,
+        state: 'Schweden',
+        country: 'SE',
+        tso: 'Svenska Kraftnät',
+        desc: 'Enorme Onshore-Windparks in den Wäldern Nordschwedens (Svenska Kraftnät).'
+    },
+    {
+        id: 'cluster_pt',
+        name: 'Portugal (Gesamtnetz)',
+        type: 'cluster',
+        solarCapMw: 4500,
+        windCapMw: 5800,
+        capacityMw: 10300,
+        lat: 39.500,
+        lng: -8.000,
+        state: 'Portugal',
+        country: 'PT',
+        tso: 'REN',
+        desc: 'Sehr sonnenreiche Region Alentejo/Algarve und Atlantik-Höhenwind.'
+    },
+    {
+        id: 'cluster_gr',
+        name: 'Griechenland (Gesamtnetz)',
+        type: 'cluster',
+        solarCapMw: 7200,
+        windCapMw: 5100,
+        capacityMw: 12300,
+        lat: 39.000,
+        lng: 22.000,
+        state: 'Griechenland',
+        country: 'GR',
+        tso: 'IPTO',
+        desc: 'Über 2.700 Sonnenstunden pro Jahr und starke Meltemi-Inselwinde.'
+    },
+
+    // --- DEUTSCHE BUNDESLÄNDER ---
     {
         id: 'cluster_by',
         name: 'Bayern (Cluster)',
