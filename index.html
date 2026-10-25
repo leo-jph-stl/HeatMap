@@ -4452,6 +4452,7 @@
                 uniform float u_useFloat;
                 uniform float u_hatchStyle;
                 uniform float u_opacity;
+                uniform float u_zoomScale;
                 varying vec2 vUv;
 
                 void main() {
@@ -4479,14 +4480,18 @@
                     float cosLat = max(0.18, cos(latRad));
                     vec2 uvScaled = vec2(vUv.x * cosLat, vUv.y);
 
+                    // Zoom-adaptive Frequenz-Skalierung (Schraffurlinien, Punkte und Schneesterne
+                    // schrumpfen mit zunehmendem Zoom adaptiv, damit der Look auf dem Screen konstant fein bleibt)
+                    float zoomScale = max(1.0, u_zoomScale);
+
                     // MUSTER REGEN: DEUTLICH FEINERE SCHRAFFUR
                     // 1. Feine Diagonallinien (///) im 45°-Winkel
-                    float diagLine = (uvScaled.x + uvScaled.y) * 1650.0;
+                    float diagLine = (uvScaled.x + uvScaled.y) * (1650.0 * zoomScale);
                     float dLine = abs(fract(diagLine) - 0.5);
                     float rainLineAlpha = smoothstep(0.16, 0.035, dLine);
 
                     // 2. Feines Punktraster (Alternative)
-                    vec2 uvRainDots = uvScaled * 1800.0;
+                    vec2 uvRainDots = uvScaled * (1800.0 * zoomScale);
                     float rowRain = floor(uvRainDots.y);
                     float shiftRain = mod(rowRain, 2.0) * 0.5;
                     vec2 cellRain = fract(vec2(uvRainDots.x + shiftRain, uvRainDots.y)) - 0.5;
@@ -4495,7 +4500,7 @@
                     float rainAlpha = (u_hatchStyle < 0.5) ? rainDotAlpha : rainLineAlpha;
 
                     // MUSTER SCHNEE: FEINE "*" SYMBOLE (8-strahlige Schneesterne / Asteriske)
-                    vec2 uvSnow = uvScaled * 980.0;
+                    vec2 uvSnow = uvScaled * (980.0 * zoomScale);
                     float rowSnow = floor(uvSnow.y);
                     float shiftSnow = mod(rowSnow, 2.0) * 0.5;
                     vec2 cSnow = fract(vec2(uvSnow.x + shiftSnow, uvSnow.y)) - 0.5;
@@ -4532,7 +4537,8 @@
                 u_tempMax: { value: maxTempRange },
                 u_useFloat: { value: useFloat ? 1.0 : 0.0 },
                 u_hatchStyle: { value: 1.0 }, // 1 = Feine Linien (Standard), 0 = Feine Punkte
-                u_opacity: { value: 0.88 }
+                u_opacity: { value: 0.88 },
+                u_zoomScale: { value: 1.0 }
             },
             transparent: true,
             depthWrite: false
@@ -6787,6 +6793,15 @@
             } catch(e) { /* moon tile safe */ }
             if (typeof cloudMaterial !== 'undefined' && cloudMaterial && cloudMaterial.uniforms && cloudMaterial.uniforms.u_time) {
                 cloudMaterial.uniforms.u_time.value = performance.now() * 0.001;
+            }
+            if (typeof precipMaterial !== 'undefined' && precipMaterial && precipMaterial.uniforms && precipMaterial.uniforms.u_zoomScale) {
+                const curDist = camera.position.length();
+                const curH = Math.max(0.01, curDist - surfaceRadius);
+                // Referenzhöhe ca. 32.0 (entspricht dem Look der feinen Schraffur in der Regionalansicht)
+                // Bei zunehmendem Zoom (kleinerem curH) schrumpfen Schraffurlinien und Schneesterne adaptiv,
+                // sodass Strichabstand & Konturen auf dem Bildschirm konstant fein und gestochen scharf bleiben
+                const zScale = Math.min(36.0, Math.max(1.0, 32.0 / curH));
+                precipMaterial.uniforms.u_zoomScale.value = zScale;
             }
 
             // Dynamische, seidenweiche hypsometrische Höhenanpassung (LERP - verhindert jegliches Ruckeln/Farbspringen beim Wischen)
