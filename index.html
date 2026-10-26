@@ -6924,7 +6924,9 @@
             // 3D Erneuerbare Parks: Drehende Windräder & Zoom-Sichtbarkeit
             if (renewableParks3DGroup) {
                 const curDist = camera.position.length();
-                const shouldShow3D = (curDist <= 122 && (typeof renewableParksOverlayVisible === 'undefined' || renewableParksOverlayVisible));
+                const isTilted = cameraTiltAngle > 10 || (controls.target.lengthSq() > 10);
+                // 3D-Modelle erst bei echtem Nahbereich (curDist <= 109.5) bzw. im geneigten 3D-Inspektionsmodus anzeigen
+                const shouldShow3D = ((curDist <= 109.5 || (isTilted && curDist <= 116.0)) && (typeof renewableParksOverlayVisible === 'undefined' || renewableParksOverlayVisible));
                 renewableParks3DGroup.visible = shouldShow3D;
                 if (shouldShow3D && animatedParkRotors.length > 0) {
                     for (let i = 0; i < animatedParkRotors.length; i++) {
@@ -14949,7 +14951,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 camera.lookAt(controls.target);
                 controls.update();
 
-                if (newD > 22.0) {
+                if (newD > 18.0) {
                     // Beim sehr weiten Herauszoomen sanft zurück zum globalen Globus-Modus übergehen
                     cameraGroundAnchor = null;
                     cameraTiltAngle = 0;
@@ -14960,9 +14962,48 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 return;
             }
 
+            // AUTOMATISCHE 3D-NEIGUNG (AUTO-PITCH ON ZOOM WIE IN GOOGLE EARTH)
+            // Sobald der Benutzer in Bodennähe zoomt (d1 < 112.0), neigt sich die Ansicht fließend bis auf 48° Schrägwinkel,
+            // sodass Windräder und 3D-Strukturen aufrecht stehen statt von oben flach gequetscht zu werden!
+            if (d1 < 112.0) {
+                const tiltProgress = Math.min(1.0, Math.max(0, (112.0 - d1) / 9.5));
+                const easeTilt = tiltProgress * tiltProgress * (3 - 2 * tiltProgress);
+                const autoPitchDeg = easeTilt * 48; // Bis zu 48° Schrägwinkel
+
+                const groundPt = u_c.clone().multiplyScalar(surfaceRadius);
+                const up = u_c.clone().normalize();
+                const north = new THREE.Vector3(0, 1, 0).projectOnPlane(up).normalize();
+                const south = north.clone().negate();
+                const west = new THREE.Vector3().crossVectors(north, up).negate().normalize();
+
+                const headRad = (30 * Math.PI) / 180;
+                const horizDir = south.clone().multiplyScalar(Math.cos(headRad))
+                    .add(west.clone().multiplyScalar(Math.sin(headRad))).normalize();
+
+                const pitchRad = (autoPitchDeg * Math.PI) / 180;
+                const targetPt = groundPt.clone().add(up.clone().multiplyScalar(0.12));
+                const distToGround = Math.max(1.2, d1 - surfaceRadius);
+
+                camera.position.copy(targetPt)
+                    .add(up.clone().multiplyScalar(distToGround * Math.cos(pitchRad)))
+                    .add(horizDir.clone().multiplyScalar(distToGround * Math.sin(pitchRad)));
+                camera.up.copy(up);
+                camera.lookAt(targetPt);
+                controls.target.copy(targetPt);
+                cameraTiltAngle = autoPitchDeg;
+                cameraGroundAnchor = targetPt.clone();
+                if (typeof updateTiltButtonState === 'function') updateTiltButtonState();
+                controls.update();
+                return;
+            }
+
             camera.position.copy(u_c.multiplyScalar(d1));
             camera.lookAt(0, 0, 0);
             controls.target.set(0, 0, 0);
+            camera.up.set(0, 1, 0);
+            cameraTiltAngle = 0;
+            cameraGroundAnchor = null;
+            if (typeof updateTiltButtonState === 'function') updateTiltButtonState();
             controls.update();
         }, { capture: true, passive: false });
 
@@ -16080,6 +16121,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                             }
                             if (obj && obj.userData && obj.userData.park) {
                                 showParkAuslastungCard(obj.userData.park.id, clientX, clientY);
+                                flyToLocation(obj.userData.park.lat, obj.userData.park.lng, obj.userData.park.name, { isPark: true });
                                 return;
                             }
                         }
@@ -16110,6 +16152,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                     }
                     if (nearestPark) {
                         showParkAuslastungCard(nearestPark.id, clientX, clientY);
+                        flyToLocation(nearestPark.lat, nearestPark.lng, nearestPark.name, { isPark: true });
                         return; // Interception erfolgreich: Auslastungs-Card anzeigen
                     }
                 }
@@ -17910,7 +17953,11 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                             const turbSouth = turbNorth.clone().negate();
                             const turbEast = new THREE.Vector3().crossVectors(turbNorth, turbUp).normalize();
 
-                            const turbRotMat = new THREE.Matrix4().makeBasis(turbEast, turbUp, turbSouth);
+                            const turbWest = turbEast.clone().negate();
+                            // Hauptwindrichtung Süd-West (225°): Rotor steht frontal/isometrisch zur Kamera
+                            const turbFacing = turbSouth.clone().multiplyScalar(0.7071).add(turbWest.clone().multiplyScalar(0.7071)).normalize();
+                            const turbSide = new THREE.Vector3().crossVectors(turbFacing, turbUp).normalize();
+                            const turbRotMat = new THREE.Matrix4().makeBasis(turbSide, turbUp, turbFacing);
                             const turbQuat = new THREE.Quaternion().setFromRotationMatrix(turbRotMat);
 
                             const turbGroup = new THREE.Group();
@@ -18106,6 +18153,11 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             document.getElementById('parkCardTitle').innerText = park.name;
             document.getElementById('parkCardSubtitle').innerText = `${typeLabel} · ${(park.state && park.state !== park.country) ? park.state + ', ' : ''}${park.country}`;
             document.getElementById('parkCardCapacityMw').innerText = `${park.capacityMw.toLocaleString('de-DE')} MW`;
+
+            // Kamera sofort in spektakuläre 3D-Isometrie auf den Park ausrichten
+            if (typeof flyToLocation === 'function') {
+                flyToLocation(park.lat, park.lng, park.name, { isPark: true });
+            }
 
             // Position Card sofort anzeigen
             card.style.display = 'block';
