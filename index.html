@@ -3439,8 +3439,15 @@
         controls.maxDistance = 600;
         controls.enablePan = false;
 
-        // Ambient Light
-        scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+        // Ambient & Directional Sunlight (plastische 3D-Schatten & Glanz auf Turbinen & PV)
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.70);
+        scene.add(ambientLight);
+        const globeSunLight = new THREE.DirectionalLight(0xfffaed, 0.90);
+        globeSunLight.position.set(160, 240, 160);
+        scene.add(globeSunLight);
+        const globeFillLight = new THREE.DirectionalLight(0xdbeafe, 0.30);
+        globeFillLight.position.set(-160, -100, -160);
+        scene.add(globeFillLight);
 
         // BASE EARTH SPHERE & SURFACE HEIGHTS (Konsistente 3D-Geometrie für Null-Parallaxe)
         const earthRadius = 100;
@@ -17423,62 +17430,133 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             renewableParks3DGroup.visible = false;
             scene.add(renewableParks3DGroup);
 
-            // Gemeinsame Materialien für beste Render-Performance
-            const towerMat = new THREE.MeshLambertMaterial({ color: 0xf1f5f9 });
-            const offshoreBaseMat = new THREE.MeshLambertMaterial({ color: 0xf59e0b });
-            const nacelleMat = new THREE.MeshLambertMaterial({ color: 0xe2e8f0 });
-            const bladeMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-            const solarPanelMat = new THREE.MeshLambertMaterial({ color: 0x112744 });
-            const solarFrameMat = new THREE.MeshLambertMaterial({ color: 0x64748b });
+            // =========================================================================
+            // MATERIALIEN (High-Quality PBR mit physikalischem Glanz & Kontur-Schatten)
+            // =========================================================================
+            const towerMat = new THREE.MeshStandardMaterial({
+                color: 0xe2e8f0,
+                roughness: 0.35,
+                metalness: 0.20
+            });
+            const towerBaseMat = new THREE.MeshStandardMaterial({
+                color: 0x334155,
+                roughness: 0.65,
+                metalness: 0.15
+            });
+            const offshoreYellowMat = new THREE.MeshStandardMaterial({
+                color: 0xf59e0b,
+                roughness: 0.35,
+                metalness: 0.25
+            });
+            const nacelleMat = new THREE.MeshStandardMaterial({
+                color: 0xf1f5f9,
+                roughness: 0.30,
+                metalness: 0.15
+            });
+            const bladeWhiteMat = new THREE.MeshStandardMaterial({
+                color: 0xf8fafc,
+                roughness: 0.25,
+                metalness: 0.10
+            });
+            const bladeRedTipMat = new THREE.MeshStandardMaterial({
+                color: 0xdc2626,
+                roughness: 0.25,
+                metalness: 0.10
+            });
+            const beaconMat = new THREE.MeshBasicMaterial({
+                color: 0xff1e1e
+            });
 
-            // Gemeinsame Geometrien
-            const towerH = 0.22;
-            const towerGeom = new THREE.CylinderGeometry(0.010, 0.022, towerH, 6);
+            // Solarpark Materialien
+            const solarGroundMat = new THREE.MeshStandardMaterial({
+                color: 0x1e293b,
+                roughness: 0.85,
+                metalness: 0.05
+            });
+            const solarCellMat = new THREE.MeshStandardMaterial({
+                color: 0x0c2544,
+                roughness: 0.18,
+                metalness: 0.85
+            });
+            const solarBezelMat = new THREE.MeshStandardMaterial({
+                color: 0x94a3b8,
+                roughness: 0.40,
+                metalness: 0.50
+            });
+
+            // =========================================================================
+            // GEOMETRIEN (Schlanker Taper, weite Staffelung & aerodynamische Flügel)
+            // =========================================================================
+            const towerH = 0.28;
+            const towerGeom = new THREE.CylinderGeometry(0.007, 0.019, towerH, 8);
             towerGeom.translate(0, towerH / 2, 0);
 
-            const offshoreBaseH = 0.055;
-            const offshoreBaseGeom = new THREE.CylinderGeometry(0.022, 0.026, offshoreBaseH, 6);
+            const foundationGeom = new THREE.CylinderGeometry(0.026, 0.028, 0.006, 8);
+            foundationGeom.translate(0, 0.003, 0);
+
+            const offshoreBaseH = 0.070;
+            const offshoreBaseGeom = new THREE.CylinderGeometry(0.020, 0.025, offshoreBaseH, 8);
             offshoreBaseGeom.translate(0, offshoreBaseH / 2, 0);
 
-            const nacelleGeom = new THREE.BoxGeometry(0.024, 0.024, 0.055);
-            const hubGeom = new THREE.SphereGeometry(0.015, 6, 5);
+            const nacelleGeom = new THREE.BoxGeometry(0.024, 0.022, 0.075);
+            const hubGeom = new THREE.ConeGeometry(0.015, 0.028, 8);
+            hubGeom.rotateX(Math.PI / 2); // Nase zeigt nach vorn (+Z)
+            hubGeom.translate(0, 0, 0.014);
 
-            const bladeLen = 0.135;
-            const bladeGeom = new THREE.ConeGeometry(0.010, bladeLen, 4);
-            bladeGeom.translate(0, bladeLen / 2, 0);
+            const beaconGeom = new THREE.SphereGeometry(0.004, 4, 4);
+            beaconGeom.translate(0, 0.013, -0.015);
 
-            const pvTableW = 0.075;
-            const pvTableL = 0.040;
-            const pvTableGeom = new THREE.BoxGeometry(pvTableW, 0.003, pvTableL);
-            const pvLegGeom = new THREE.CylinderGeometry(0.002, 0.002, 0.018, 3);
-            pvLegGeom.translate(0, 0.009, 0);
+            // Aerodynamischer Flügel: 82% Weißkörper + 18% Rote Signalspitze
+            const bladeLen = 0.165;
+            const bodyLen = bladeLen * 0.82;
+            const bodyGeom = new THREE.ConeGeometry(0.011, bodyLen, 5);
+            bodyGeom.translate(0, bodyLen / 2, 0);
+
+            const tipLen = bladeLen * 0.18;
+            const tipGeom = new THREE.ConeGeometry(0.006, tipLen, 5);
+            tipGeom.translate(0, bodyLen + tipLen / 2, 0);
+
+            // PV-Modultisch: Breiter, flacher Solartisch mit silbernem Rand
+            const tableW = 0.16;
+            const tableL = 0.075;
+            const panelGeom = new THREE.BoxGeometry(tableW, 0.003, tableL);
+            const bezelGeom = new THREE.BoxGeometry(tableW + 0.006, 0.002, tableL + 0.006);
+            const legGeom = new THREE.CylinderGeometry(0.003, 0.003, 0.024, 4);
+            legGeom.translate(0, 0.012, 0);
 
             RENEWABLE_PARKS_DATA.forEach(park => {
-                if (park.type === 'cluster') return; // Meta-Cluster überspringen
+                if (park.type === 'cluster') return;
 
+                // Exakte orthonormale Basis auf der Kugeloberfläche (garantiert perfekte Südausrichtung)
                 const centerPos = latLngToSphereVertex(park.lat, park.lng, surfaceRadius);
-                const normal = centerPos.clone().normalize();
-                const north = new THREE.Vector3(0, 1, 0).projectOnPlane(normal).normalize();
-                const east = new THREE.Vector3().crossVectors(north, normal).normalize();
+                const up = centerPos.clone().normalize();
+                const north = new THREE.Vector3(0, 1, 0).projectOnPlane(up).normalize();
+                const south = north.clone().negate();
+                const east = new THREE.Vector3().crossVectors(north, up).normalize();
+
+                const rotMatrix = new THREE.Matrix4().makeBasis(east, up, south);
+                const baseQuat = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
 
                 const parkGroup = new THREE.Group();
                 parkGroup.userData = { park: park };
 
                 if (park.type === 'wind_onshore' || park.type === 'wind_offshore') {
                     const isOffshore = (park.type === 'wind_offshore');
-                    
-                    // Anzahl Turbinen repräsentiert die Nennkapazität
-                    let count = 4;
-                    if (park.capacityMw >= 2000) count = 20;
-                    else if (park.capacityMw >= 1200) count = 16;
-                    else if (park.capacityMw >= 700) count = 12;
-                    else if (park.capacityMw >= 400) count = 9;
-                    else if (park.capacityMw >= 200) count = 7;
-                    else if (park.capacityMw >= 100) count = 5;
 
-                    const cols = Math.min(5, Math.ceil(Math.sqrt(count * 1.5)));
+                    // Realistische Turbinen-Anzahl nach Kapazität
+                    let count = 4;
+                    if (park.capacityMw >= 2000) count = 15;
+                    else if (park.capacityMw >= 1200) count = 11;
+                    else if (park.capacityMw >= 600) count = 8;
+                    else if (park.capacityMw >= 300) count = 6;
+                    else if (park.capacityMw >= 150) count = 4;
+                    else count = 3;
+
+                    // Großzügige Staffelung (mindestens 0.34 - 0.44 Einheiten Abstand!), damit Rotoren sich nie berühren
+                    const cols = Math.min(4, Math.ceil(Math.sqrt(count * 1.4)));
                     const rows = Math.ceil(count / cols);
-                    const spacing = isOffshore ? 0.095 : 0.080;
+                    const spacingX = isOffshore ? 0.38 : 0.34;
+                    const spacingZ = isOffshore ? 0.44 : 0.38;
 
                     let placedCount = 0;
                     for (let r = 0; r < rows; r++) {
@@ -17486,25 +17564,35 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                             if (placedCount >= count) break;
                             placedCount++;
 
-                            const colOff = (c - (cols - 1) / 2) * spacing + ((r % 2) * spacing * 0.4);
-                            const rowOff = (r - (rows - 1) / 2) * spacing;
-                            
-                            const turbOffset = east.clone().multiplyScalar(colOff).add(north.clone().multiplyScalar(rowOff));
+                            const colOff = (c - (cols - 1) / 2) * spacingX + ((r % 2) * spacingX * 0.45);
+                            const rowOff = (r - (rows - 1) / 2) * spacingZ;
+
+                            const turbOffset = east.clone().multiplyScalar(colOff).add(south.clone().multiplyScalar(rowOff));
                             const turbPos = centerPos.clone().add(turbOffset).normalize().multiplyScalar(surfaceRadius);
-                            const turbNorm = turbPos.clone().normalize();
+                            const turbUp = turbPos.clone().normalize();
+                            const turbNorth = new THREE.Vector3(0, 1, 0).projectOnPlane(turbUp).normalize();
+                            const turbSouth = turbNorth.clone().negate();
+                            const turbEast = new THREE.Vector3().crossVectors(turbNorth, turbUp).normalize();
+
+                            const turbRotMat = new THREE.Matrix4().makeBasis(turbEast, turbUp, turbSouth);
+                            const turbQuat = new THREE.Quaternion().setFromRotationMatrix(turbRotMat);
 
                             const turbGroup = new THREE.Group();
                             turbGroup.position.copy(turbPos);
-                            turbGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), turbNorm);
+                            turbGroup.quaternion.copy(turbQuat);
 
-                            // Turm
+                            // Fundament / Bodenring
+                            const fndMesh = new THREE.Mesh(foundationGeom, towerBaseMat);
+                            turbGroup.add(fndMesh);
+
+                            // Weißer Mast
                             const towerMesh = new THREE.Mesh(towerGeom, towerMat);
                             turbGroup.add(towerMesh);
 
                             // Gelber Sockel bei Offshore
                             if (isOffshore) {
-                                const baseMesh = new THREE.Mesh(offshoreBaseGeom, offshoreBaseMat);
-                                turbGroup.add(baseMesh);
+                                const yellowBase = new THREE.Mesh(offshoreBaseGeom, offshoreYellowMat);
+                                turbGroup.add(yellowBase);
                             }
 
                             // Gondel
@@ -17512,22 +17600,35 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                             nacelleMesh.position.set(0, towerH, 0);
                             turbGroup.add(nacelleMesh);
 
-                            // Rotor mit 3 Flügeln
-                            const rotorGroup = new THREE.Group();
-                            rotorGroup.position.set(0, towerH, 0.030);
+                            // Rotes Hindernisfeuer oben auf der Gondel
+                            const beaconMesh = new THREE.Mesh(beaconGeom, beaconMat);
+                            beaconMesh.position.set(0, towerH, 0);
+                            turbGroup.add(beaconMesh);
 
-                            const hubMesh = new THREE.Mesh(hubGeom, bladeMat);
+                            // Rotor-Baugruppe
+                            const rotorGroup = new THREE.Group();
+                            rotorGroup.position.set(0, towerH, 0.038); // sitzt vorn an der Gondel
+
+                            // Spinner / Nase
+                            const hubMesh = new THREE.Mesh(hubGeom, nacelleMat);
                             rotorGroup.add(hubMesh);
 
+                            // 3 Flügel mit roten Signalspitzen
                             for (let b = 0; b < 3; b++) {
-                                const bladeMesh = new THREE.Mesh(bladeGeom, bladeMat);
-                                bladeMesh.rotation.z = (b * Math.PI * 2) / 3;
-                                rotorGroup.add(bladeMesh);
+                                const bladeGroup = new THREE.Group();
+                                const bodyMesh = new THREE.Mesh(bodyGeom, bladeWhiteMat);
+                                bladeGroup.add(bodyMesh);
+                                const tipMesh = new THREE.Mesh(tipGeom, bladeRedTipMat);
+                                bladeGroup.add(tipMesh);
+
+                                bladeGroup.rotation.z = (b * Math.PI * 2) / 3;
+                                rotorGroup.add(bladeGroup);
                             }
 
+                            // Versetzte Anfangsdrehung & individuelle Geschwindigkeit
                             rotorGroup.rotation.z = Math.random() * Math.PI * 2;
                             rotorGroup.userData = {
-                                rotSpeed: 0.024 + Math.random() * 0.010,
+                                rotSpeed: 0.024 + Math.random() * 0.008,
                                 parkId: park.id
                             };
                             animatedParkRotors.push(rotorGroup);
@@ -17537,44 +17638,76 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                         }
                     }
                 } else if (park.type === 'solar') {
-                    // Solarpark: Parallele PV-Tische
+                    // =========================================================
+                    // REALISTISCHER SOLARPARK (Authentisches Luftbild-Layout)
+                    // =========================================================
                     let rows = 3, cols = 4;
-                    if (park.capacityMw >= 500) { rows = 5; cols = 7; }
-                    else if (park.capacityMw >= 250) { rows = 4; cols = 6; }
-                    else if (park.capacityMw >= 100) { rows = 3; cols = 5; }
+                    if (park.capacityMw >= 500) { rows = 5; cols = 6; }
+                    else if (park.capacityMw >= 250) { rows = 4; cols = 5; }
+                    else if (park.capacityMw >= 100) { rows = 3; cols = 4; }
+                    else { rows = 2; cols = 3; }
 
-                    const rowSpacing = 0.052;
-                    const colSpacing = 0.088;
+                    const colSpacing = 0.20;
+                    const rowSpacing = 0.13;
+                    const siteW = cols * colSpacing + 0.10;
+                    const siteH = rows * rowSpacing + 0.10;
 
+                    const solarSiteGroup = new THREE.Group();
+                    solarSiteGroup.position.copy(centerPos);
+                    solarSiteGroup.quaternion.copy(baseQuat);
+
+                    // Dunkler Kies- / Erd-Untergrund des Solarparks
+                    const groundMesh = new THREE.Mesh(new THREE.PlaneGeometry(siteW, siteH), solarGroundMat);
+                    groundMesh.rotation.x = -Math.PI / 2; // liegt flach auf dem Boden
+                    groundMesh.position.set(0, 0.002, 0);
+                    solarSiteGroup.add(groundMesh);
+
+                    // Parallele Reihen von Solartischen
                     for (let r = 0; r < rows; r++) {
                         for (let c = 0; c < cols; c++) {
-                            const colOff = (c - (cols - 1) / 2) * colSpacing;
-                            const rowOff = (r - (rows - 1) / 2) * rowSpacing;
-
-                            const panelOffset = east.clone().multiplyScalar(colOff).add(north.clone().multiplyScalar(rowOff));
-                            const panelPos = centerPos.clone().add(panelOffset).normalize().multiplyScalar(surfaceRadius + 0.005);
-                            const panelNorm = panelPos.clone().normalize();
+                            const xOff = (c - (cols - 1) / 2) * colSpacing;
+                            const zOff = (r - (rows - 1) / 2) * rowSpacing;
 
                             const tableGroup = new THREE.Group();
-                            tableGroup.position.copy(panelPos);
-                            tableGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), panelNorm);
+                            tableGroup.position.set(xOff, 0.004, zOff);
 
-                            const legL = new THREE.Mesh(pvLegGeom, solarFrameMat);
-                            legL.position.set(-pvTableW * 0.35, 0, 0);
-                            tableGroup.add(legL);
+                            // Ständerbeine
+                            const leg1 = new THREE.Mesh(legGeom, solarBezelMat);
+                            leg1.position.set(-tableW * 0.38, 0, -tableL * 0.3);
+                            tableGroup.add(leg1);
+                            const leg2 = new THREE.Mesh(legGeom, solarBezelMat);
+                            leg2.position.set(tableW * 0.38, 0, -tableL * 0.3);
+                            tableGroup.add(leg2);
+                            const leg3 = new THREE.Mesh(legGeom, solarBezelMat);
+                            leg3.position.set(-tableW * 0.38, 0, tableL * 0.3);
+                            tableGroup.add(leg3);
+                            const leg4 = new THREE.Mesh(legGeom, solarBezelMat);
+                            leg4.position.set(tableW * 0.38, 0, tableL * 0.3);
+                            tableGroup.add(leg4);
 
-                            const legR = new THREE.Mesh(pvLegGeom, solarFrameMat);
-                            legR.position.set(pvTableW * 0.35, 0, 0);
-                            tableGroup.add(legR);
+                            // Silberne Unterkonstruktion / Rahmen
+                            const bezelMesh = new THREE.Mesh(bezelGeom, solarBezelMat);
+                            bezelMesh.position.set(0, 0.024, 0);
+                            bezelMesh.rotation.x = -0.42; // Neigung 24° nach Süden
+                            tableGroup.add(bezelMesh);
 
-                            const panelMesh = new THREE.Mesh(pvTableGeom, solarPanelMat);
-                            panelMesh.position.set(0, 0.018, 0);
-                            panelMesh.rotation.x = -0.44; // Nach Süden geneigt
+                            // Glänzende dunkelblaue Photovoltaik-Zellen
+                            const panelMesh = new THREE.Mesh(panelGeom, solarCellMat);
+                            panelMesh.position.set(0, 0.026, 0);
+                            panelMesh.rotation.x = -0.42;
                             tableGroup.add(panelMesh);
 
-                            parkGroup.add(tableGroup);
+                            solarSiteGroup.add(tableGroup);
                         }
                     }
+
+                    // Kleine Transformator- / Inverter-Station am Rand
+                    const inverterGeom = new THREE.BoxGeometry(0.045, 0.035, 0.065);
+                    const inverterMesh = new THREE.Mesh(inverterGeom, nacelleMat);
+                    inverterMesh.position.set(siteW * 0.44, 0.018, siteH * 0.42);
+                    solarSiteGroup.add(inverterMesh);
+
+                    parkGroup.add(solarSiteGroup);
                 }
 
                 renewableParks3DGroup.add(parkGroup);
@@ -17582,9 +17715,39 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
         }
 
         // =========================================================================
-        // ⚡ AUSLASTUNGS-CARD BEI PARK-KLICK
+        // ⚡ AUSLASTUNGS-CARD BEI PARK-KLICK (MIT ECHTEN LIVE-WETTERDATEN & FALLBACK)
         // =========================================================================
-        function showParkAuslastungCard(parkId, screenX, screenY) {
+        function renderCardMetrics(pct, currentMw, capacityMw, metrics, isSolar) {
+            const pctEl = document.getElementById('parkCardAuslastungPct');
+            if (pctEl) {
+                pctEl.innerText = `${pct} %`;
+                pctEl.style.color = (pct >= 60) ? '#00ff88' : ((pct >= 25) ? '#ffdb00' : '#60a5fa');
+            }
+            const barEl = document.getElementById('parkCardProgressBar');
+            if (barEl) {
+                barEl.style.width = `${pct}%`;
+                barEl.style.background = (pct >= 60)
+                    ? 'linear-gradient(90deg, #00e5ff, #00ff88)'
+                    : ((pct >= 25) ? 'linear-gradient(90deg, #ffdb00, #f59e0b)' : 'linear-gradient(90deg, #3b82f6, #60a5fa)');
+            }
+            const mwEl = document.getElementById('parkCardCurrentMw');
+            if (mwEl) mwEl.innerText = `${currentMw.toLocaleString('de-DE')} MW`;
+
+            if (isSolar) {
+                document.getElementById('parkCardMetric1Label').innerText = 'Sonneneinstrahlung';
+                document.getElementById('parkCardMetric1Val').innerText = `${Math.round(metrics.ghi || 0)} W/m²`;
+                document.getElementById('parkCardMetric2Label').innerText = 'Temperatur';
+                document.getElementById('parkCardMetric2Val').innerText = `${Math.round((metrics.temp || 15) * 10) / 10} °C`;
+            } else {
+                document.getElementById('parkCardMetric1Label').innerText = 'Wind (100m Nabenhöhe)';
+                const wsKmh = Math.round(metrics.ws100m || 35);
+                document.getElementById('parkCardMetric1Val').innerText = `${wsKmh} km/h (${(wsKmh / 3.6).toFixed(1)} m/s)`;
+                document.getElementById('parkCardMetric2Label').innerText = 'Temperatur';
+                document.getElementById('parkCardMetric2Val').innerText = `${Math.round((metrics.temp || 8) * 10) / 10} °C`;
+            }
+        }
+
+        async function showParkAuslastungCard(parkId, screenX, screenY) {
             if (typeof RENEWABLE_PARKS_DATA === 'undefined') return;
             const park = RENEWABLE_PARKS_DATA.find(p => p.id === parkId);
             if (!park) return;
@@ -17593,87 +17756,104 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             const card = document.getElementById('park-auslastung-card');
             if (!card) return;
 
-            // Live-Wetter am Parkstandort ermitteln
-            const d = (typeof getInterpolatedData === 'function') ? getInterpolatedData(park.lat, park.lng) : { u: 3, v: 4, t: 15, solar: 300 };
-            const ws10m = Math.hypot(d.u, d.v);
-            const ws100m = ws10m * 1.35;
-            const temp = d.t;
-            const ghi = Math.max(0, d.solar);
-
             const isSolar = (park.type === 'solar');
             const isOffshore = (park.type === 'wind_offshore');
-
-            let currentMw = 0;
-            let auslastungPct = 0;
-
-            if (isSolar) {
-                const tCell = temp + (25 / 800) * ghi;
-                const etaTemp = Math.max(0.75, 1 - 0.0038 * (tCell - 25));
-                const pot = park.capacityMw * (ghi / 1000);
-                currentMw = Math.min(park.capacityMw, Math.round(pot * etaTemp * 0.84 * 10) / 10);
-                auslastungPct = Math.min(100, Math.round((currentMw / park.capacityMw) * 100));
-            } else {
-                const cutIn = isOffshore ? 3.0 : 2.8;
-                const rated = isOffshore ? 11.5 : 12.5;
-                const cutOut = isOffshore ? 27.0 : 25.0;
-                let cf = 0;
-                if (ws100m >= cutIn && ws100m < rated) {
-                    cf = Math.pow((ws100m - cutIn) / (rated - cutIn), isOffshore ? 2.2 : 2.4);
-                } else if (ws100m >= rated && ws100m <= cutOut) {
-                    cf = 1.0;
-                }
-                currentMw = Math.min(park.capacityMw, Math.round(park.capacityMw * cf * (isOffshore ? 0.96 : 0.93)));
-                auslastungPct = Math.min(100, Math.round((currentMw / park.capacityMw) * 100));
-            }
-
+            const color = isSolar ? '#ffdb00' : (isOffshore ? '#00e5ff' : '#00ff88');
             const icon = isSolar ? '☀️' : (isOffshore ? '🌊' : '💨');
             const typeLabel = isSolar ? 'Solarpark (PV)' : (isOffshore ? 'Offshore-Windpark' : 'Onshore-Windpark');
-            const color = isSolar ? '#ffdb00' : (isOffshore ? '#00e5ff' : '#00ff88');
 
             document.getElementById('parkCardIcon').innerText = icon;
             document.getElementById('parkCardTitle').innerText = park.name;
             document.getElementById('parkCardSubtitle').innerText = `${typeLabel} · ${(park.state && park.state !== park.country) ? park.state + ', ' : ''}${park.country}`;
-            
-            const pctEl = document.getElementById('parkCardAuslastungPct');
-            pctEl.innerText = `${auslastungPct} %`;
-            pctEl.style.color = (auslastungPct >= 65) ? '#00ff88' : ((auslastungPct >= 25) ? '#ffdb00' : '#60a5fa');
-
-            const barEl = document.getElementById('parkCardProgressBar');
-            barEl.style.width = `${auslastungPct}%`;
-            barEl.style.background = (auslastungPct >= 65) 
-                ? 'linear-gradient(90deg, #00e5ff, #00ff88)' 
-                : ((auslastungPct >= 25) ? 'linear-gradient(90deg, #ffdb00, #f59e0b)' : 'linear-gradient(90deg, #3b82f6, #60a5fa)');
-
-            document.getElementById('parkCardCurrentMw').innerText = `${currentMw.toLocaleString('de-DE')} MW`;
             document.getElementById('parkCardCapacityMw').innerText = `${park.capacityMw.toLocaleString('de-DE')} MW`;
 
-            if (isSolar) {
-                document.getElementById('parkCardMetric1Label').innerText = 'Sonneneinstrahlung';
-                document.getElementById('parkCardMetric1Val').innerText = `${Math.round(ghi)} W/m²`;
-                document.getElementById('parkCardMetric2Label').innerText = 'Temperatur';
-                document.getElementById('parkCardMetric2Val').innerText = `${Math.round(temp * 10) / 10} °C`;
-            } else {
-                document.getElementById('parkCardMetric1Label').innerText = 'Wind (100m)';
-                document.getElementById('parkCardMetric1Val').innerText = `${Math.round(ws100m * 3.6)} km/h (${(ws100m).toFixed(1)} m/s)`;
-                document.getElementById('parkCardMetric2Label').innerText = 'Temperatur';
-                document.getElementById('parkCardMetric2Val').innerText = `${Math.round(temp * 10) / 10} °C`;
-            }
-
+            // Position Card sofort anzeigen
             card.style.display = 'block';
             const cardW = 285;
             const cardH = 210;
             let posX = screenX ? (screenX + 15) : (window.innerWidth - cardW - 30);
             let posY = screenY ? (screenY - cardH / 2) : 90;
-
             if (posX + cardW > window.innerWidth - 12) posX = window.innerWidth - cardW - 12;
             if (posX < 12) posX = 12;
             if (posY + cardH > window.innerHeight - 85) posY = window.innerHeight - cardH - 85;
             if (posY < 65) posY = 65;
-
             card.style.left = `${posX}px`;
             card.style.top = `${posY}px`;
             card.style.borderColor = color;
             card.style.boxShadow = `0 14px 36px rgba(0, 0, 0, 0.75), 0 0 25px ${color}33`;
+
+            // 1. SOFORTIGE REALISTISCHE VORSCHAU: Ermittle den aktuellen echten Netzwert aus grid_forecast.json
+            let estCf = 0.65;
+            if (typeof gridForecastData !== 'undefined' && gridForecastData && gridForecastData.germany) {
+                const de = gridForecastData.germany;
+                const nowMs = Date.now();
+                if (isSolar && de.solar) {
+                    const pt = de.solar.find(p => Math.abs(p.t - nowMs) < 3600000);
+                    if (pt) estCf = Math.max(0, Math.min(1, pt.mw / 68000));
+                } else if (isOffshore && de.windOffshore) {
+                    const pt = de.windOffshore.find(p => Math.abs(p.t - nowMs) < 3600000);
+                    if (pt) estCf = Math.max(0.15, Math.min(1, pt.mw / 8500));
+                } else if (!isSolar && de.windOnshore) {
+                    const pt = de.windOnshore.find(p => Math.abs(p.t - nowMs) < 3600000);
+                    if (pt) estCf = Math.max(0.15, Math.min(1, pt.mw / 61000));
+                }
+            }
+            const prevMw = Math.round(park.capacityMw * estCf);
+            const prevPct = Math.round(estCf * 100);
+            renderCardMetrics(prevPct, prevMw, park.capacityMw, isSolar ? { ghi: 0, temp: 8 } : { ws100m: 38, temp: 8 }, isSolar);
+
+            // 2. PRÄZISE ECHTZEIT-WETTERDATEN VON OPEN-METEO FÜR DIESEN GPS-STANDORT LADEN
+            let weatherData = cachedParkWeather[parkId];
+            if (!weatherData || (Date.now() - weatherData.ts > 1800000)) {
+                try {
+                    const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${park.lat.toFixed(4)}&longitude=${park.lng.toFixed(4)}&hourly=shortwave_radiation_instant,temperature_2m,wind_speed_10m,wind_speed_100m,wind_gusts_10m,cloud_cover&forecast_days=1`);
+                    if (res.ok) {
+                        const json = await res.json();
+                        weatherData = { ts: Date.now(), hourly: json.hourly };
+                        cachedParkWeather[parkId] = weatherData;
+                    }
+                } catch(e) {
+                    console.warn('Live Open-Meteo Wetterabruf fehlgeschlagen, nutze Vorschau:', e);
+                }
+            }
+
+            // Wenn die Card noch für denselben Park offen ist: Auf exakte GPS-Werte aktualisieren
+            if (currentCardParkId === parkId && weatherData && weatherData.hourly && weatherData.hourly.time) {
+                const h = weatherData.hourly;
+                const nowIso = new Date().toISOString().slice(0, 13);
+                let curIdx = h.time.findIndex(t => t.startsWith(nowIso));
+                if (curIdx === -1) curIdx = 0;
+
+                const temp = (h.temperature_2m && h.temperature_2m[curIdx] !== null) ? h.temperature_2m[curIdx] : 8.0;
+                const ws100m = (h.wind_speed_100m && h.wind_speed_100m[curIdx] !== null) ? h.wind_speed_100m[curIdx] : 38.0;
+                const ghi = Math.max(0, (h.shortwave_radiation_instant && h.shortwave_radiation_instant[curIdx] !== null) ? h.shortwave_radiation_instant[curIdx] : 0);
+                const windMs = ws100m / 3.6;
+
+                let realMw = 0;
+                let realPct = 0;
+
+                if (isSolar) {
+                    const tCell = temp + (25 / 800) * ghi;
+                    const etaTemp = Math.max(0.75, 1 - 0.0038 * (tCell - 25));
+                    const pot = park.capacityMw * (ghi / 1000);
+                    realMw = Math.min(park.capacityMw, Math.round(pot * etaTemp * 0.84 * 10) / 10);
+                    realPct = Math.min(100, Math.round((realMw / park.capacityMw) * 100));
+                    renderCardMetrics(realPct, realMw, park.capacityMw, { ghi, temp }, true);
+                } else {
+                    const cutIn = isOffshore ? 3.0 : 2.8;
+                    const rated = isOffshore ? 11.5 : 12.5;
+                    const cutOut = isOffshore ? 27.0 : 25.0;
+                    let cf = 0;
+                    if (windMs >= cutIn && windMs < rated) {
+                        cf = Math.pow((windMs - cutIn) / (rated - cutIn), isOffshore ? 2.2 : 2.4);
+                    } else if (windMs >= rated && windMs <= cutOut) {
+                        cf = 1.0;
+                    }
+                    realMw = Math.min(park.capacityMw, Math.round(park.capacityMw * cf * (isOffshore ? 0.96 : 0.93)));
+                    realPct = Math.min(100, Math.round((realMw / park.capacityMw) * 100));
+                    renderCardMetrics(realPct, realMw, park.capacityMw, { ws100m, temp }, false);
+                }
+            }
         }
         window.showParkAuslastungCard = showParkAuslastungCard;
 
@@ -17691,7 +17871,6 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             }
         }
         window.openFullParkForecastFromCard = openFullParkForecastFromCard;
-
         let renewableParksOverlayVisible = true;
         let activeParkId = null;
         let cachedParkWeather = {};
