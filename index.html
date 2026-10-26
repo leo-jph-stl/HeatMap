@@ -2951,7 +2951,10 @@
             </div>
         </div>
 
-        <!-- Action Button für 3-Tage-Detailprognose -->
+        <!-- 3D Schrägansicht & Detailprognose Buttons -->
+        <button id="parkCardTiltBtn" onclick="flyToCurrentPark3D()" style="width: 100%; margin-bottom: 6px; background: rgba(0, 229, 255, 0.16); border: 1px solid rgba(0, 229, 255, 0.45); color: #00e5ff; border-radius: 7px; padding: 7px 0; font-size: 11px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s ease;">
+            <span>📐</span> 3D Isometrie-Ansicht (Schrägwinkel)
+        </button>
         <button id="parkCardDetailsBtn" onclick="openFullParkForecastFromCard()" style="width: 100%; background: linear-gradient(135deg, rgba(0, 255, 136, 0.22), rgba(0, 229, 255, 0.22)); border: 1px solid rgba(0, 255, 136, 0.45); color: #fff; border-radius: 7px; padding: 7px 0; font-size: 11px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s ease;">
             <span>📊</span> Ausführliche 3-Tage-Prognose
         </button>
@@ -3111,6 +3114,7 @@
                 <div class="dock-btn-group">
                     <button id="btn-grid-vis" class="layer-toggle-btn" onclick="toggleGridForecast()" title="Offizielle PV- &amp; Windkraft-Netzprognose (Deutschland &amp; Nachbarländer)">⚡ Netz</button>
                     <button id="btn-parks-vis" class="layer-toggle-btn active" onclick="toggleRenewableParksOverlay()" title="Erneuerbare Parks &amp; Großanlagen (Solar &amp; Wind)">🏭 Parks</button>
+                    <button id="btn-tilt-toggle" class="layer-toggle-btn" onclick="toggleCameraTilt()" title="3D-Neigung &amp; Schrägperspektive umschalten (2D Draufsicht ↔ 3D Schrägansicht wie im Referenzmodell)">📐 3D Tilt</button>
                     <button id="btn-route-vis" class="layer-toggle-btn" onclick="toggleRoutePlanner()" title="3D-Routenplaner &amp; Höhenprofil öffnen">🧭 Route</button>
                     <button id="btn-area-vis" class="layer-toggle-btn" onclick="toggleAreaMeasure()" title="3D-Flächenmessung &amp; Formbestimmung">📐 Fläche</button>
                 </div>
@@ -3438,6 +3442,19 @@
         controls.minDistance = 100.42; // Erlaubt tiefes, gestochen scharfes Heranzoomen an Gelände, Straßen und Parzellen
         controls.maxDistance = 600;
         controls.enablePan = false;
+
+        // 3D NEIGUNG (PITCH) & ISOMETRISCHE PERSPEKTIVE (Freier Blickwinkel wie im Referenzmodell)
+        let cameraTiltAngle = 0;       // 0 = 2D Draufsicht (Nadir), 45 = 3D Schrägperspektive
+        let cameraHeadingAngle = 30;   // 30° = Süd-Südwest Richtung Nord-Nordost
+        let cameraGroundAnchor = null; // THREE.Vector3 oder null (Boden-Fokuspunkt)
+        let isRightDragTilting = false;
+        let rightDragStartX = 0;
+        let rightDragStartY = 0;
+        let rightDragStartTilt = 0;
+        let rightDragStartHeading = 0;
+        if (renderer && renderer.domElement) {
+            renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+        }
 
         // Ambient & Directional Sunlight (plastische 3D-Schatten & Glanz auf Turbinen & PV)
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.70);
@@ -6790,25 +6807,45 @@
                 // Sanfte kubische Interpolation (Ease-in-out)
                 const t = progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2;
                 
-                // Richtung auf der Kugel interpolieren
-                const currentDir = new THREE.Vector3().copy(cameraAnimation.startUnit).lerp(cameraAnimation.targetUnit, t).normalize();
-                
-                // Sanfter Bogen während des Fluges für spektakuläre Perspektive (nur bei Flügen aus größerer Distanz)
-                const angle = cameraAnimation.startUnit.angleTo(cameraAnimation.targetUnit);
-                const isCloseFlight = Math.min(cameraAnimation.startDist, cameraAnimation.targetDist) < 112;
-                const maxArch = isCloseFlight ? 0 : Math.min(25, cameraAnimation.startDist * 0.12 * Math.sin(Math.min(Math.PI / 2, angle)));
-                const arch = Math.sin(progress * Math.PI) * maxArch;
-                const currentDist = (cameraAnimation.startDist + (cameraAnimation.targetDist - cameraAnimation.startDist) * t) + arch;
-                
-                camera.position.copy(currentDir.multiplyScalar(currentDist));
-                camera.lookAt(0, 0, 0);
-                controls.target.set(0, 0, 0);
-                
-                if (progress >= 1.0) {
-                    const anim = cameraAnimation;
-                    cameraAnimation = null;
-                    controls.enabled = true;
-                    if (currentMode === 'topo' || currentMode === 'satellite') updateTopoTiles(true);
+                if (cameraAnimation.isTiltedParkFlight) {
+                    camera.position.copy(cameraAnimation.startPos).lerp(cameraAnimation.endPos, t);
+                    const curTarget = cameraAnimation.startTarget.clone().lerp(cameraAnimation.endTarget, t);
+                    const curUp = cameraAnimation.startUp.clone().lerp(cameraAnimation.endUp, t).normalize();
+                    camera.up.copy(curUp);
+                    camera.lookAt(curTarget);
+                    controls.target.copy(curTarget);
+
+                    if (progress >= 1.0) {
+                        const anim = cameraAnimation;
+                        cameraAnimation = null;
+                        controls.enabled = true;
+                        controls.target.copy(anim.endTarget);
+                        cameraTiltAngle = anim.targetTilt || 45;
+                        cameraHeadingAngle = anim.targetHeading || 30;
+                        cameraGroundAnchor = anim.endTarget.clone();
+                        if (typeof updateTiltButtonState === 'function') updateTiltButtonState();
+                        if (currentMode === 'topo' || currentMode === 'satellite') updateTopoTiles(true);
+                    }
+                } else {
+                    // Richtung auf der Kugel interpolieren
+                    const currentDir = new THREE.Vector3().copy(cameraAnimation.startUnit).lerp(cameraAnimation.targetUnit, t).normalize();
+                    
+                    // Sanfter Bogen während des Fluges für spektakuläre Perspektive (nur bei Flügen aus größerer Distanz)
+                    const angle = cameraAnimation.startUnit.angleTo(cameraAnimation.targetUnit);
+                    const isCloseFlight = Math.min(cameraAnimation.startDist, cameraAnimation.targetDist) < 112;
+                    const maxArch = isCloseFlight ? 0 : Math.min(25, cameraAnimation.startDist * 0.12 * Math.sin(Math.min(Math.PI / 2, angle)));
+                    const arch = Math.sin(progress * Math.PI) * maxArch;
+                    const currentDist = (cameraAnimation.startDist + (cameraAnimation.targetDist - cameraAnimation.startDist) * t) + arch;
+                    
+                    camera.position.copy(currentDir.multiplyScalar(currentDist));
+                    camera.lookAt(0, 0, 0);
+                    controls.target.set(0, 0, 0);
+                    
+                    if (progress >= 1.0) {
+                        const anim = cameraAnimation;
+                        cameraAnimation = null;
+                        controls.enabled = true;
+                        if (currentMode === 'topo' || currentMode === 'satellite') updateTopoTiles(true);
                     
                     if (anim && anim.targetName && !anim.targetName.includes('PV-Anlage')) {
                         // Temperatur- & Höhen-Popup am Zielort aktivieren & anzeigen
@@ -6831,7 +6868,14 @@
                         }
                     }
                 }
+                }
             } else {
+                if (cameraGroundAnchor && controls.target.lengthSq() > 10) {
+                    // In 3D-Schrägansicht am Boden: Sanfte Orbitaldrehung um den fokussierten Park-Bodenpunkt
+                    controls.rotateSpeed = 0.28;
+                    controls.dampingFactor = 0.25;
+                    controls.update();
+                } else {
                 // Exakte physikalische 1:1 Grab-and-Drag Rotation & progressive Dämpfung für jeden Höhenbereich:
                 const dist = camera.position.length();
                 const h = Math.max(dist - surfaceRadius, 0.01);
@@ -6855,6 +6899,7 @@
                     controls.dampingFactor = 0.08;
                 }
                 controls.update();
+                }
             }
 
             // DYNAMISCHE KAMERA-CLIPPING-PLANES (Verhindert Z-Fighting & Flimmern aus dem Weltraum)
@@ -14270,18 +14315,213 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             cityCtx.restore();
         }
 
-        // KAMERA FLUG (FLY-TO) FUNKTION
-        function flyToLocation(targetLat, targetLng, targetName) {
+        // KAMERA FLUG (FLY-TO) FUNKTION MIT ISOMETRISCHER 3D-SCHRÄGANSICHT FÜR PARKS
+        function getIsometricVantage(targetLat, targetLng, tiltDeg = 45, headingDeg = 30, distance = 2.4) {
+            const localP = latLngToSphereVertex(targetLat, targetLng, surfaceRadius);
+            const parkPos = new THREE.Vector3(-localP.z, localP.y, localP.x);
+            const up = parkPos.clone().normalize();
+            const north = new THREE.Vector3(0, 1, 0).projectOnPlane(up).normalize();
+            const south = north.clone().negate();
+            const east = new THREE.Vector3().crossVectors(north, up).normalize();
+            const west = east.clone().negate();
+
+            // Azimuth im Horizont: schaut von Süd-West nach Nord-Ost (optimale 3D-Perspektive wie im Referenzmodell)
+            const headRad = (headingDeg * Math.PI) / 180;
+            const horizDir = south.clone().multiplyScalar(Math.cos(headRad))
+                .add(west.clone().multiplyScalar(Math.sin(headRad))).normalize();
+
+            const tiltRad = (tiltDeg * Math.PI) / 180;
+            const targetPoint = parkPos.clone().add(up.clone().multiplyScalar(0.14)); // Turbinen-Hubhöhe
+            const camPos = targetPoint.clone()
+                .add(up.clone().multiplyScalar(distance * Math.cos(tiltRad)))
+                .add(horizDir.clone().multiplyScalar(distance * Math.sin(tiltRad)));
+
+            return {
+                target: targetPoint,
+                position: camPos,
+                up: up,
+                tilt: tiltDeg,
+                heading: headingDeg,
+                distance: distance
+            };
+        }
+
+        function updateTiltButtonState() {
+            const btn = document.getElementById('btn-tilt-toggle');
+            if (btn) {
+                btn.classList.toggle('active', cameraTiltAngle > 10);
+            }
+        }
+
+        function toggleCameraTilt() {
+            if (cameraAnimation) return;
+
+            if (cameraTiltAngle > 10) {
+                // Zurück zur 2D-Draufsicht (0° Nadir)
+                let groundPt = cameraGroundAnchor;
+                if (!groundPt || groundPt.lengthSq() < 10) {
+                    groundPt = camera.position.clone().normalize().multiplyScalar(surfaceRadius);
+                }
+                const up = groundPt.clone().normalize();
+                const curDist = camera.position.distanceTo(groundPt);
+                const endDist = Math.max(curDist, 3.2);
+                const endPos = groundPt.clone().add(up.clone().multiplyScalar(endDist));
+
+                cameraAnimation = {
+                    isTiltedParkFlight: true,
+                    startTime: performance.now(),
+                    duration: 750,
+                    startPos: camera.position.clone(),
+                    endPos: endPos,
+                    startTarget: controls.target.clone(),
+                    endTarget: new THREE.Vector3(0, 0, 0),
+                    startUp: camera.up.clone(),
+                    endUp: new THREE.Vector3(0, 1, 0),
+                    targetTilt: 0,
+                    targetHeading: 0
+                };
+                controls.enabled = false;
+                cameraTiltAngle = 0;
+                cameraGroundAnchor = null;
+                updateTiltButtonState();
+            } else {
+                // In isometrische 3D-Schrägperspektive (45° Tilt) kippen
+                let lat = 54.0, lng = 7.0;
+                if ((typeof activeParkId !== 'undefined' && activeParkId) || (typeof currentCardParkId !== 'undefined' && currentCardParkId)) {
+                    const pId = activeParkId || currentCardParkId;
+                    const p = RENEWABLE_PARKS_DATA.find(x => x.id === pId);
+                    if (p) { lat = p.lat; lng = p.lng; }
+                } else {
+                    const centerV = camera.position.clone().normalize();
+                    const centerGeo = sphereVertexToLatLng(new THREE.Vector3(centerV.z, centerV.y, -centerV.x), 1.0);
+                    lat = centerGeo.lat;
+                    lng = centerGeo.lng;
+                }
+
+                const vantage = getIsometricVantage(lat, lng, 45, 30, 2.5);
+                cameraAnimation = {
+                    isTiltedParkFlight: true,
+                    startTime: performance.now(),
+                    duration: 850,
+                    startPos: camera.position.clone(),
+                    endPos: vantage.position,
+                    startTarget: controls.target.clone(),
+                    endTarget: vantage.target,
+                    startUp: camera.up.clone(),
+                    endUp: vantage.up,
+                    targetTilt: 45,
+                    targetHeading: 30
+                };
+                controls.enabled = false;
+                cameraTiltAngle = 45;
+                cameraHeadingAngle = 30;
+                cameraGroundAnchor = vantage.target.clone();
+                updateTiltButtonState();
+            }
+        }
+        window.toggleCameraTilt = toggleCameraTilt;
+
+        function applyCameraTilt(tiltDeg, headingDeg) {
+            cameraTiltAngle = tiltDeg;
+            cameraHeadingAngle = headingDeg;
+            updateTiltButtonState();
+
+            if (!cameraGroundAnchor) {
+                cameraGroundAnchor = controls.target.lengthSq() > 10 ? controls.target.clone() : camera.position.clone().normalize().multiplyScalar(surfaceRadius);
+            }
+            const up = cameraGroundAnchor.clone().normalize();
+            const north = new THREE.Vector3(0, 1, 0).projectOnPlane(up).normalize();
+            const south = north.clone().negate();
+            const east = new THREE.Vector3().crossVectors(north, up).normalize();
+            const west = east.clone().negate();
+
+            const headRad = (headingDeg * Math.PI) / 180;
+            const horizDir = south.clone().multiplyScalar(Math.cos(headRad))
+                .add(west.clone().multiplyScalar(Math.sin(headRad))).normalize();
+
+            const tiltRad = (tiltDeg * Math.PI) / 180;
+            const dist = Math.max(1.4, Math.min(18.0, camera.position.distanceTo(cameraGroundAnchor)));
+
+            camera.position.copy(cameraGroundAnchor)
+                .add(up.clone().multiplyScalar(dist * Math.cos(tiltRad)))
+                .add(horizDir.clone().multiplyScalar(dist * Math.sin(tiltRad)));
+            camera.up.copy(up);
+            camera.lookAt(cameraGroundAnchor);
+            controls.target.copy(cameraGroundAnchor);
+        }
+
+        function flyToCurrentPark3D() {
+            const pId = (typeof activeParkId !== 'undefined' && activeParkId) || (typeof currentCardParkId !== 'undefined' && currentCardParkId);
+            if (!pId || typeof RENEWABLE_PARKS_DATA === 'undefined') return;
+            const park = RENEWABLE_PARKS_DATA.find(p => p.id === pId);
+            if (!park) return;
+            flyToLocation(park.lat, park.lng, park.name, { isPark: true });
+        }
+        window.flyToCurrentPark3D = flyToCurrentPark3D;
+
+        // Maus- & Touch-Steuerung für Rechtsklick-Ziehen (Pitch/Tilt)
+        window.addEventListener('mousedown', (e) => {
+            if (e.button === 2 || (e.button === 0 && e.shiftKey)) {
+                isRightDragTilting = true;
+                rightDragStartX = e.clientX;
+                rightDragStartY = e.clientY;
+                rightDragStartTilt = cameraTiltAngle || (controls.target.lengthSq() > 10 ? 45 : 0);
+                rightDragStartHeading = cameraHeadingAngle || 30;
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isRightDragTilting) return;
+            const dy = e.clientY - rightDragStartY;
+            const dx = e.clientX - rightDragStartX;
+
+            const newTilt = Math.max(0, Math.min(68, rightDragStartTilt + dy * 0.25));
+            const newHeading = (rightDragStartHeading - dx * 0.35 + 360) % 360;
+            applyCameraTilt(newTilt, newHeading);
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (isRightDragTilting) {
+                isRightDragTilting = false;
+            }
+        });
+
+        function flyToLocation(targetLat, targetLng, targetName, options) {
             userLocationDetected = true;
             userNavigatedManually = true;
+            const isPark = (options && options.isPark) || (targetName && (
+                targetName.includes('Wind') || targetName.includes('Solar') || 
+                targetName.includes('Park') || targetName.includes('Cluster')
+            ));
+
+            if (isPark) {
+                const vantage = getIsometricVantage(targetLat, targetLng, 45, 30, 2.5);
+                cameraAnimation = {
+                    isTiltedParkFlight: true,
+                    startTime: performance.now(),
+                    duration: 1400,
+                    startPos: camera.position.clone(),
+                    endPos: vantage.position,
+                    startTarget: controls.target.clone(),
+                    endTarget: vantage.target,
+                    startUp: camera.up.clone(),
+                    endUp: vantage.up,
+                    targetTilt: 45,
+                    targetHeading: 30,
+                    targetLat,
+                    targetLng,
+                    targetName
+                };
+                controls.enabled = false;
+                return;
+            }
+
             const localV = latLngToSphereVertex(targetLat, targetLng, 1.0);
             const targetUnit = new THREE.Vector3(-localV.z, localV.y, localV.x).normalize();
 
             const startPos = camera.position.clone();
             const startUnit = startPos.clone().normalize();
             const startDist = startPos.length();
-            // Wenn der Benutzer bereits nah herangezoomt ist (z. B. im Topo- oder Einstrahlungs-Modus),
-            // darf die Kamera keinesfalls wieder herauf / hinaus springen! Zoomhöhe beibehalten!
             const targetDist = startDist < 107.5 ? startDist : 107.5;
 
             cameraAnimation = {
@@ -14698,6 +14938,26 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                     rotAxis.normalize();
                     u_c.applyAxisAngle(rotAxis, deltaTheta);
                 }
+            }
+
+            if (controls.target.lengthSq() > 10) {
+                // In 3D-Schrägansicht: Dolly entlang der Sichtachse zum Boden-Fokuspunkt (behält 3D-Neigung bei!)
+                const toTarget = camera.position.clone().sub(controls.target);
+                const curD = toTarget.length();
+                const newD = Math.max(1.2, Math.min(26.0, curD * (1 + zoomFactor)));
+                camera.position.copy(controls.target).add(toTarget.normalize().multiplyScalar(newD));
+                camera.lookAt(controls.target);
+                controls.update();
+
+                if (newD > 22.0) {
+                    // Beim sehr weiten Herauszoomen sanft zurück zum globalen Globus-Modus übergehen
+                    cameraGroundAnchor = null;
+                    cameraTiltAngle = 0;
+                    controls.target.set(0, 0, 0);
+                    camera.up.set(0, 1, 0);
+                    if (typeof updateTiltButtonState === 'function') updateTiltButtonState();
+                }
+                return;
             }
 
             camera.position.copy(u_c.multiplyScalar(d1));
@@ -17433,15 +17693,25 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             // =========================================================================
             // MATERIALIEN (High-Quality PBR mit physikalischem Glanz & Kontur-Schatten)
             // =========================================================================
-            const towerMat = new THREE.MeshStandardMaterial({
+            const towerWhiteMat = new THREE.MeshStandardMaterial({
+                color: 0xf8fafc,
+                roughness: 0.32,
+                metalness: 0.15
+            });
+            const towerStripeRedMat = new THREE.MeshStandardMaterial({
+                color: 0xdc2626, // Internationales Luftfahrt-Signalrot
+                roughness: 0.28,
+                metalness: 0.12
+            });
+            const platformDeckMat = new THREE.MeshStandardMaterial({
                 color: 0xe2e8f0,
-                roughness: 0.35,
+                roughness: 0.40,
                 metalness: 0.20
             });
-            const towerBaseMat = new THREE.MeshStandardMaterial({
+            const platformBaseMat = new THREE.MeshStandardMaterial({
                 color: 0x334155,
-                roughness: 0.65,
-                metalness: 0.15
+                roughness: 0.60,
+                metalness: 0.25
             });
             const offshoreYellowMat = new THREE.MeshStandardMaterial({
                 color: 0xf59e0b,
@@ -17450,21 +17720,28 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             });
             const nacelleMat = new THREE.MeshStandardMaterial({
                 color: 0xf1f5f9,
-                roughness: 0.30,
+                roughness: 0.28,
                 metalness: 0.15
-            });
-            const bladeWhiteMat = new THREE.MeshStandardMaterial({
-                color: 0xf8fafc,
-                roughness: 0.25,
-                metalness: 0.10
-            });
-            const bladeRedTipMat = new THREE.MeshStandardMaterial({
-                color: 0xdc2626,
-                roughness: 0.25,
-                metalness: 0.10
             });
             const beaconMat = new THREE.MeshBasicMaterial({
                 color: 0xff1e1e
+            });
+            const oceanBaseMat = new THREE.MeshStandardMaterial({
+                color: 0x071e3d,
+                roughness: 0.20,
+                metalness: 0.65,
+                transparent: true,
+                opacity: 0.72
+            });
+            const boatHullMat = new THREE.MeshStandardMaterial({
+                color: 0xf8fafc,
+                roughness: 0.35,
+                metalness: 0.15
+            });
+            const boatCabinMat = new THREE.MeshStandardMaterial({
+                color: 0xf97316, // Sicherheits-Orange
+                roughness: 0.40,
+                metalness: 0.10
             });
 
             // Solarpark Materialien
@@ -17485,36 +17762,77 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             });
 
             // =========================================================================
-            // GEOMETRIEN (Schlanker Taper, weite Staffelung & aerodynamische Flügel)
+            // GEOMETRIEN (Exakt wie im hochgeladenen Referenzbild)
             // =========================================================================
             const towerH = 0.28;
-            const towerGeom = new THREE.CylinderGeometry(0.007, 0.019, towerH, 8);
-            towerGeom.translate(0, towerH / 2, 0);
+            // Mast mit zwei roten Hindernisfeuer-Streifen im oberen Bereich (Rot-Weiß)
+            const mastBaseH = 0.188;
+            const mastBaseGeom = new THREE.CylinderGeometry(0.0115, 0.0190, mastBaseH, 8);
+            mastBaseGeom.translate(0, mastBaseH / 2, 0);
 
-            const foundationGeom = new THREE.CylinderGeometry(0.026, 0.028, 0.006, 8);
-            foundationGeom.translate(0, 0.003, 0);
+            const stripe1H = 0.022;
+            const stripe1Geom = new THREE.CylinderGeometry(0.0102, 0.0115, stripe1H, 8);
+            stripe1Geom.translate(0, mastBaseH + stripe1H / 2, 0);
 
-            const offshoreBaseH = 0.070;
-            const offshoreBaseGeom = new THREE.CylinderGeometry(0.020, 0.025, offshoreBaseH, 8);
-            offshoreBaseGeom.translate(0, offshoreBaseH / 2, 0);
+            const gapH = 0.020;
+            const gapGeom = new THREE.CylinderGeometry(0.0090, 0.0102, gapH, 8);
+            gapGeom.translate(0, mastBaseH + stripe1H + gapH / 2, 0);
 
-            const nacelleGeom = new THREE.BoxGeometry(0.024, 0.022, 0.075);
+            const stripe2H = 0.022;
+            const stripe2Geom = new THREE.CylinderGeometry(0.0078, 0.0090, stripe2H, 8);
+            stripe2Geom.translate(0, mastBaseH + stripe1H + gapH + stripe2H / 2, 0);
+
+            const neckH = towerH - (mastBaseH + stripe1H + gapH + stripe2H);
+            const neckGeom = new THREE.CylinderGeometry(0.0068, 0.0078, neckH, 8);
+            neckGeom.translate(0, towerH - neckH / 2, 0);
+
+            // Offshore quadratische Fundament-Plattform (Schwimmend / Jacket wie im Bild)
+            const offshorePlatformGeom = new THREE.BoxGeometry(0.065, 0.013, 0.065);
+            offshorePlatformGeom.translate(0, 0.0065, 0);
+            const offshorePedestalGeom = new THREE.BoxGeometry(0.076, 0.004, 0.076);
+            offshorePedestalGeom.translate(0, 0.002, 0);
+            const offshoreCollarGeom = new THREE.CylinderGeometry(0.014, 0.017, 0.032, 8);
+            offshoreCollarGeom.translate(0, 0.013 + 0.032 / 2, 0);
+
+            // Onshore Beton-Fundamentring
+            const onshoreBaseGeom = new THREE.CylinderGeometry(0.030, 0.035, 0.008, 10);
+            onshoreBaseGeom.translate(0, 0.004, 0);
+
+            // Maschinengondel & Spinner mit rotem Punkt
+            const nacelleGeom = new THREE.BoxGeometry(0.026, 0.024, 0.082);
             const hubGeom = new THREE.ConeGeometry(0.015, 0.028, 8);
             hubGeom.rotateX(Math.PI / 2); // Nase zeigt nach vorn (+Z)
             hubGeom.translate(0, 0, 0.014);
 
-            const beaconGeom = new THREE.SphereGeometry(0.004, 4, 4);
-            beaconGeom.translate(0, 0.013, -0.015);
+            const hubDotGeom = new THREE.SphereGeometry(0.0055, 6, 6);
+            hubDotGeom.translate(0, 0, 0.028);
 
-            // Aerodynamischer Flügel: 82% Weißkörper + 18% Rote Signalspitze
-            const bladeLen = 0.165;
-            const bodyLen = bladeLen * 0.82;
-            const bodyGeom = new THREE.ConeGeometry(0.011, bodyLen, 5);
-            bodyGeom.translate(0, bodyLen / 2, 0);
+            const beaconGeom = new THREE.SphereGeometry(0.0045, 6, 6);
+            beaconGeom.translate(0, 0, 0.014, -0.018);
 
-            const tipLen = bladeLen * 0.18;
-            const tipGeom = new THREE.ConeGeometry(0.006, tipLen, 5);
-            tipGeom.translate(0, bodyLen + tipLen / 2, 0);
+            // Rotorflügel mit 2 Signalstreifen an der Spitze (Rot-Weiß-Rot)
+            const bladeLen = 0.170;
+            const bladeBodyLen = bladeLen * 0.74; // 0.1258
+            const bladeBodyGeom = new THREE.ConeGeometry(0.011, bladeBodyLen, 5);
+            bladeBodyGeom.translate(0, bladeBodyLen / 2, 0);
+
+            const bladeStripe1Len = bladeLen * 0.08; // 0.0136
+            const bladeStripe1Geom = new THREE.ConeGeometry(0.0082, bladeStripe1Len, 5);
+            bladeStripe1Geom.translate(0, bladeBodyLen + bladeStripe1Len / 2, 0);
+
+            const bladeGapLen = bladeLen * 0.07; // 0.0119
+            const bladeGapGeom = new THREE.ConeGeometry(0.0068, bladeGapLen, 5);
+            bladeGapGeom.translate(0, bladeBodyLen + bladeStripe1Len + bladeGapLen / 2, 0);
+
+            const bladeTipLen = bladeLen - (bladeBodyLen + bladeStripe1Len + bladeGapLen);
+            const bladeTipGeom = new THREE.ConeGeometry(0.0052, bladeTipLen, 5);
+            bladeTipGeom.translate(0, bladeLen - bladeTipLen / 2, 0);
+
+            // Offshore Service-Boot (CTV - Crew Transfer Vessel wie im Bild unten rechts)
+            const boatHullGeom = new THREE.BoxGeometry(0.046, 0.012, 0.018);
+            boatHullGeom.translate(0, 0.006, 0);
+            const boatCabinGeom = new THREE.BoxGeometry(0.022, 0.014, 0.014);
+            boatCabinGeom.translate(-0.006, 0.012 + 0.007, 0);
 
             // PV-Modultisch: Breiter, flacher Solartisch mit silbernem Rand
             const tableW = 0.16;
@@ -17527,7 +17845,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             RENEWABLE_PARKS_DATA.forEach(park => {
                 if (park.type === 'cluster') return;
 
-                // Exakte orthonormale Basis auf der Kugeloberfläche (garantiert perfekte Südausrichtung)
+                // Exakte orthonormale Basis auf der Kugeloberfläche
                 const centerPos = latLngToSphereVertex(park.lat, park.lng, surfaceRadius);
                 const up = centerPos.clone().normalize();
                 const north = new THREE.Vector3(0, 1, 0).projectOnPlane(up).normalize();
@@ -17543,20 +17861,38 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 if (park.type === 'wind_onshore' || park.type === 'wind_offshore') {
                     const isOffshore = (park.type === 'wind_offshore');
 
-                    // Realistische Turbinen-Anzahl nach Kapazität
+                    // Realistische Turbinen-Anzahl nach Kapazität (2x3 Isometrie wie im Referenzbild)
                     let count = 4;
-                    if (park.capacityMw >= 2000) count = 15;
-                    else if (park.capacityMw >= 1200) count = 11;
-                    else if (park.capacityMw >= 600) count = 8;
-                    else if (park.capacityMw >= 300) count = 6;
+                    if (park.capacityMw >= 2000) count = 12;
+                    else if (park.capacityMw >= 1200) count = 9;
+                    else if (park.capacityMw >= 600) count = 6;
+                    else if (park.capacityMw >= 300) count = 5;
                     else if (park.capacityMw >= 150) count = 4;
                     else count = 3;
 
-                    // Großzügige Staffelung (mindestens 0.34 - 0.44 Einheiten Abstand!), damit Rotoren sich nie berühren
-                    const cols = Math.min(4, Math.ceil(Math.sqrt(count * 1.4)));
+                    const cols = Math.min(3, Math.ceil(Math.sqrt(count * 1.3)));
                     const rows = Math.ceil(count / cols);
                     const spacingX = isOffshore ? 0.38 : 0.34;
                     const spacingZ = isOffshore ? 0.44 : 0.38;
+
+                    // Meeres-Parzelle Sockelplatte für Offshore-Windparks (wie im Referenzbild)
+                    if (isOffshore) {
+                        const oceanW = cols * spacingX + 0.38;
+                        const oceanH = rows * spacingZ + 0.38;
+                        const oceanMesh = new THREE.Mesh(new THREE.PlaneGeometry(oceanW, oceanH), oceanBaseMat);
+                        oceanMesh.position.copy(centerPos).add(up.clone().multiplyScalar(0.0015));
+                        oceanMesh.quaternion.copy(baseQuat);
+                        oceanMesh.rotateX(-Math.PI / 2);
+                        parkGroup.add(oceanMesh);
+
+                        // Kleines Service-Boot am Rand des Parks
+                        const boatGroup = new THREE.Group();
+                        boatGroup.position.copy(centerPos).add(east.clone().multiplyScalar(oceanW * 0.38)).add(south.clone().multiplyScalar(oceanH * 0.36));
+                        boatGroup.quaternion.copy(baseQuat);
+                        boatGroup.add(new THREE.Mesh(boatHullGeom, boatHullMat));
+                        boatGroup.add(new THREE.Mesh(boatCabinGeom, boatCabinMat));
+                        parkGroup.add(boatGroup);
+                    }
 
                     let placedCount = 0;
                     for (let r = 0; r < rows; r++) {
@@ -17581,46 +17917,50 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                             turbGroup.position.copy(turbPos);
                             turbGroup.quaternion.copy(turbQuat);
 
-                            // Fundament / Bodenring
-                            const fndMesh = new THREE.Mesh(foundationGeom, towerBaseMat);
-                            turbGroup.add(fndMesh);
-
-                            // Weißer Mast
-                            const towerMesh = new THREE.Mesh(towerGeom, towerMat);
-                            turbGroup.add(towerMesh);
-
-                            // Gelber Sockel bei Offshore
+                            // Fundament / Basis
                             if (isOffshore) {
-                                const yellowBase = new THREE.Mesh(offshoreBaseGeom, offshoreYellowMat);
-                                turbGroup.add(yellowBase);
+                                turbGroup.add(new THREE.Mesh(offshorePedestalGeom, platformBaseMat));
+                                turbGroup.add(new THREE.Mesh(offshorePlatformGeom, platformDeckMat));
+                                turbGroup.add(new THREE.Mesh(offshoreCollarGeom, offshoreYellowMat));
+                            } else {
+                                turbGroup.add(new THREE.Mesh(onshoreBaseGeom, platformBaseMat));
                             }
 
-                            // Gondel
+                            // Mast mit den 2 roten Flugsicherheitsstreifen (Rot-Weiß)
+                            turbGroup.add(new THREE.Mesh(mastBaseGeom, towerWhiteMat));
+                            turbGroup.add(new THREE.Mesh(stripe1Geom, towerStripeRedMat));
+                            turbGroup.add(new THREE.Mesh(gapGeom, towerWhiteMat));
+                            turbGroup.add(new THREE.Mesh(stripe2Geom, towerStripeRedMat));
+                            turbGroup.add(new THREE.Mesh(neckGeom, towerWhiteMat));
+
+                            // Maschinengondel
                             const nacelleMesh = new THREE.Mesh(nacelleGeom, nacelleMat);
                             nacelleMesh.position.set(0, towerH, 0);
                             turbGroup.add(nacelleMesh);
 
-                            // Rotes Hindernisfeuer oben auf der Gondel
+                            // Hindernisfeuer oben auf der Gondel
                             const beaconMesh = new THREE.Mesh(beaconGeom, beaconMat);
                             beaconMesh.position.set(0, towerH, 0);
                             turbGroup.add(beaconMesh);
 
                             // Rotor-Baugruppe
                             const rotorGroup = new THREE.Group();
-                            rotorGroup.position.set(0, towerH, 0.038); // sitzt vorn an der Gondel
+                            rotorGroup.position.set(0, towerH, 0.041);
 
-                            // Spinner / Nase
-                            const hubMesh = new THREE.Mesh(hubGeom, nacelleMat);
-                            rotorGroup.add(hubMesh);
+                            // Spinner / Nase mit rotem Punkt
+                            rotorGroup.add(new THREE.Mesh(hubGeom, nacelleMat));
+                            rotorGroup.add(new THREE.Mesh(hubDotGeom, towerStripeRedMat));
 
-                            // 3 Flügel mit roten Signalspitzen
+                            // 3 Flügel mit Signalspitzen (Rot-Weiß-Rot)
                             for (let b = 0; b < 3; b++) {
                                 const bladeGroup = new THREE.Group();
-                                const bodyMesh = new THREE.Mesh(bodyGeom, bladeWhiteMat);
-                                bladeGroup.add(bodyMesh);
-                                const tipMesh = new THREE.Mesh(tipGeom, bladeRedTipMat);
-                                bladeGroup.add(tipMesh);
+                                bladeGroup.add(new THREE.Mesh(bladeBodyGeom, towerWhiteMat));
+                                bladeGroup.add(new THREE.Mesh(bladeStripe1Geom, towerStripeRedMat));
+                                bladeGroup.add(new THREE.Mesh(bladeGapGeom, towerWhiteMat));
+                                bladeGroup.add(new THREE.Mesh(bladeTipGeom, towerStripeRedMat));
 
+                                // Aerodynamischer Anstellwinkel
+                                bladeGroup.rotation.y = 0.10;
                                 bladeGroup.rotation.z = (b * Math.PI * 2) / 3;
                                 rotorGroup.add(bladeGroup);
                             }
@@ -17658,7 +17998,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
 
                     // Dunkler Kies- / Erd-Untergrund des Solarparks
                     const groundMesh = new THREE.Mesh(new THREE.PlaneGeometry(siteW, siteH), solarGroundMat);
-                    groundMesh.rotation.x = -Math.PI / 2; // liegt flach auf dem Boden
+                    groundMesh.rotation.x = -Math.PI / 2;
                     groundMesh.position.set(0, 0.002, 0);
                     solarSiteGroup.add(groundMesh);
 
