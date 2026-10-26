@@ -17978,6 +17978,101 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
         // =========================================================================
         // ⚡ AUSLASTUNGS-CARD BEI PARK-KLICK (MIT ECHTEN LIVE-WETTERDATEN & FALLBACK)
         // =========================================================================
+        // =========================================================================
+        // ⚡ PHYSIKALISCHE ERZEUGUNGSMODELLE (WIND-TURBINEN- & PV-KENNLINIEN)
+        // =========================================================================
+        function calcParkPowerOutput(park, env) {
+            const temp = (env && env.temp !== undefined && env.temp !== null) ? env.temp : 10;
+            const ghi = Math.max(0, (env && env.ghi !== undefined && env.ghi !== null) ? env.ghi : 0);
+            const ws100m = (env && env.ws100m !== undefined && env.ws100m !== null) ? env.ws100m : 35;
+            const windMs = ws100m / 3.6;
+
+            if (park.type === 'solar') {
+                // PV-Modell: Temperaturkoeffizient ~0.38%/°C über 25°C, PR ~0.84
+                const tCell = temp + (25 / 800) * ghi;
+                const etaTemp = Math.max(0.75, 1 - 0.0038 * (tCell - 25));
+                const potentialMw = park.capacityMw * (ghi / 1000);
+                const mw = Math.min(park.capacityMw, Math.round(potentialMw * etaTemp * 0.84 * 10) / 10);
+                const cf = park.capacityMw > 0 ? (mw / park.capacityMw) : 0;
+                const pct = Math.min(100, Math.round(cf * 100));
+                return { mw, pct, cf, potentialMw: Math.round(potentialMw * 10) / 10, windMs, ws100m, ghi, temp };
+            }
+
+            if (park.type === 'wind_onshore' || park.type === 'wind_offshore') {
+                const isOffshore = (park.type === 'wind_offshore');
+
+                // 1. Luftdichte-Einfluss (Referenz: 15°C auf Meereshöhe, kalte Luft hat mehr kinetische Energie)
+                const tKelvin = Math.max(250, temp + 273.15);
+                const rhoFactor = Math.min(1.08, Math.max(0.92, 288.15 / tKelvin));
+
+                // 2. Deterministische Parkcharakteristik (Turbinentyp, Baujahr, Layout)
+                let hash = 0;
+                const str = (park.id || park.name || 'wind');
+                for (let i = 0; i < str.length; i++) hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+                const parkSeed = Math.abs(hash % 100) / 100; // 0.00 - 0.99
+
+                // Nennwindgeschwindigkeit & Einschaltgrenze
+                // Neuere Offshore-Giganten (8-15 MW) erreichen Nennleistung früher (~11.2 - 11.6 m/s)
+                const baseRated = isOffshore ? 11.4 : 12.3;
+                const rated = Math.max(10.5, (baseRated - (isOffshore ? 0.35 : 0.25) * (rhoFactor - 1.0)) + (parkSeed * 0.4 - 0.2));
+                const cutIn = (isOffshore ? 2.8 : 2.5) + (parkSeed * 0.3 - 0.15);
+                const softCutOut = isOffshore ? 24.5 : 23.0; // Beginn sanfte Sturmregelung
+                const hardCutOut = isOffshore ? 29.0 : 26.5; // Vollständige Sicherheitsabschaltung
+
+                let cf = 0;
+                if (windMs < cutIn) {
+                    cf = 0;
+                } else if (windMs < rated) {
+                    // Teillastbereich: Kubischer Leistungsanstieg (Betz-Limit)
+                    const norm = (windMs - cutIn) / (rated - cutIn);
+                    cf = Math.pow(norm, isOffshore ? 2.15 : 2.35);
+                    // Park-Nachlaufeffekt (Wake loss) ist im Teillastbereich am größten (~4-8%)
+                    const wakeLoss = (0.05 + 0.03 * parkSeed) * (1 - norm);
+                    cf *= (1 - wakeLoss);
+                } else if (windMs <= softCutOut) {
+                    // Voller Nennleistungsbereich: Pitch-Regelung hält Turbinen auf Nennleistung
+                    // Reale Flottenverfügbarkeit & Netzverluste: 97.2% bis 99.4% je nach Park
+                    const avail = (isOffshore ? 0.976 : 0.968) + (parkSeed * 0.02);
+                    cf = Math.min(1.0, avail);
+                } else if (windMs <= hardCutOut) {
+                    // High-Wind-Ride-Through (HWRT): Sanftes Abdrehen statt plötzlichem Netzabriss
+                    const stormRamp = 1.0 - ((windMs - softCutOut) / (hardCutOut - softCutOut));
+                    const avail = (isOffshore ? 0.976 : 0.968) + (parkSeed * 0.02);
+                    cf = Math.max(0.05, avail * Math.pow(stormRamp, 0.7));
+                } else {
+                    cf = 0; // Extreme Böen / Überlastschutz
+                }
+
+                const potentialMw = Math.round(park.capacityMw * cf * 10) / 10;
+                const mw = Math.min(park.capacityMw, potentialMw);
+                const pct = Math.min(100, Math.round((mw / park.capacityMw) * 100));
+                return { mw, pct, cf, potentialMw, windMs, ws100m, temp };
+            }
+
+            if (park.type === 'cluster') {
+                // Bundesland- / Nationales Cluster: Aggregation aus Wind + Solar
+                const tCell = temp + (25 / 800) * ghi;
+                const etaTemp = Math.max(0.75, 1 - 0.0038 * (tCell - 25));
+                const solarMw = Math.min(park.solarCapMw || 0, ((park.solarCapMw || 0) * (ghi / 1000)) * etaTemp * 0.83);
+
+                const cutIn = 2.8, rated = 12.2, cutOut = 25.0;
+                let cfWind = 0;
+                if (windMs >= cutIn && windMs < rated) {
+                    cfWind = Math.pow((windMs - cutIn) / (rated - cutIn), 2.3);
+                } else if (windMs >= rated && windMs <= cutOut) {
+                    cfWind = 0.97;
+                }
+                const windMw = (park.windCapMw || 0) * cfWind;
+                const mw = Math.round((solarMw + windMw) * 10) / 10;
+                const totalCap = park.capacityMw || ((park.solarCapMw || 0) + (park.windCapMw || 0)) || 1;
+                const pct = Math.min(100, Math.round((mw / totalCap) * 100));
+                return { mw, pct, cf: mw / totalCap, potentialMw: mw, windMs, ws100m, temp, ghi };
+            }
+
+            return { mw: 0, pct: 0, cf: 0, potentialMw: 0 };
+        }
+        window.calcParkPowerOutput = calcParkPowerOutput;
+
         function renderCardMetrics(pct, currentMw, capacityMw, metrics, isSolar) {
             const pctEl = document.getElementById('parkCardAuslastungPct');
             if (pctEl) {
@@ -18081,39 +18176,27 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             // Wenn die Card noch für denselben Park offen ist: Auf exakte GPS-Werte aktualisieren
             if (currentCardParkId === parkId && weatherData && weatherData.hourly && weatherData.hourly.time) {
                 const h = weatherData.hourly;
-                const nowIso = new Date().toISOString().slice(0, 13);
-                let curIdx = h.time.findIndex(t => t.startsWith(nowIso));
-                if (curIdx === -1) curIdx = 0;
+                const nowMs = Date.now();
+                let curIdx = 0;
+                let bestDiff = Infinity;
+                for (let i = 0; i < h.time.length; i++) {
+                    const tStr = h.time[i];
+                    const tMs = new Date(tStr.endsWith('Z') ? tStr : tStr + 'Z').getTime();
+                    const diff = Math.abs(tMs - nowMs);
+                    if (diff < bestDiff) {
+                        bestDiff = diff;
+                        curIdx = i;
+                    }
+                }
 
                 const temp = (h.temperature_2m && h.temperature_2m[curIdx] !== null) ? h.temperature_2m[curIdx] : 8.0;
-                const ws100m = (h.wind_speed_100m && h.wind_speed_100m[curIdx] !== null) ? h.wind_speed_100m[curIdx] : 38.0;
+                const ws100m = (h.wind_speed_100m && h.wind_speed_100m[curIdx] !== null) 
+                    ? h.wind_speed_100m[curIdx] 
+                    : ((h.wind_speed_10m && h.wind_speed_10m[curIdx] !== null) ? h.wind_speed_10m[curIdx] * 1.35 : 38.0);
                 const ghi = Math.max(0, (h.shortwave_radiation_instant && h.shortwave_radiation_instant[curIdx] !== null) ? h.shortwave_radiation_instant[curIdx] : 0);
-                const windMs = ws100m / 3.6;
 
-                let realMw = 0;
-                let realPct = 0;
-
-                if (isSolar) {
-                    const tCell = temp + (25 / 800) * ghi;
-                    const etaTemp = Math.max(0.75, 1 - 0.0038 * (tCell - 25));
-                    const pot = park.capacityMw * (ghi / 1000);
-                    realMw = Math.min(park.capacityMw, Math.round(pot * etaTemp * 0.84 * 10) / 10);
-                    realPct = Math.min(100, Math.round((realMw / park.capacityMw) * 100));
-                    renderCardMetrics(realPct, realMw, park.capacityMw, { ghi, temp }, true);
-                } else {
-                    const cutIn = isOffshore ? 3.0 : 2.8;
-                    const rated = isOffshore ? 11.5 : 12.5;
-                    const cutOut = isOffshore ? 27.0 : 25.0;
-                    let cf = 0;
-                    if (windMs >= cutIn && windMs < rated) {
-                        cf = Math.pow((windMs - cutIn) / (rated - cutIn), isOffshore ? 2.2 : 2.4);
-                    } else if (windMs >= rated && windMs <= cutOut) {
-                        cf = 1.0;
-                    }
-                    realMw = Math.min(park.capacityMw, Math.round(park.capacityMw * cf * (isOffshore ? 0.96 : 0.93)));
-                    realPct = Math.min(100, Math.round((realMw / park.capacityMw) * 100));
-                    renderCardMetrics(realPct, realMw, park.capacityMw, { ws100m, temp }, false);
-                }
+                const powerRes = calcParkPowerOutput(park, { ws100m, temp, ghi });
+                renderCardMetrics(powerRes.pct, powerRes.mw, park.capacityMw, isSolar ? { ghi, temp } : { ws100m, temp }, isSolar);
             }
         }
         window.showParkAuslastungCard = showParkAuslastungCard;
@@ -18220,50 +18303,9 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                     : ((hourly.wind_speed_10m && hourly.wind_speed_10m[i] !== null) ? hourly.wind_speed_10m[i] * 1.35 : 15);
                 const windMs = windSpeed100m / 3.6; // km/h -> m/s
 
-                let mw = 0;
-                let potentialMw = 0;
-
-                if (park.type === 'solar') {
-                    // PV-Modell: Temperaturkoeffizient ~0.38%/°C über 25°C, PR ~0.84
-                    const tCell = temp + (25 / 800) * ghi;
-                    const etaTemp = Math.max(0.75, 1 - 0.0038 * (tCell - 25));
-                    potentialMw = park.capacityMw * (ghi / 1000);
-                    mw = Math.min(park.capacityMw, potentialMw * etaTemp * 0.84);
-                } else if (park.type === 'wind_onshore' || park.type === 'wind_offshore') {
-                    // Windmodell mit realistischer Nennleistungskurve
-                    const isOffshore = (park.type === 'wind_offshore');
-                    const cutIn = isOffshore ? 3.0 : 2.8;
-                    const rated = isOffshore ? 11.5 : 12.5;
-                    const cutOut = isOffshore ? 27.0 : 25.0;
-
-                    let cf = 0;
-                    if (windMs >= cutIn && windMs < rated) {
-                        cf = Math.pow((windMs - cutIn) / (rated - cutIn), isOffshore ? 2.2 : 2.4);
-                    } else if (windMs >= rated && windMs <= cutOut) {
-                        cf = 1.0;
-                    } else {
-                        cf = 0;
-                    }
-                    potentialMw = park.capacityMw * cf;
-                    mw = potentialMw * (isOffshore ? 0.96 : 0.93);
-                } else if (park.type === 'cluster') {
-                    // Bundesland-Cluster: Solar + Wind
-                    const tCell = temp + (25 / 800) * ghi;
-                    const etaTemp = Math.max(0.75, 1 - 0.0038 * (tCell - 25));
-                    const solarMw = Math.min(park.solarCapMw, (park.solarCapMw * (ghi / 1000)) * etaTemp * 0.83);
-
-                    const cutIn = 3.0, rated = 12.5, cutOut = 25.0;
-                    let cf = 0;
-                    if (windMs >= cutIn && windMs < rated) {
-                        cf = Math.pow((windMs - cutIn) / (rated - cutIn), 2.4);
-                    } else if (windMs >= rated && windMs <= cutOut) {
-                        cf = 1.0;
-                    }
-                    const windMw = park.windCapMw * cf * 0.92;
-
-                    mw = solarMw + windMw;
-                    potentialMw = (park.solarCapMw * (ghi / 1000)) + (park.windCapMw * cf);
-                }
+                const powerRes = calcParkPowerOutput(park, { ws100m: windSpeed100m, temp, ghi });
+                const mw = powerRes.mw;
+                const potentialMw = powerRes.potentialMw;
 
                 series.push({
                     t: tMs,
