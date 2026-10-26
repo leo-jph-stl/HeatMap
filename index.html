@@ -2951,10 +2951,7 @@
             </div>
         </div>
 
-        <!-- 3D Schrägansicht & Detailprognose Buttons -->
-        <button id="parkCardTiltBtn" onclick="flyToCurrentPark3D()" style="width: 100%; margin-bottom: 6px; background: rgba(0, 229, 255, 0.16); border: 1px solid rgba(0, 229, 255, 0.45); color: #00e5ff; border-radius: 7px; padding: 7px 0; font-size: 11px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s ease;">
-            <span>📐</span> 3D Isometrie-Ansicht (Schrägwinkel)
-        </button>
+        <!-- Action Button für 3-Tage-Detailprognose -->
         <button id="parkCardDetailsBtn" onclick="openFullParkForecastFromCard()" style="width: 100%; background: linear-gradient(135deg, rgba(0, 255, 136, 0.22), rgba(0, 229, 255, 0.22)); border: 1px solid rgba(0, 255, 136, 0.45); color: #fff; border-radius: 7px; padding: 7px 0; font-size: 11px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s ease;">
             <span>📊</span> Ausführliche 3-Tage-Prognose
         </button>
@@ -3114,7 +3111,6 @@
                 <div class="dock-btn-group">
                     <button id="btn-grid-vis" class="layer-toggle-btn" onclick="toggleGridForecast()" title="Offizielle PV- &amp; Windkraft-Netzprognose (Deutschland &amp; Nachbarländer)">⚡ Netz</button>
                     <button id="btn-parks-vis" class="layer-toggle-btn active" onclick="toggleRenewableParksOverlay()" title="Erneuerbare Parks &amp; Großanlagen (Solar &amp; Wind)">🏭 Parks</button>
-                    <button id="btn-tilt-toggle" class="layer-toggle-btn" onclick="toggleCameraTilt()" title="3D-Neigung &amp; Schrägperspektive umschalten (2D Draufsicht ↔ 3D Schrägansicht wie im Referenzmodell)">📐 3D Tilt</button>
                     <button id="btn-route-vis" class="layer-toggle-btn" onclick="toggleRoutePlanner()" title="3D-Routenplaner &amp; Höhenprofil öffnen">🧭 Route</button>
                     <button id="btn-area-vis" class="layer-toggle-btn" onclick="toggleAreaMeasure()" title="3D-Flächenmessung &amp; Formbestimmung">📐 Fläche</button>
                 </div>
@@ -3442,19 +3438,6 @@
         controls.minDistance = 100.42; // Erlaubt tiefes, gestochen scharfes Heranzoomen an Gelände, Straßen und Parzellen
         controls.maxDistance = 600;
         controls.enablePan = false;
-
-        // 3D NEIGUNG (PITCH) & ISOMETRISCHE PERSPEKTIVE (Freier Blickwinkel wie im Referenzmodell)
-        let cameraTiltAngle = 0;       // 0 = 2D Draufsicht (Nadir), 45 = 3D Schrägperspektive
-        let cameraHeadingAngle = 30;   // 30° = Süd-Südwest Richtung Nord-Nordost
-        let cameraGroundAnchor = null; // THREE.Vector3 oder null (Boden-Fokuspunkt)
-        let isRightDragTilting = false;
-        let rightDragStartX = 0;
-        let rightDragStartY = 0;
-        let rightDragStartTilt = 0;
-        let rightDragStartHeading = 0;
-        if (renderer && renderer.domElement) {
-            renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
-        }
 
         // Ambient & Directional Sunlight (plastische 3D-Schatten & Glanz auf Turbinen & PV)
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.70);
@@ -6807,45 +6790,25 @@
                 // Sanfte kubische Interpolation (Ease-in-out)
                 const t = progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2;
                 
-                if (cameraAnimation.isTiltedParkFlight) {
-                    camera.position.copy(cameraAnimation.startPos).lerp(cameraAnimation.endPos, t);
-                    const curTarget = cameraAnimation.startTarget.clone().lerp(cameraAnimation.endTarget, t);
-                    const curUp = cameraAnimation.startUp.clone().lerp(cameraAnimation.endUp, t).normalize();
-                    camera.up.copy(curUp);
-                    camera.lookAt(curTarget);
-                    controls.target.copy(curTarget);
-
-                    if (progress >= 1.0) {
-                        const anim = cameraAnimation;
-                        cameraAnimation = null;
-                        controls.enabled = true;
-                        controls.target.copy(anim.endTarget);
-                        cameraTiltAngle = anim.targetTilt || 45;
-                        cameraHeadingAngle = anim.targetHeading || 30;
-                        cameraGroundAnchor = anim.endTarget.clone();
-                        if (typeof updateTiltButtonState === 'function') updateTiltButtonState();
-                        if (currentMode === 'topo' || currentMode === 'satellite') updateTopoTiles(true);
-                    }
-                } else {
-                    // Richtung auf der Kugel interpolieren
-                    const currentDir = new THREE.Vector3().copy(cameraAnimation.startUnit).lerp(cameraAnimation.targetUnit, t).normalize();
-                    
-                    // Sanfter Bogen während des Fluges für spektakuläre Perspektive (nur bei Flügen aus größerer Distanz)
-                    const angle = cameraAnimation.startUnit.angleTo(cameraAnimation.targetUnit);
-                    const isCloseFlight = Math.min(cameraAnimation.startDist, cameraAnimation.targetDist) < 112;
-                    const maxArch = isCloseFlight ? 0 : Math.min(25, cameraAnimation.startDist * 0.12 * Math.sin(Math.min(Math.PI / 2, angle)));
-                    const arch = Math.sin(progress * Math.PI) * maxArch;
-                    const currentDist = (cameraAnimation.startDist + (cameraAnimation.targetDist - cameraAnimation.startDist) * t) + arch;
-                    
-                    camera.position.copy(currentDir.multiplyScalar(currentDist));
-                    camera.lookAt(0, 0, 0);
-                    controls.target.set(0, 0, 0);
-                    
-                    if (progress >= 1.0) {
-                        const anim = cameraAnimation;
-                        cameraAnimation = null;
-                        controls.enabled = true;
-                        if (currentMode === 'topo' || currentMode === 'satellite') updateTopoTiles(true);
+                // Richtung auf der Kugel interpolieren
+                const currentDir = new THREE.Vector3().copy(cameraAnimation.startUnit).lerp(cameraAnimation.targetUnit, t).normalize();
+                
+                // Sanfter Bogen während des Fluges für spektakuläre Perspektive (nur bei Flügen aus größerer Distanz)
+                const angle = cameraAnimation.startUnit.angleTo(cameraAnimation.targetUnit);
+                const isCloseFlight = Math.min(cameraAnimation.startDist, cameraAnimation.targetDist) < 112;
+                const maxArch = isCloseFlight ? 0 : Math.min(25, cameraAnimation.startDist * 0.12 * Math.sin(Math.min(Math.PI / 2, angle)));
+                const arch = Math.sin(progress * Math.PI) * maxArch;
+                const currentDist = (cameraAnimation.startDist + (cameraAnimation.targetDist - cameraAnimation.startDist) * t) + arch;
+                
+                camera.position.copy(currentDir.multiplyScalar(currentDist));
+                camera.lookAt(0, 0, 0);
+                controls.target.set(0, 0, 0);
+                
+                if (progress >= 1.0) {
+                    const anim = cameraAnimation;
+                    cameraAnimation = null;
+                    controls.enabled = true;
+                    if (currentMode === 'topo' || currentMode === 'satellite') updateTopoTiles(true);
                     
                     if (anim && anim.targetName && !anim.targetName.includes('PV-Anlage')) {
                         // Temperatur- & Höhen-Popup am Zielort aktivieren & anzeigen
@@ -6868,14 +6831,7 @@
                         }
                     }
                 }
-                }
             } else {
-                if (cameraGroundAnchor && controls.target.lengthSq() > 10) {
-                    // In 3D-Schrägansicht am Boden: Sanfte Orbitaldrehung um den fokussierten Park-Bodenpunkt
-                    controls.rotateSpeed = 0.28;
-                    controls.dampingFactor = 0.25;
-                    controls.update();
-                } else {
                 // Exakte physikalische 1:1 Grab-and-Drag Rotation & progressive Dämpfung für jeden Höhenbereich:
                 const dist = camera.position.length();
                 const h = Math.max(dist - surfaceRadius, 0.01);
@@ -6899,7 +6855,6 @@
                     controls.dampingFactor = 0.08;
                 }
                 controls.update();
-                }
             }
 
             // DYNAMISCHE KAMERA-CLIPPING-PLANES (Verhindert Z-Fighting & Flimmern aus dem Weltraum)
@@ -6924,9 +6879,8 @@
             // 3D Erneuerbare Parks: Drehende Windräder & Zoom-Sichtbarkeit
             if (renewableParks3DGroup) {
                 const curDist = camera.position.length();
-                const isTilted = cameraTiltAngle > 10 || (controls.target.lengthSq() > 10);
-                // 3D-Modelle erst bei echtem Nahbereich (curDist <= 109.5) bzw. im geneigten 3D-Inspektionsmodus anzeigen
-                const shouldShow3D = ((curDist <= 109.5 || (isTilted && curDist <= 116.0)) && (typeof renewableParksOverlayVisible === 'undefined' || renewableParksOverlayVisible));
+                // 3D-Modelle nur auf Inspektionshöhe (curDist <= 114.0) einblenden, um Übersichtskarten sauber zu halten
+                const shouldShow3D = (curDist <= 114.0 && (typeof renewableParksOverlayVisible === 'undefined' || renewableParksOverlayVisible));
                 renewableParks3DGroup.visible = shouldShow3D;
                 if (shouldShow3D && animatedParkRotors.length > 0) {
                     for (let i = 0; i < animatedParkRotors.length; i++) {
@@ -14317,213 +14271,18 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             cityCtx.restore();
         }
 
-        // KAMERA FLUG (FLY-TO) FUNKTION MIT ISOMETRISCHER 3D-SCHRÄGANSICHT FÜR PARKS
-        function getIsometricVantage(targetLat, targetLng, tiltDeg = 45, headingDeg = 30, distance = 2.4) {
-            const localP = latLngToSphereVertex(targetLat, targetLng, surfaceRadius);
-            const parkPos = new THREE.Vector3(-localP.z, localP.y, localP.x);
-            const up = parkPos.clone().normalize();
-            const north = new THREE.Vector3(0, 1, 0).projectOnPlane(up).normalize();
-            const south = north.clone().negate();
-            const east = new THREE.Vector3().crossVectors(north, up).normalize();
-            const west = east.clone().negate();
-
-            // Azimuth im Horizont: schaut von Süd-West nach Nord-Ost (optimale 3D-Perspektive wie im Referenzmodell)
-            const headRad = (headingDeg * Math.PI) / 180;
-            const horizDir = south.clone().multiplyScalar(Math.cos(headRad))
-                .add(west.clone().multiplyScalar(Math.sin(headRad))).normalize();
-
-            const tiltRad = (tiltDeg * Math.PI) / 180;
-            const targetPoint = parkPos.clone().add(up.clone().multiplyScalar(0.14)); // Turbinen-Hubhöhe
-            const camPos = targetPoint.clone()
-                .add(up.clone().multiplyScalar(distance * Math.cos(tiltRad)))
-                .add(horizDir.clone().multiplyScalar(distance * Math.sin(tiltRad)));
-
-            return {
-                target: targetPoint,
-                position: camPos,
-                up: up,
-                tilt: tiltDeg,
-                heading: headingDeg,
-                distance: distance
-            };
-        }
-
-        function updateTiltButtonState() {
-            const btn = document.getElementById('btn-tilt-toggle');
-            if (btn) {
-                btn.classList.toggle('active', cameraTiltAngle > 10);
-            }
-        }
-
-        function toggleCameraTilt() {
-            if (cameraAnimation) return;
-
-            if (cameraTiltAngle > 10) {
-                // Zurück zur 2D-Draufsicht (0° Nadir)
-                let groundPt = cameraGroundAnchor;
-                if (!groundPt || groundPt.lengthSq() < 10) {
-                    groundPt = camera.position.clone().normalize().multiplyScalar(surfaceRadius);
-                }
-                const up = groundPt.clone().normalize();
-                const curDist = camera.position.distanceTo(groundPt);
-                const endDist = Math.max(curDist, 3.2);
-                const endPos = groundPt.clone().add(up.clone().multiplyScalar(endDist));
-
-                cameraAnimation = {
-                    isTiltedParkFlight: true,
-                    startTime: performance.now(),
-                    duration: 750,
-                    startPos: camera.position.clone(),
-                    endPos: endPos,
-                    startTarget: controls.target.clone(),
-                    endTarget: new THREE.Vector3(0, 0, 0),
-                    startUp: camera.up.clone(),
-                    endUp: new THREE.Vector3(0, 1, 0),
-                    targetTilt: 0,
-                    targetHeading: 0
-                };
-                controls.enabled = false;
-                cameraTiltAngle = 0;
-                cameraGroundAnchor = null;
-                updateTiltButtonState();
-            } else {
-                // In isometrische 3D-Schrägperspektive (45° Tilt) kippen
-                let lat = 54.0, lng = 7.0;
-                if ((typeof activeParkId !== 'undefined' && activeParkId) || (typeof currentCardParkId !== 'undefined' && currentCardParkId)) {
-                    const pId = activeParkId || currentCardParkId;
-                    const p = RENEWABLE_PARKS_DATA.find(x => x.id === pId);
-                    if (p) { lat = p.lat; lng = p.lng; }
-                } else {
-                    const centerV = camera.position.clone().normalize();
-                    const centerGeo = sphereVertexToLatLng(new THREE.Vector3(centerV.z, centerV.y, -centerV.x), 1.0);
-                    lat = centerGeo.lat;
-                    lng = centerGeo.lng;
-                }
-
-                const vantage = getIsometricVantage(lat, lng, 45, 30, 2.5);
-                cameraAnimation = {
-                    isTiltedParkFlight: true,
-                    startTime: performance.now(),
-                    duration: 850,
-                    startPos: camera.position.clone(),
-                    endPos: vantage.position,
-                    startTarget: controls.target.clone(),
-                    endTarget: vantage.target,
-                    startUp: camera.up.clone(),
-                    endUp: vantage.up,
-                    targetTilt: 45,
-                    targetHeading: 30
-                };
-                controls.enabled = false;
-                cameraTiltAngle = 45;
-                cameraHeadingAngle = 30;
-                cameraGroundAnchor = vantage.target.clone();
-                updateTiltButtonState();
-            }
-        }
-        window.toggleCameraTilt = toggleCameraTilt;
-
-        function applyCameraTilt(tiltDeg, headingDeg) {
-            cameraTiltAngle = tiltDeg;
-            cameraHeadingAngle = headingDeg;
-            updateTiltButtonState();
-
-            if (!cameraGroundAnchor) {
-                cameraGroundAnchor = controls.target.lengthSq() > 10 ? controls.target.clone() : camera.position.clone().normalize().multiplyScalar(surfaceRadius);
-            }
-            const up = cameraGroundAnchor.clone().normalize();
-            const north = new THREE.Vector3(0, 1, 0).projectOnPlane(up).normalize();
-            const south = north.clone().negate();
-            const east = new THREE.Vector3().crossVectors(north, up).normalize();
-            const west = east.clone().negate();
-
-            const headRad = (headingDeg * Math.PI) / 180;
-            const horizDir = south.clone().multiplyScalar(Math.cos(headRad))
-                .add(west.clone().multiplyScalar(Math.sin(headRad))).normalize();
-
-            const tiltRad = (tiltDeg * Math.PI) / 180;
-            const dist = Math.max(1.4, Math.min(18.0, camera.position.distanceTo(cameraGroundAnchor)));
-
-            camera.position.copy(cameraGroundAnchor)
-                .add(up.clone().multiplyScalar(dist * Math.cos(tiltRad)))
-                .add(horizDir.clone().multiplyScalar(dist * Math.sin(tiltRad)));
-            camera.up.copy(up);
-            camera.lookAt(cameraGroundAnchor);
-            controls.target.copy(cameraGroundAnchor);
-        }
-
-        function flyToCurrentPark3D() {
-            const pId = (typeof activeParkId !== 'undefined' && activeParkId) || (typeof currentCardParkId !== 'undefined' && currentCardParkId);
-            if (!pId || typeof RENEWABLE_PARKS_DATA === 'undefined') return;
-            const park = RENEWABLE_PARKS_DATA.find(p => p.id === pId);
-            if (!park) return;
-            flyToLocation(park.lat, park.lng, park.name, { isPark: true });
-        }
-        window.flyToCurrentPark3D = flyToCurrentPark3D;
-
-        // Maus- & Touch-Steuerung für Rechtsklick-Ziehen (Pitch/Tilt)
-        window.addEventListener('mousedown', (e) => {
-            if (e.button === 2 || (e.button === 0 && e.shiftKey)) {
-                isRightDragTilting = true;
-                rightDragStartX = e.clientX;
-                rightDragStartY = e.clientY;
-                rightDragStartTilt = cameraTiltAngle || (controls.target.lengthSq() > 10 ? 45 : 0);
-                rightDragStartHeading = cameraHeadingAngle || 30;
-            }
-        });
-
-        window.addEventListener('mousemove', (e) => {
-            if (!isRightDragTilting) return;
-            const dy = e.clientY - rightDragStartY;
-            const dx = e.clientX - rightDragStartX;
-
-            const newTilt = Math.max(0, Math.min(68, rightDragStartTilt + dy * 0.25));
-            const newHeading = (rightDragStartHeading - dx * 0.35 + 360) % 360;
-            applyCameraTilt(newTilt, newHeading);
-        });
-
-        window.addEventListener('mouseup', (e) => {
-            if (isRightDragTilting) {
-                isRightDragTilting = false;
-            }
-        });
-
-        function flyToLocation(targetLat, targetLng, targetName, options) {
+        // KAMERA FLUG (FLY-TO) FUNKTION
+        function flyToLocation(targetLat, targetLng, targetName) {
             userLocationDetected = true;
             userNavigatedManually = true;
-            const isPark = (options && options.isPark) || (targetName && (
-                targetName.includes('Wind') || targetName.includes('Solar') || 
-                targetName.includes('Park') || targetName.includes('Cluster')
-            ));
-
-            if (isPark) {
-                const vantage = getIsometricVantage(targetLat, targetLng, 45, 30, 2.5);
-                cameraAnimation = {
-                    isTiltedParkFlight: true,
-                    startTime: performance.now(),
-                    duration: 1400,
-                    startPos: camera.position.clone(),
-                    endPos: vantage.position,
-                    startTarget: controls.target.clone(),
-                    endTarget: vantage.target,
-                    startUp: camera.up.clone(),
-                    endUp: vantage.up,
-                    targetTilt: 45,
-                    targetHeading: 30,
-                    targetLat,
-                    targetLng,
-                    targetName
-                };
-                controls.enabled = false;
-                return;
-            }
-
             const localV = latLngToSphereVertex(targetLat, targetLng, 1.0);
             const targetUnit = new THREE.Vector3(-localV.z, localV.y, localV.x).normalize();
 
             const startPos = camera.position.clone();
             const startUnit = startPos.clone().normalize();
             const startDist = startPos.length();
+            // Wenn der Benutzer bereits nah herangezoomt ist (z. B. im Topo- oder Einstrahlungs-Modus),
+            // darf die Kamera keinesfalls wieder herauf / hinaus springen! Zoomhöhe beibehalten!
             const targetDist = startDist < 107.5 ? startDist : 107.5;
 
             cameraAnimation = {
@@ -14942,68 +14701,9 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 }
             }
 
-            if (controls.target.lengthSq() > 10) {
-                // In 3D-Schrägansicht: Dolly entlang der Sichtachse zum Boden-Fokuspunkt (behält 3D-Neigung bei!)
-                const toTarget = camera.position.clone().sub(controls.target);
-                const curD = toTarget.length();
-                const newD = Math.max(1.2, Math.min(26.0, curD * (1 + zoomFactor)));
-                camera.position.copy(controls.target).add(toTarget.normalize().multiplyScalar(newD));
-                camera.lookAt(controls.target);
-                controls.update();
-
-                if (newD > 18.0) {
-                    // Beim sehr weiten Herauszoomen sanft zurück zum globalen Globus-Modus übergehen
-                    cameraGroundAnchor = null;
-                    cameraTiltAngle = 0;
-                    controls.target.set(0, 0, 0);
-                    camera.up.set(0, 1, 0);
-                    if (typeof updateTiltButtonState === 'function') updateTiltButtonState();
-                }
-                return;
-            }
-
-            // AUTOMATISCHE 3D-NEIGUNG (AUTO-PITCH ON ZOOM WIE IN GOOGLE EARTH)
-            // Sobald der Benutzer in Bodennähe zoomt (d1 < 112.0), neigt sich die Ansicht fließend bis auf 48° Schrägwinkel,
-            // sodass Windräder und 3D-Strukturen aufrecht stehen statt von oben flach gequetscht zu werden!
-            if (d1 < 112.0) {
-                const tiltProgress = Math.min(1.0, Math.max(0, (112.0 - d1) / 9.5));
-                const easeTilt = tiltProgress * tiltProgress * (3 - 2 * tiltProgress);
-                const autoPitchDeg = easeTilt * 48; // Bis zu 48° Schrägwinkel
-
-                const groundPt = u_c.clone().multiplyScalar(surfaceRadius);
-                const up = u_c.clone().normalize();
-                const north = new THREE.Vector3(0, 1, 0).projectOnPlane(up).normalize();
-                const south = north.clone().negate();
-                const west = new THREE.Vector3().crossVectors(north, up).negate().normalize();
-
-                const headRad = (30 * Math.PI) / 180;
-                const horizDir = south.clone().multiplyScalar(Math.cos(headRad))
-                    .add(west.clone().multiplyScalar(Math.sin(headRad))).normalize();
-
-                const pitchRad = (autoPitchDeg * Math.PI) / 180;
-                const targetPt = groundPt.clone().add(up.clone().multiplyScalar(0.12));
-                const distToGround = Math.max(1.2, d1 - surfaceRadius);
-
-                camera.position.copy(targetPt)
-                    .add(up.clone().multiplyScalar(distToGround * Math.cos(pitchRad)))
-                    .add(horizDir.clone().multiplyScalar(distToGround * Math.sin(pitchRad)));
-                camera.up.copy(up);
-                camera.lookAt(targetPt);
-                controls.target.copy(targetPt);
-                cameraTiltAngle = autoPitchDeg;
-                cameraGroundAnchor = targetPt.clone();
-                if (typeof updateTiltButtonState === 'function') updateTiltButtonState();
-                controls.update();
-                return;
-            }
-
             camera.position.copy(u_c.multiplyScalar(d1));
             camera.lookAt(0, 0, 0);
             controls.target.set(0, 0, 0);
-            camera.up.set(0, 1, 0);
-            cameraTiltAngle = 0;
-            cameraGroundAnchor = null;
-            if (typeof updateTiltButtonState === 'function') updateTiltButtonState();
             controls.update();
         }, { capture: true, passive: false });
 
@@ -16121,7 +15821,6 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                             }
                             if (obj && obj.userData && obj.userData.park) {
                                 showParkAuslastungCard(obj.userData.park.id, clientX, clientY);
-                                flyToLocation(obj.userData.park.lat, obj.userData.park.lng, obj.userData.park.name, { isPark: true });
                                 return;
                             }
                         }
@@ -16152,7 +15851,6 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                     }
                     if (nearestPark) {
                         showParkAuslastungCard(nearestPark.id, clientX, clientY);
-                        flyToLocation(nearestPark.lat, nearestPark.lng, nearestPark.name, { isPark: true });
                         return; // Interception erfolgreich: Auslastungs-Card anzeigen
                     }
                 }
@@ -17805,7 +17503,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             });
 
             // =========================================================================
-            // GEOMETRIEN (Exakt wie im hochgeladenen Referenzbild)
+            // GEOMETRIEN (Exakt wie im hochgeladenen Referenzbild - Isometrisch schräg)
             // =========================================================================
             const towerH = 0.28;
             // Mast mit zwei roten Hindernisfeuer-Streifen im oberen Bereich (Rot-Weiß)
@@ -17834,8 +17532,8 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             offshorePlatformGeom.translate(0, 0.0065, 0);
             const offshorePedestalGeom = new THREE.BoxGeometry(0.076, 0.004, 0.076);
             offshorePedestalGeom.translate(0, 0.002, 0);
-            const offshoreCollarGeom = new THREE.CylinderGeometry(0.014, 0.017, 0.032, 8);
-            offshoreCollarGeom.translate(0, 0.013 + 0.032 / 2, 0);
+            const offshoreCollarGeom = new THREE.CylinderGeometry(0.014, 0.017, 0.026, 8);
+            offshoreCollarGeom.translate(0, 0.013 + 0.026 / 2, 0);
 
             // Onshore Beton-Fundamentring
             const onshoreBaseGeom = new THREE.CylinderGeometry(0.030, 0.035, 0.008, 10);
@@ -17851,7 +17549,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             hubDotGeom.translate(0, 0, 0.028);
 
             const beaconGeom = new THREE.SphereGeometry(0.0045, 6, 6);
-            beaconGeom.translate(0, 0, 0.014, -0.018);
+            beaconGeom.translate(0, 0.014, -0.018);
 
             // Rotorflügel mit 2 Signalstreifen an der Spitze (Rot-Weiß-Rot)
             const bladeLen = 0.170;
@@ -17904,10 +17602,10 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 if (park.type === 'wind_onshore' || park.type === 'wind_offshore') {
                     const isOffshore = (park.type === 'wind_offshore');
 
-                    // Realistische Turbinen-Anzahl nach Kapazität (2x3 Isometrie wie im Referenzbild)
+                    // Realistische Turbinen-Staffelung (wie im Referenzbild)
                     let count = 4;
-                    if (park.capacityMw >= 2000) count = 12;
-                    else if (park.capacityMw >= 1200) count = 9;
+                    if (park.capacityMw >= 2000) count = 10;
+                    else if (park.capacityMw >= 1200) count = 8;
                     else if (park.capacityMw >= 600) count = 6;
                     else if (park.capacityMw >= 300) count = 5;
                     else if (park.capacityMw >= 150) count = 4;
@@ -17953,18 +17651,14 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                             const turbSouth = turbNorth.clone().negate();
                             const turbEast = new THREE.Vector3().crossVectors(turbNorth, turbUp).normalize();
 
-                            const turbWest = turbEast.clone().negate();
-                            // Hauptwindrichtung Süd-West (225°): Rotor steht frontal/isometrisch zur Kamera
-                            const turbFacing = turbSouth.clone().multiplyScalar(0.7071).add(turbWest.clone().multiplyScalar(0.7071)).normalize();
-                            const turbSide = new THREE.Vector3().crossVectors(turbFacing, turbUp).normalize();
-                            const turbRotMat = new THREE.Matrix4().makeBasis(turbSide, turbUp, turbFacing);
+                            const turbRotMat = new THREE.Matrix4().makeBasis(turbEast, turbUp, turbSouth);
                             const turbQuat = new THREE.Quaternion().setFromRotationMatrix(turbRotMat);
 
                             const turbGroup = new THREE.Group();
                             turbGroup.position.copy(turbPos);
                             turbGroup.quaternion.copy(turbQuat);
 
-                            // Fundament / Basis
+                            // Fundament / Basis auf dem Boden
                             if (isOffshore) {
                                 turbGroup.add(new THREE.Mesh(offshorePedestalGeom, platformBaseMat));
                                 turbGroup.add(new THREE.Mesh(offshorePlatformGeom, platformDeckMat));
@@ -17973,22 +17667,29 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                                 turbGroup.add(new THREE.Mesh(onshoreBaseGeom, platformBaseMat));
                             }
 
+                            // ISOMETRISCHER SCHRÄGER MAST (2.5D Isometrie wie im Referenzbild)
+                            // Der Mast neigt sich um 48° nach Norden / oben im Bildschirm,
+                            // sodass der Turm und der Rotor aus der normalen Draufsicht vollständig aufrecht stehen!
+                            const mastGroup = new THREE.Group();
+                            mastGroup.position.set(0, isOffshore ? 0.024 : 0.008, 0);
+                            mastGroup.rotation.x = -0.85; // 48.7° Schrägneigung nach oben
+
                             // Mast mit den 2 roten Flugsicherheitsstreifen (Rot-Weiß)
-                            turbGroup.add(new THREE.Mesh(mastBaseGeom, towerWhiteMat));
-                            turbGroup.add(new THREE.Mesh(stripe1Geom, towerStripeRedMat));
-                            turbGroup.add(new THREE.Mesh(gapGeom, towerWhiteMat));
-                            turbGroup.add(new THREE.Mesh(stripe2Geom, towerStripeRedMat));
-                            turbGroup.add(new THREE.Mesh(neckGeom, towerWhiteMat));
+                            mastGroup.add(new THREE.Mesh(mastBaseGeom, towerWhiteMat));
+                            mastGroup.add(new THREE.Mesh(stripe1Geom, towerStripeRedMat));
+                            mastGroup.add(new THREE.Mesh(gapGeom, towerWhiteMat));
+                            mastGroup.add(new THREE.Mesh(stripe2Geom, towerStripeRedMat));
+                            mastGroup.add(new THREE.Mesh(neckGeom, towerWhiteMat));
 
                             // Maschinengondel
                             const nacelleMesh = new THREE.Mesh(nacelleGeom, nacelleMat);
                             nacelleMesh.position.set(0, towerH, 0);
-                            turbGroup.add(nacelleMesh);
+                            mastGroup.add(nacelleMesh);
 
                             // Hindernisfeuer oben auf der Gondel
                             const beaconMesh = new THREE.Mesh(beaconGeom, beaconMat);
                             beaconMesh.position.set(0, towerH, 0);
-                            turbGroup.add(beaconMesh);
+                            mastGroup.add(beaconMesh);
 
                             // Rotor-Baugruppe
                             const rotorGroup = new THREE.Group();
@@ -18006,13 +17707,12 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                                 bladeGroup.add(new THREE.Mesh(bladeGapGeom, towerWhiteMat));
                                 bladeGroup.add(new THREE.Mesh(bladeTipGeom, towerStripeRedMat));
 
-                                // Aerodynamischer Anstellwinkel
                                 bladeGroup.rotation.y = 0.10;
                                 bladeGroup.rotation.z = (b * Math.PI * 2) / 3;
                                 rotorGroup.add(bladeGroup);
                             }
 
-                            // Versetzte Anfangsdrehung & individuelle Geschwindigkeit
+                            // Versetzte Anfangsdrehung & individuelle Drehgeschwindigkeit
                             rotorGroup.rotation.z = Math.random() * Math.PI * 2;
                             rotorGroup.userData = {
                                 rotSpeed: 0.024 + Math.random() * 0.008,
@@ -18020,7 +17720,8 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                             };
                             animatedParkRotors.push(rotorGroup);
 
-                            turbGroup.add(rotorGroup);
+                            mastGroup.add(rotorGroup);
+                            turbGroup.add(mastGroup);
                             parkGroup.add(turbGroup);
                         }
                     }
@@ -18153,11 +17854,6 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             document.getElementById('parkCardTitle').innerText = park.name;
             document.getElementById('parkCardSubtitle').innerText = `${typeLabel} · ${(park.state && park.state !== park.country) ? park.state + ', ' : ''}${park.country}`;
             document.getElementById('parkCardCapacityMw').innerText = `${park.capacityMw.toLocaleString('de-DE')} MW`;
-
-            // Kamera sofort in spektakuläre 3D-Isometrie auf den Park ausrichten
-            if (typeof flyToLocation === 'function') {
-                flyToLocation(park.lat, park.lng, park.name, { isPark: true });
-            }
 
             // Position Card sofort anzeigen
             card.style.display = 'block';
