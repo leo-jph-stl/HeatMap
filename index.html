@@ -1569,6 +1569,43 @@
         }
         #park-forecast-container::-webkit-scrollbar { width: 4px; }
         #park-forecast-container::-webkit-scrollbar-thumb { background: rgba(0, 255, 136, 0.35); border-radius: 4px; }
+        /* ⚡ KOMPAKTE AUSLASTUNGS- & LIVE-STATUS KARTE BEI PARK-KLICK */
+        #park-auslastung-card {
+            position: fixed;
+            z-index: 10001;
+            width: 285px;
+            background: rgba(13, 18, 28, 0.94);
+            border: 1px solid rgba(0, 255, 136, 0.4);
+            border-radius: 14px;
+            box-shadow: 0 14px 36px rgba(0, 0, 0, 0.75), 0 0 25px rgba(0, 255, 136, 0.18);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            padding: 14px 16px;
+            user-select: none;
+            pointer-events: auto;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        #park-auslastung-card .card-close-btn {
+            background: rgba(255,255,255,0.08);
+            border: none;
+            color: #94a3b8;
+            font-size: 14px;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        #park-auslastung-card .card-close-btn:hover {
+            background: rgba(255,255,255,0.2);
+            color: #ffffff;
+        }
+
         #park-forecast-container .forecast-header {
             position: sticky;
             top: -14px;
@@ -2872,7 +2909,54 @@
     </div>
     
     <!-- 🏭 EINZELPARK- & CLUSTER-PROGNOSE (SOLAR-, WIND- & OFFSHORE-PARKS) -->
-    <div id="park-forecast-container" style="display: none;">
+        <!-- ⚡ KOMPAKTE AUSLASTUNGS- & LIVE-STATUS KARTE BEI PARK-KLICK -->
+    <div id="park-auslastung-card" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 9px;">
+                <span id="parkCardIcon" style="font-size: 22px; filter: drop-shadow(0 0 6px rgba(255,255,255,0.4));">⚡</span>
+                <div>
+                    <div id="parkCardTitle" style="font-size: 13.5px; font-weight: 700; color: #fff; line-height: 1.25;">Parkname</div>
+                    <div id="parkCardSubtitle" style="font-size: 10.5px; color: #94a3b8; margin-top: 2px;">Typ · Region</div>
+                </div>
+            </div>
+            <button class="card-close-btn" onclick="closeParkAuslastungCard()" title="Schließen">✕</button>
+        </div>
+
+        <!-- Auslastungs-Balken & Prozentanzeige -->
+        <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 9px; padding: 10px; margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+                <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600;">Aktuelle Auslastung</span>
+                <span id="parkCardAuslastungPct" style="font-size: 16px; font-weight: 800; color: #00ff88;">-- %</span>
+            </div>
+            <!-- Progress Bar -->
+            <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.12); border-radius: 3px; overflow: hidden; margin-bottom: 8px;">
+                <div id="parkCardProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #00e5ff, #00ff88); transition: width 0.4s ease;"></div>
+            </div>
+            <!-- Ist-Leistung / Nennleistung -->
+            <div style="display: flex; justify-content: space-between; font-size: 11px;">
+                <span style="color: #cbd5e1;">Erzeugung: <strong id="parkCardCurrentMw" style="color: #fff;">-- MW</strong></span>
+                <span style="color: #64748b;">Nennkapazität: <strong id="parkCardCapacityMw" style="color: #94a3b8;">-- MW</strong></span>
+            </div>
+        </div>
+
+        <!-- Wetterbedingungen vor Ort -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 10.5px; margin-bottom: 12px;">
+            <div style="background: rgba(255,255,255,0.04); border-radius: 6px; padding: 6px 8px;">
+                <span style="color: #94a3b8;" id="parkCardMetric1Label">Wind (100m)</span>
+                <div id="parkCardMetric1Val" style="font-size: 11.5px; font-weight: 600; color: #f8fafc; margin-top: 2px;">--</div>
+            </div>
+            <div style="background: rgba(255,255,255,0.04); border-radius: 6px; padding: 6px 8px;">
+                <span style="color: #94a3b8;" id="parkCardMetric2Label">Temperatur</span>
+                <div id="parkCardMetric2Val" style="font-size: 11.5px; font-weight: 600; color: #f8fafc; margin-top: 2px;">--</div>
+            </div>
+        </div>
+
+        <!-- Action Button für 3-Tage-Detailprognose -->
+        <button id="parkCardDetailsBtn" onclick="openFullParkForecastFromCard()" style="width: 100%; background: linear-gradient(135deg, rgba(0, 255, 136, 0.22), rgba(0, 229, 255, 0.22)); border: 1px solid rgba(0, 255, 136, 0.45); color: #fff; border-radius: 7px; padding: 7px 0; font-size: 11px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s ease;">
+            <span>📊</span> Ausführliche 3-Tage-Prognose
+        </button>
+    </div>
+<div id="park-forecast-container" style="display: none;">
         <div class="forecast-header">
             <div class="forecast-title-box">
                 <div class="forecast-place" style="color: #00ff88; display: flex; align-items: center; gap: 6px;">
@@ -6784,6 +6868,19 @@
             try {
                 if (typeof renderCityLabels === 'function') renderCityLabels();
             } catch(e) { /* city render safe */ }
+
+            // 3D Erneuerbare Parks: Drehende Windräder & Zoom-Sichtbarkeit
+            if (renewableParks3DGroup) {
+                const curDist = camera.position.length();
+                const shouldShow3D = (curDist <= 122 && (typeof renewableParksOverlayVisible === 'undefined' || renewableParksOverlayVisible));
+                renewableParks3DGroup.visible = shouldShow3D;
+                if (shouldShow3D && animatedParkRotors.length > 0) {
+                    for (let i = 0; i < animatedParkRotors.length; i++) {
+                        const r = animatedParkRotors[i];
+                        r.rotation.z += r.userData.rotSpeed * timeScale;
+                    }
+                }
+            }
 
             try {
                 if (typeof updateTopoTiles === 'function' && currentCelestialBody === 'earth' && (currentMode === 'topo' || currentMode === 'satellite')) updateTopoTiles();
@@ -13873,11 +13970,14 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 }
             }
 
-            // 6. ⚡ ERNEUERBARE PARKS & GROSSANLAGEN (SOLAR, WIND & CLUSTER)
-            if (typeof RENEWABLE_PARKS_DATA !== 'undefined' && RENEWABLE_PARKS_DATA && (typeof renewableParksOverlayVisible === 'undefined' || renewableParksOverlayVisible)) {
+            // 6. ⚡ ERNEUERBARE PARKS & GROSSANLAGEN (SOLAR & WIND)
+            // Weitwinkel-Ansicht bleibt 100% sauber! Pins erst ab Regionalzoom (dist <= 135) einblenden.
+            if (typeof RENEWABLE_PARKS_DATA !== 'undefined' && RENEWABLE_PARKS_DATA && (typeof renewableParksOverlayVisible === 'undefined' || renewableParksOverlayVisible) && dist <= 135) {
                 const parks = RENEWABLE_PARKS_DATA;
                 for (let pIdx = 0; pIdx < parks.length; pIdx++) {
                     const park = parks[pIdx];
+                    if (park.type === 'cluster') continue; // Regionale Meta-Cluster niemals als störende 2D-Pins rendern
+
                     if (!park.worldPos) {
                         const localV = latLngToSphereVertex(park.lat, park.lng, surfaceRadius);
                         park.worldPos = localV.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
@@ -13898,7 +13998,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
 
                     const sx = (tempCityVec.x * 0.5 + 0.5) * screenW;
                     const sy = (-tempCityVec.y * 0.5 + 0.5) * screenH;
-                    if (sx < 20 || sx > screenW - 20 || sy < 20 || sy > screenH - 20) {
+                    if (sx < 25 || sx > screenW - 25 || sy < 25 || sy > screenH - 25) {
                         park._screenX = undefined;
                         park._screenY = undefined;
                         continue;
@@ -13907,82 +14007,101 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                     park._screenX = sx;
                     park._screenY = sy;
 
+                    // Kollisionsprüfung mit bereits platzierten Badges (verhindert Überlappungen)
+                    let collision = false;
+                    for (let j = 0; j < placed.length; j++) {
+                        const p = placed[j];
+                        if (Math.abs(sx - p.x) < 42 && Math.abs(sy - p.y) < 22) {
+                            collision = true;
+                            break;
+                        }
+                    }
+                    if (collision) continue;
+
                     const isSolar = (park.type === 'solar');
                     const isOffshore = (park.type === 'wind_offshore');
-                    const isCluster = (park.type === 'cluster');
-                    const color = isSolar ? '#ffdb00' : (isOffshore ? '#00e5ff' : (isCluster ? '#c084fc' : '#00ff88'));
-                    const badgeText = isCluster ? `${park.name.split(' ')[0]} ${Math.round(park.capacityMw / 1000)}GW` : `${park.capacityMw} MW`;
-
-                    // Gestaffelte Zoomfilterung nach Kapazität für klare, saubere Darstellung auf allen Zoomstufen:
-                    if (dist > 225 && !isCluster) continue; // Sehr weite Weltkugel-Ansicht: Nur Länder-Cluster
-                    if (dist > 195 && !isCluster && park.capacityMw < 400) continue; // Kontinentale Großansicht Europa: Ab 400 MW
-                    if (dist > 175 && !isCluster && park.capacityMw < 150) continue; // Europa-Übersicht: Ab 150 MW
-                    if (dist > 155 && !isCluster && park.capacityMw < 60) continue;  // Mittlerer Zoom: Ab 60 MW
+                    const color = isSolar ? '#ffdb00' : (isOffshore ? '#00e5ff' : '#00ff88');
+                    const icon = isSolar ? '☀️' : (isOffshore ? '🌊' : '💨');
+                    const capText = park.capacityMw >= 1000 ? `${(park.capacityMw / 1000).toFixed(1)} GW` : `${park.capacityMw} MW`;
 
                     cityCtx.save();
 
-                    // Dezente pulsierende Aura
-                    const pulse = (Math.sin(Date.now() * 0.004 + pIdx * 0.8) + 1) * 0.5;
-                    cityCtx.beginPath();
-                    cityCtx.arc(sx, sy, 8.5 + pulse * 3.5, 0, Math.PI * 2);
-                    cityCtx.fillStyle = isSolar 
-                        ? `rgba(255, 219, 0, ${0.12 + pulse * 0.16})` 
-                        : (isOffshore ? `rgba(0, 229, 255, ${0.12 + pulse * 0.16})` : (isCluster ? `rgba(192, 132, 252, ${0.12 + pulse * 0.16})` : `rgba(0, 255, 136, ${0.12 + pulse * 0.16})`));
-                    cityCtx.fill();
+                    // Wenn sehr nah herangezoomt (dist <= 118), sind die 3D-Modelle sichtbar.
+                    // Dann nur ein dezentes, schwebendes Label oberhalb des 3D-Parks:
+                    if (dist <= 118) {
+                        cityCtx.font = '700 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                        const shortName = park.name.length > 22 ? park.name.slice(0, 20) + '…' : park.name;
+                        const nameText = `${icon} ${shortName}`;
+                        const tw = cityCtx.measureText(nameText).width;
+                        const bw = tw + 14;
+                        const bh = 18;
+                        const bx = sx - bw / 2;
+                        const by = sy - 30;
 
-                    // Pin-Kreis mit weißem Rand
-                    cityCtx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-                    cityCtx.shadowBlur = 6;
-                    cityCtx.beginPath();
-                    cityCtx.arc(sx, sy, isCluster ? 8.5 : 7.0, 0, Math.PI * 2);
-                    cityCtx.fillStyle = color;
-                    cityCtx.fill();
-                    cityCtx.strokeStyle = '#ffffff';
-                    cityCtx.lineWidth = 1.6;
-                    cityCtx.stroke();
-                    cityCtx.shadowColor = 'transparent';
+                        cityCtx.fillStyle = 'rgba(10, 15, 24, 0.88)';
+                        cityCtx.strokeStyle = color;
+                        cityCtx.lineWidth = 1.2;
+                        cityCtx.beginPath();
+                        if (typeof cityCtx.roundRect === 'function') cityCtx.roundRect(bx, by, bw, bh, 9);
+                        else cityCtx.rect(bx, by, bw, bh);
+                        cityCtx.fill();
+                        cityCtx.stroke();
 
-                    // Label-Badge rechts daneben
-                    cityCtx.font = '700 9.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-                    const tw = cityCtx.measureText(badgeText).width;
-                    const bw = tw + 10;
-                    const bh = 16;
-                    const bx = sx + 9;
-                    const by = sy - 8;
-
-                    cityCtx.fillStyle = 'rgba(12, 16, 24, 0.88)';
-                    cityCtx.strokeStyle = color;
-                    cityCtx.lineWidth = 1.0;
-                    cityCtx.beginPath();
-                    if (typeof cityCtx.roundRect === 'function') {
-                        cityCtx.roundRect(bx, by, bw, bh, 5);
-                    } else {
-                        cityCtx.rect(bx, by, bw, bh);
-                    }
-                    cityCtx.fill();
-                    cityCtx.stroke();
-
-                    cityCtx.fillStyle = '#ffffff';
-                    cityCtx.textAlign = 'left';
-                    cityCtx.textBaseline = 'middle';
-                    cityCtx.fillText(badgeText, bx + 5, by + bh / 2 + 0.5);
-
-                    // Parkname oberhalb (wenn Zoom nah genug ist, dist < 175)
-                    if (dist < 175) {
-                        cityCtx.font = '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
                         cityCtx.fillStyle = '#ffffff';
                         cityCtx.textAlign = 'center';
-                        cityCtx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-                        cityCtx.shadowBlur = 4;
-                        const shortName = park.name.length > 20 ? park.name.slice(0, 18) + '…' : park.name;
-                        cityCtx.fillText(shortName, sx, sy - 12);
+                        cityCtx.textBaseline = 'middle';
+                        cityCtx.fillText(nameText, sx, by + bh / 2);
+
+                        placed.push({ x: sx, y: sy, spacingX: bw + 10, spacingY: 30 });
+                    } else {
+                        // Bei mittlerem Zoom (118 < dist <= 135): Kompakter, eleganter Pin mit Kapazitäts-Badge
+                        const pulse = (Math.sin(Date.now() * 0.004 + pIdx * 0.8) + 1) * 0.5;
+                        cityCtx.beginPath();
+                        cityCtx.arc(sx, sy, 7.0 + pulse * 2.5, 0, Math.PI * 2);
+                        cityCtx.fillStyle = isSolar 
+                            ? `rgba(255, 219, 0, ${0.12 + pulse * 0.16})` 
+                            : (isOffshore ? `rgba(0, 229, 255, ${0.12 + pulse * 0.16})` : `rgba(0, 255, 136, ${0.12 + pulse * 0.16})`);
+                        cityCtx.fill();
+
+                        cityCtx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                        cityCtx.shadowBlur = 5;
+                        cityCtx.beginPath();
+                        cityCtx.arc(sx, sy, 5.0, 0, Math.PI * 2);
+                        cityCtx.fillStyle = color;
+                        cityCtx.fill();
+                        cityCtx.strokeStyle = '#ffffff';
+                        cityCtx.lineWidth = 1.4;
+                        cityCtx.stroke();
+                        cityCtx.shadowColor = 'transparent';
+
+                        // Schlankes Badge daneben
+                        cityCtx.font = '700 9px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                        const tw = cityCtx.measureText(capText).width;
+                        const bw = tw + 8;
+                        const bh = 15;
+                        const bx = sx + 8;
+                        const by = sy - 7.5;
+
+                        cityCtx.fillStyle = 'rgba(12, 16, 24, 0.85)';
+                        cityCtx.strokeStyle = color;
+                        cityCtx.lineWidth = 1.0;
+                        cityCtx.beginPath();
+                        if (typeof cityCtx.roundRect === 'function') cityCtx.roundRect(bx, by, bw, bh, 4);
+                        else cityCtx.rect(bx, by, bw, bh);
+                        cityCtx.fill();
+                        cityCtx.stroke();
+
+                        cityCtx.fillStyle = '#ffffff';
+                        cityCtx.textAlign = 'left';
+                        cityCtx.textBaseline = 'middle';
+                        cityCtx.fillText(capText, bx + 4, by + bh / 2 + 0.5);
+
+                        placed.push({ x: sx, y: sy, spacingX: bw + 18, spacingY: 22 });
                     }
 
                     cityCtx.restore();
-                    placed.push({ x: sx, y: sy, spacingX: bw + 15, spacingY: 28 });
                 }
             }
-
             // =========================================================================
             // 7. STÄDTE-NAMEN & TEMPERATUREN (erst ab dist <= 165 einblenden)
             // =========================================================================
@@ -15682,17 +15801,33 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                     return;
                 }
 
-                // ERNEUERBARE PARKS & GROSSANLAGEN PICKING INTERCEPTION
+                // ERNEUERBARE PARKS & GROSSANLAGEN PICKING INTERCEPTION (3D & 2D)
                 if (typeof RENEWABLE_PARKS_DATA !== 'undefined' && RENEWABLE_PARKS_DATA && (typeof renewableParksOverlayVisible === 'undefined' || renewableParksOverlayVisible)) {
+                    // Zuerst 3D-Raycast prüfen, falls 3D-Modelle aktiv sind
+                    if (renewableParks3DGroup && renewableParks3DGroup.visible) {
+                        const parkHits = raycaster.intersectObjects(renewableParks3DGroup.children, true);
+                        if (parkHits.length > 0) {
+                            let obj = parkHits[0].object;
+                            while (obj && (!obj.userData || !obj.userData.park)) {
+                                obj = obj.parent;
+                            }
+                            if (obj && obj.userData && obj.userData.park) {
+                                showParkAuslastungCard(obj.userData.park.id, clientX, clientY);
+                                return;
+                            }
+                        }
+                    }
+
                     let nearestPark = null;
                     let minParkDistSq = Infinity;
                     for (let i = 0; i < RENEWABLE_PARKS_DATA.length; i++) {
                         const p = RENEWABLE_PARKS_DATA[i];
+                        if (p.type === 'cluster') continue;
                         if (p._screenX !== undefined && p._screenY !== undefined) {
                             const dx = clientX - p._screenX;
                             const dy = clientY - p._screenY;
                             const dSq = dx * dx + dy * dy;
-                            if (dSq < 900 && dSq < minParkDistSq) { // 30px Klickradius
+                            if (dSq < 1600 && dSq < minParkDistSq) { // 40px Klickradius
                                 minParkDistSq = dSq;
                                 nearestPark = p;
                             }
@@ -15700,18 +15835,19 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                             const dLat = clickedPopupPoint.lat - p.lat;
                             const dLng = (clickedPopupPoint.lng - p.lng) * Math.cos(clickedPopupPoint.lat * Math.PI / 180);
                             const dGeoSq = dLat * dLat + dLng * dLng;
-                            if (dGeoSq < 0.06 && dGeoSq < minParkDistSq) {
+                            if (dGeoSq < 0.08 && dGeoSq < minParkDistSq) {
                                 minParkDistSq = dGeoSq;
                                 nearestPark = p;
                             }
                         }
                     }
                     if (nearestPark) {
-                        openParkForecast(nearestPark.id);
-                        return; // Interception erfolgreich: Dedizierte Park-Prognose anzeigen
+                        showParkAuslastungCard(nearestPark.id, clientX, clientY);
+                        return; // Interception erfolgreich: Auslastungs-Card anzeigen
                     }
                 }
 
+                closeParkAuslastungCard();
                 clickedPopupTileElevation = directTileElev;
                 popupEl.style.display = 'block';
                 popupEl.style.left = clientX + 'px';
@@ -17270,6 +17406,292 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
         // =========================================================================
         // 🏭 EINZELPARK- & CLUSTER-PROGNOSE (SOLAR-, WIND- & OFFSHORE-PARKS)
         // =========================================================================
+        // =========================================================================
+        // ⚡ 3D ERNEUERBARE PARKS (WINDRÄDER & PV-FREIFLÄCHEN AUF GLOBUS)
+        // =========================================================================
+        let renewableParks3DGroup = null;
+        let animatedParkRotors = [];
+        let renewableParks3DInitialized = false;
+        let currentCardParkId = null;
+
+        function initRenewableParks3D() {
+            if (renewableParks3DInitialized || typeof RENEWABLE_PARKS_DATA === 'undefined' || typeof THREE === 'undefined') return;
+            renewableParks3DInitialized = true;
+
+            renewableParks3DGroup = new THREE.Group();
+            renewableParks3DGroup.rotation.y = -Math.PI / 2;
+            renewableParks3DGroup.visible = false;
+            scene.add(renewableParks3DGroup);
+
+            // Gemeinsame Materialien für beste Render-Performance
+            const towerMat = new THREE.MeshLambertMaterial({ color: 0xf1f5f9 });
+            const offshoreBaseMat = new THREE.MeshLambertMaterial({ color: 0xf59e0b });
+            const nacelleMat = new THREE.MeshLambertMaterial({ color: 0xe2e8f0 });
+            const bladeMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+            const solarPanelMat = new THREE.MeshLambertMaterial({ color: 0x112744 });
+            const solarFrameMat = new THREE.MeshLambertMaterial({ color: 0x64748b });
+
+            // Gemeinsame Geometrien
+            const towerH = 0.22;
+            const towerGeom = new THREE.CylinderGeometry(0.010, 0.022, towerH, 6);
+            towerGeom.translate(0, towerH / 2, 0);
+
+            const offshoreBaseH = 0.055;
+            const offshoreBaseGeom = new THREE.CylinderGeometry(0.022, 0.026, offshoreBaseH, 6);
+            offshoreBaseGeom.translate(0, offshoreBaseH / 2, 0);
+
+            const nacelleGeom = new THREE.BoxGeometry(0.024, 0.024, 0.055);
+            const hubGeom = new THREE.SphereGeometry(0.015, 6, 5);
+
+            const bladeLen = 0.135;
+            const bladeGeom = new THREE.ConeGeometry(0.010, bladeLen, 4);
+            bladeGeom.translate(0, bladeLen / 2, 0);
+
+            const pvTableW = 0.075;
+            const pvTableL = 0.040;
+            const pvTableGeom = new THREE.BoxGeometry(pvTableW, 0.003, pvTableL);
+            const pvLegGeom = new THREE.CylinderGeometry(0.002, 0.002, 0.018, 3);
+            pvLegGeom.translate(0, 0.009, 0);
+
+            RENEWABLE_PARKS_DATA.forEach(park => {
+                if (park.type === 'cluster') return; // Meta-Cluster überspringen
+
+                const centerPos = latLngToSphereVertex(park.lat, park.lng, surfaceRadius);
+                const normal = centerPos.clone().normalize();
+                const north = new THREE.Vector3(0, 1, 0).projectOnPlane(normal).normalize();
+                const east = new THREE.Vector3().crossVectors(north, normal).normalize();
+
+                const parkGroup = new THREE.Group();
+                parkGroup.userData = { park: park };
+
+                if (park.type === 'wind_onshore' || park.type === 'wind_offshore') {
+                    const isOffshore = (park.type === 'wind_offshore');
+                    
+                    // Anzahl Turbinen repräsentiert die Nennkapazität
+                    let count = 4;
+                    if (park.capacityMw >= 2000) count = 20;
+                    else if (park.capacityMw >= 1200) count = 16;
+                    else if (park.capacityMw >= 700) count = 12;
+                    else if (park.capacityMw >= 400) count = 9;
+                    else if (park.capacityMw >= 200) count = 7;
+                    else if (park.capacityMw >= 100) count = 5;
+
+                    const cols = Math.min(5, Math.ceil(Math.sqrt(count * 1.5)));
+                    const rows = Math.ceil(count / cols);
+                    const spacing = isOffshore ? 0.095 : 0.080;
+
+                    let placedCount = 0;
+                    for (let r = 0; r < rows; r++) {
+                        for (let c = 0; c < cols; c++) {
+                            if (placedCount >= count) break;
+                            placedCount++;
+
+                            const colOff = (c - (cols - 1) / 2) * spacing + ((r % 2) * spacing * 0.4);
+                            const rowOff = (r - (rows - 1) / 2) * spacing;
+                            
+                            const turbOffset = east.clone().multiplyScalar(colOff).add(north.clone().multiplyScalar(rowOff));
+                            const turbPos = centerPos.clone().add(turbOffset).normalize().multiplyScalar(surfaceRadius);
+                            const turbNorm = turbPos.clone().normalize();
+
+                            const turbGroup = new THREE.Group();
+                            turbGroup.position.copy(turbPos);
+                            turbGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), turbNorm);
+
+                            // Turm
+                            const towerMesh = new THREE.Mesh(towerGeom, towerMat);
+                            turbGroup.add(towerMesh);
+
+                            // Gelber Sockel bei Offshore
+                            if (isOffshore) {
+                                const baseMesh = new THREE.Mesh(offshoreBaseGeom, offshoreBaseMat);
+                                turbGroup.add(baseMesh);
+                            }
+
+                            // Gondel
+                            const nacelleMesh = new THREE.Mesh(nacelleGeom, nacelleMat);
+                            nacelleMesh.position.set(0, towerH, 0);
+                            turbGroup.add(nacelleMesh);
+
+                            // Rotor mit 3 Flügeln
+                            const rotorGroup = new THREE.Group();
+                            rotorGroup.position.set(0, towerH, 0.030);
+
+                            const hubMesh = new THREE.Mesh(hubGeom, bladeMat);
+                            rotorGroup.add(hubMesh);
+
+                            for (let b = 0; b < 3; b++) {
+                                const bladeMesh = new THREE.Mesh(bladeGeom, bladeMat);
+                                bladeMesh.rotation.z = (b * Math.PI * 2) / 3;
+                                rotorGroup.add(bladeMesh);
+                            }
+
+                            rotorGroup.rotation.z = Math.random() * Math.PI * 2;
+                            rotorGroup.userData = {
+                                rotSpeed: 0.024 + Math.random() * 0.010,
+                                parkId: park.id
+                            };
+                            animatedParkRotors.push(rotorGroup);
+
+                            turbGroup.add(rotorGroup);
+                            parkGroup.add(turbGroup);
+                        }
+                    }
+                } else if (park.type === 'solar') {
+                    // Solarpark: Parallele PV-Tische
+                    let rows = 3, cols = 4;
+                    if (park.capacityMw >= 500) { rows = 5; cols = 7; }
+                    else if (park.capacityMw >= 250) { rows = 4; cols = 6; }
+                    else if (park.capacityMw >= 100) { rows = 3; cols = 5; }
+
+                    const rowSpacing = 0.052;
+                    const colSpacing = 0.088;
+
+                    for (let r = 0; r < rows; r++) {
+                        for (let c = 0; c < cols; c++) {
+                            const colOff = (c - (cols - 1) / 2) * colSpacing;
+                            const rowOff = (r - (rows - 1) / 2) * rowSpacing;
+
+                            const panelOffset = east.clone().multiplyScalar(colOff).add(north.clone().multiplyScalar(rowOff));
+                            const panelPos = centerPos.clone().add(panelOffset).normalize().multiplyScalar(surfaceRadius + 0.005);
+                            const panelNorm = panelPos.clone().normalize();
+
+                            const tableGroup = new THREE.Group();
+                            tableGroup.position.copy(panelPos);
+                            tableGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), panelNorm);
+
+                            const legL = new THREE.Mesh(pvLegGeom, solarFrameMat);
+                            legL.position.set(-pvTableW * 0.35, 0, 0);
+                            tableGroup.add(legL);
+
+                            const legR = new THREE.Mesh(pvLegGeom, solarFrameMat);
+                            legR.position.set(pvTableW * 0.35, 0, 0);
+                            tableGroup.add(legR);
+
+                            const panelMesh = new THREE.Mesh(pvTableGeom, solarPanelMat);
+                            panelMesh.position.set(0, 0.018, 0);
+                            panelMesh.rotation.x = -0.44; // Nach Süden geneigt
+                            tableGroup.add(panelMesh);
+
+                            parkGroup.add(tableGroup);
+                        }
+                    }
+                }
+
+                renewableParks3DGroup.add(parkGroup);
+            });
+        }
+
+        // =========================================================================
+        // ⚡ AUSLASTUNGS-CARD BEI PARK-KLICK
+        // =========================================================================
+        function showParkAuslastungCard(parkId, screenX, screenY) {
+            if (typeof RENEWABLE_PARKS_DATA === 'undefined') return;
+            const park = RENEWABLE_PARKS_DATA.find(p => p.id === parkId);
+            if (!park) return;
+            currentCardParkId = parkId;
+
+            const card = document.getElementById('park-auslastung-card');
+            if (!card) return;
+
+            // Live-Wetter am Parkstandort ermitteln
+            const d = (typeof getInterpolatedData === 'function') ? getInterpolatedData(park.lat, park.lng) : { u: 3, v: 4, t: 15, solar: 300 };
+            const ws10m = Math.hypot(d.u, d.v);
+            const ws100m = ws10m * 1.35;
+            const temp = d.t;
+            const ghi = Math.max(0, d.solar);
+
+            const isSolar = (park.type === 'solar');
+            const isOffshore = (park.type === 'wind_offshore');
+
+            let currentMw = 0;
+            let auslastungPct = 0;
+
+            if (isSolar) {
+                const tCell = temp + (25 / 800) * ghi;
+                const etaTemp = Math.max(0.75, 1 - 0.0038 * (tCell - 25));
+                const pot = park.capacityMw * (ghi / 1000);
+                currentMw = Math.min(park.capacityMw, Math.round(pot * etaTemp * 0.84 * 10) / 10);
+                auslastungPct = Math.min(100, Math.round((currentMw / park.capacityMw) * 100));
+            } else {
+                const cutIn = isOffshore ? 3.0 : 2.8;
+                const rated = isOffshore ? 11.5 : 12.5;
+                const cutOut = isOffshore ? 27.0 : 25.0;
+                let cf = 0;
+                if (ws100m >= cutIn && ws100m < rated) {
+                    cf = Math.pow((ws100m - cutIn) / (rated - cutIn), isOffshore ? 2.2 : 2.4);
+                } else if (ws100m >= rated && ws100m <= cutOut) {
+                    cf = 1.0;
+                }
+                currentMw = Math.min(park.capacityMw, Math.round(park.capacityMw * cf * (isOffshore ? 0.96 : 0.93)));
+                auslastungPct = Math.min(100, Math.round((currentMw / park.capacityMw) * 100));
+            }
+
+            const icon = isSolar ? '☀️' : (isOffshore ? '🌊' : '💨');
+            const typeLabel = isSolar ? 'Solarpark (PV)' : (isOffshore ? 'Offshore-Windpark' : 'Onshore-Windpark');
+            const color = isSolar ? '#ffdb00' : (isOffshore ? '#00e5ff' : '#00ff88');
+
+            document.getElementById('parkCardIcon').innerText = icon;
+            document.getElementById('parkCardTitle').innerText = park.name;
+            document.getElementById('parkCardSubtitle').innerText = `${typeLabel} · ${(park.state && park.state !== park.country) ? park.state + ', ' : ''}${park.country}`;
+            
+            const pctEl = document.getElementById('parkCardAuslastungPct');
+            pctEl.innerText = `${auslastungPct} %`;
+            pctEl.style.color = (auslastungPct >= 65) ? '#00ff88' : ((auslastungPct >= 25) ? '#ffdb00' : '#60a5fa');
+
+            const barEl = document.getElementById('parkCardProgressBar');
+            barEl.style.width = `${auslastungPct}%`;
+            barEl.style.background = (auslastungPct >= 65) 
+                ? 'linear-gradient(90deg, #00e5ff, #00ff88)' 
+                : ((auslastungPct >= 25) ? 'linear-gradient(90deg, #ffdb00, #f59e0b)' : 'linear-gradient(90deg, #3b82f6, #60a5fa)');
+
+            document.getElementById('parkCardCurrentMw').innerText = `${currentMw.toLocaleString('de-DE')} MW`;
+            document.getElementById('parkCardCapacityMw').innerText = `${park.capacityMw.toLocaleString('de-DE')} MW`;
+
+            if (isSolar) {
+                document.getElementById('parkCardMetric1Label').innerText = 'Sonneneinstrahlung';
+                document.getElementById('parkCardMetric1Val').innerText = `${Math.round(ghi)} W/m²`;
+                document.getElementById('parkCardMetric2Label').innerText = 'Temperatur';
+                document.getElementById('parkCardMetric2Val').innerText = `${Math.round(temp * 10) / 10} °C`;
+            } else {
+                document.getElementById('parkCardMetric1Label').innerText = 'Wind (100m)';
+                document.getElementById('parkCardMetric1Val').innerText = `${Math.round(ws100m * 3.6)} km/h (${(ws100m).toFixed(1)} m/s)`;
+                document.getElementById('parkCardMetric2Label').innerText = 'Temperatur';
+                document.getElementById('parkCardMetric2Val').innerText = `${Math.round(temp * 10) / 10} °C`;
+            }
+
+            card.style.display = 'block';
+            const cardW = 285;
+            const cardH = 210;
+            let posX = screenX ? (screenX + 15) : (window.innerWidth - cardW - 30);
+            let posY = screenY ? (screenY - cardH / 2) : 90;
+
+            if (posX + cardW > window.innerWidth - 12) posX = window.innerWidth - cardW - 12;
+            if (posX < 12) posX = 12;
+            if (posY + cardH > window.innerHeight - 85) posY = window.innerHeight - cardH - 85;
+            if (posY < 65) posY = 65;
+
+            card.style.left = `${posX}px`;
+            card.style.top = `${posY}px`;
+            card.style.borderColor = color;
+            card.style.boxShadow = `0 14px 36px rgba(0, 0, 0, 0.75), 0 0 25px ${color}33`;
+        }
+        window.showParkAuslastungCard = showParkAuslastungCard;
+
+        function closeParkAuslastungCard() {
+            const card = document.getElementById('park-auslastung-card');
+            if (card) card.style.display = 'none';
+            currentCardParkId = null;
+        }
+        window.closeParkAuslastungCard = closeParkAuslastungCard;
+
+        function openFullParkForecastFromCard() {
+            if (currentCardParkId && typeof openParkForecast === 'function') {
+                openParkForecast(currentCardParkId);
+                closeParkAuslastungCard();
+            }
+        }
+        window.openFullParkForecastFromCard = openFullParkForecastFromCard;
+
         let renewableParksOverlayVisible = true;
         let activeParkId = null;
         let cachedParkWeather = {};
@@ -19432,6 +19854,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
         });
         loadPriceData();
         loadGridForecastData();
+        initRenewableParks3D();
         animate();
         detectUserLocationAndFly();
         checkWeatherUpdate();
