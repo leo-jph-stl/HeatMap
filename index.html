@@ -17485,21 +17485,157 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 metalness: 0.10
             });
 
-            // Solarpark Materialien
+            // =========================================================================
+            // PROCEDURAL HIGH-RES SOLAR TEXTURES (Monokristalline Wafer & Schotterwege)
+            // =========================================================================
+            let solarTableTexture = null;
+            let solarGroundTexture = null;
+
+            if (typeof document !== 'undefined') {
+                // 1. Photovoltaik-Modul-Textur (Monokristalline Wafer, Busbars & Antireflex-Glanz)
+                const panelCanvas = document.createElement('canvas');
+                panelCanvas.width = 256;
+                panelCanvas.height = 128;
+                const pCtx = panelCanvas.getContext('2d');
+                if (pCtx) {
+                    // Silberner eloxierter Modulrahmen
+                    pCtx.fillStyle = '#94a3b8';
+                    pCtx.fillRect(0, 0, 256, 128);
+
+                    // Tiefdunkle Basis (Silicon Backsheet)
+                    pCtx.fillStyle = '#060f1c';
+                    pCtx.fillRect(3, 3, 250, 122);
+
+                    // 2x6 Monokristalline Silizium-Wafer
+                    const cellW = 39;
+                    const cellH = 57;
+                    const gap = 2;
+
+                    for (let r = 0; r < 2; r++) {
+                        for (let c = 0; c < 6; c++) {
+                            const cx = 5 + c * (cellW + gap);
+                            const cy = 5 + r * (cellH + gap);
+
+                            // Wafer-Gradient mit Antireflex-Bläue
+                            const cellGrad = pCtx.createLinearGradient(cx, cy, cx + cellW, cy + cellH);
+                            cellGrad.addColorStop(0, '#0f2744');
+                            cellGrad.addColorStop(0.5, '#0b1c31');
+                            cellGrad.addColorStop(1, '#071221');
+                            pCtx.fillStyle = cellGrad;
+                            pCtx.fillRect(cx, cy, cellW, cellH);
+
+                            // Wafer-Ecken leicht abgerundet (Chamfer / Schnittkanten)
+                            pCtx.fillStyle = '#060f1c';
+                            pCtx.fillRect(cx, cy, 2, 2);
+                            pCtx.fillRect(cx + cellW - 2, cy, 2, 2);
+                            pCtx.fillRect(cx, cy + cellH - 2, 2, 2);
+                            pCtx.fillRect(cx + cellW - 2, cy + cellH - 2, 2, 2);
+
+                            // 3 feine silbrige Busbars (Hauptleiterbahnen)
+                            pCtx.strokeStyle = 'rgba(241, 245, 249, 0.75)';
+                            pCtx.lineWidth = 1;
+                            for (let b = 1; b <= 3; b++) {
+                                const bx = cx + (b * cellW) / 4;
+                                pCtx.beginPath();
+                                pCtx.moveTo(bx, cy);
+                                pCtx.lineTo(bx, cy + cellH);
+                                pCtx.stroke();
+                            }
+
+                            // Feine Mikrogitter (Finger lines)
+                            pCtx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
+                            pCtx.lineWidth = 0.5;
+                            for (let f = 1; f < 8; f++) {
+                                const fy = cy + (f * cellH) / 8;
+                                pCtx.beginPath();
+                                pCtx.moveTo(cx, fy);
+                                pCtx.lineTo(cx + cellW, fy);
+                                pCtx.stroke();
+                            }
+                        }
+                    }
+
+                    // Diagonaler photovoltaischer Antireflex-Glasglanz
+                    const glassGrad = pCtx.createLinearGradient(0, 0, 256, 128);
+                    glassGrad.addColorStop(0.35, 'rgba(147, 197, 253, 0.0)');
+                    glassGrad.addColorStop(0.50, 'rgba(191, 219, 254, 0.24)');
+                    glassGrad.addColorStop(0.65, 'rgba(147, 197, 253, 0.0)');
+                    pCtx.fillStyle = glassGrad;
+                    pCtx.fillRect(3, 3, 250, 122);
+
+                    solarTableTexture = new THREE.CanvasTexture(panelCanvas);
+                }
+
+                // 2. Parzellen-Untergrund (Biodiversitäts-Wiese & Schotterwege statt schwarzem Kasten)
+                const groundCanvas = document.createElement('canvas');
+                groundCanvas.width = 256;
+                groundCanvas.height = 256;
+                const gCtx = groundCanvas.getContext('2d');
+                if (gCtx) {
+                    // Natürlicher Wiesengrund (Agri-PV Extensivwiese)
+                    gCtx.fillStyle = '#263b1d';
+                    gCtx.fillRect(0, 0, 256, 256);
+
+                    // Gras-Struktur / Stippling
+                    gCtx.fillStyle = '#2f4924';
+                    for (let i = 0; i < 280; i++) {
+                        const gx = Math.random() * 256;
+                        const gy = Math.random() * 256;
+                        gCtx.fillRect(gx, gy, 2 + Math.random() * 3, 2 + Math.random() * 3);
+                    }
+
+                    // Umlaufende Schotterstraße (Wartungsweg)
+                    gCtx.strokeStyle = '#94a3b8';
+                    gCtx.lineWidth = 8;
+                    gCtx.strokeRect(10, 10, 236, 236);
+
+                    // Zentrale Schotter-Zufahrtsstraße (teilt die Modulfelder)
+                    gCtx.fillStyle = '#94a3b8';
+                    gCtx.fillRect(123, 10, 10, 236);
+
+                    // Zaunlinie mit Pfostenpunkten außen
+                    gCtx.strokeStyle = '#cbd5e1';
+                    gCtx.lineWidth = 1.2;
+                    gCtx.strokeRect(5, 5, 246, 246);
+
+                    solarGroundTexture = new THREE.CanvasTexture(groundCanvas);
+                }
+            }
+
+            // Solarpark Materialien (PBR mit echter Wafer-Textur & Wiesenuntergrund)
             const solarGroundMat = new THREE.MeshStandardMaterial({
-                color: 0x1e293b,
-                roughness: 0.85,
-                metalness: 0.05
+                map: solarGroundTexture,
+                color: 0xffffff,
+                roughness: 0.88,
+                metalness: 0.05,
+                transparent: true,
+                opacity: 0.90
             });
             const solarCellMat = new THREE.MeshStandardMaterial({
-                color: 0x0c2544,
-                roughness: 0.18,
-                metalness: 0.85
+                map: solarTableTexture,
+                color: 0xffffff,
+                roughness: 0.16,
+                metalness: 0.80
             });
             const solarBezelMat = new THREE.MeshStandardMaterial({
                 color: 0x94a3b8,
+                roughness: 0.35,
+                metalness: 0.65
+            });
+            const solarShadowMat = new THREE.MeshBasicMaterial({
+                color: 0x07111e,
+                transparent: true,
+                opacity: 0.45
+            });
+            const trafoBoxMat = new THREE.MeshStandardMaterial({
+                color: 0xf1f5f9,
+                roughness: 0.35,
+                metalness: 0.20
+            });
+            const bessContainerMat = new THREE.MeshStandardMaterial({
+                color: 0x0284c7, // Eco-Blau für Batteriecontainer
                 roughness: 0.40,
-                metalness: 0.50
+                metalness: 0.25
             });
 
             // =========================================================================
@@ -17726,74 +17862,111 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                         }
                     }
                 } else if (park.type === 'solar') {
-                    // =========================================================
-                    // REALISTISCHER SOLARPARK (Authentisches Luftbild-Layout)
-                    // =========================================================
-                    let rows = 3, cols = 4;
-                    if (park.capacityMw >= 500) { rows = 5; cols = 6; }
-                    else if (park.capacityMw >= 250) { rows = 4; cols = 5; }
-                    else if (park.capacityMw >= 100) { rows = 3; cols = 4; }
-                    else { rows = 2; cols = 3; }
+                    // =========================================================================
+                    // MODERNES PHOTOVOLTAIK-GROSSFELD (Realistisches deutsches Freiflächen-Layout)
+                    // =========================================================================
+                    // Modultisch-Dimensionen (breiter Modul-String mit 2x12 Wafern)
+                    const pvTableW = 0.22;
+                    const pvTableL = 0.068;
+                    const pvTableGeom = new THREE.BoxGeometry(pvTableW, 0.003, pvTableL);
+                    const pvBezelGeom = new THREE.BoxGeometry(pvTableW + 0.004, 0.002, pvTableL + 0.004);
+                    const shadowGeom = new THREE.PlaneGeometry(pvTableW, pvTableL * 0.85);
 
-                    const colSpacing = 0.20;
-                    const rowSpacing = 0.13;
-                    const siteW = cols * colSpacing + 0.10;
+                    // Ständerkonstruktion (Verzinkter Stahl)
+                    const frontLegGeom = new THREE.CylinderGeometry(0.0025, 0.0025, 0.014, 4);
+                    frontLegGeom.translate(0, 0.007, 0);
+                    const backLegGeom = new THREE.CylinderGeometry(0.0025, 0.0025, 0.028, 4);
+                    backLegGeom.translate(0, 0.014, 0);
+
+                    // Dimensionierung nach Anlagen-Leistung
+                    const isGiant = park.capacityMw >= 450; // z.B. Energiepark Witznitz (650 MW)
+                    const isLarge = park.capacityMw >= 200; // z.B. Weesow-Willmersdorf (187 MW)
+
+                    const rows = isGiant ? 5 : (isLarge ? 4 : 3);
+                    const cols = isGiant ? 6 : (isLarge ? 5 : 4);
+
+                    const colSpacing = 0.25;
+                    const rowSpacing = 0.11;
+                    const centralRoadGap = isGiant ? 0.08 : 0.0;
+
+                    const siteW = cols * colSpacing + centralRoadGap + 0.12;
                     const siteH = rows * rowSpacing + 0.10;
 
                     const solarSiteGroup = new THREE.Group();
                     solarSiteGroup.position.copy(centerPos);
                     solarSiteGroup.quaternion.copy(baseQuat);
 
-                    // Dunkler Kies- / Erd-Untergrund des Solarparks
+                    // 1. Authentischer Parzellen-Untergrund (Extensivwiese mit Schotterwegen)
                     const groundMesh = new THREE.Mesh(new THREE.PlaneGeometry(siteW, siteH), solarGroundMat);
                     groundMesh.rotation.x = -Math.PI / 2;
-                    groundMesh.position.set(0, 0.002, 0);
+                    groundMesh.position.set(0, 0.0015, 0);
                     solarSiteGroup.add(groundMesh);
 
-                    // Parallele Reihen von Solartischen
+                    // 2. Parallele Reihen aufgeständerter Solartische
                     for (let r = 0; r < rows; r++) {
                         for (let c = 0; c < cols; c++) {
-                            const xOff = (c - (cols - 1) / 2) * colSpacing;
+                            // Zentraler Zufahrtsweg bei Großparks
+                            const roadOffset = (isGiant && c >= cols / 2) ? centralRoadGap / 2 : (isGiant ? -centralRoadGap / 2 : 0);
+                            const xOff = (c - (cols - 1) / 2) * colSpacing + roadOffset;
                             const zOff = (r - (rows - 1) / 2) * rowSpacing;
 
                             const tableGroup = new THREE.Group();
-                            tableGroup.position.set(xOff, 0.004, zOff);
+                            tableGroup.position.set(xOff, 0.003, zOff);
 
-                            // Ständerbeine
-                            const leg1 = new THREE.Mesh(legGeom, solarBezelMat);
-                            leg1.position.set(-tableW * 0.38, 0, -tableL * 0.3);
-                            tableGroup.add(leg1);
-                            const leg2 = new THREE.Mesh(legGeom, solarBezelMat);
-                            leg2.position.set(tableW * 0.38, 0, -tableL * 0.3);
-                            tableGroup.add(leg2);
-                            const leg3 = new THREE.Mesh(legGeom, solarBezelMat);
-                            leg3.position.set(-tableW * 0.38, 0, tableL * 0.3);
-                            tableGroup.add(leg3);
-                            const leg4 = new THREE.Mesh(legGeom, solarBezelMat);
-                            leg4.position.set(tableW * 0.38, 0, tableL * 0.3);
-                            tableGroup.add(leg4);
+                            // Weicher Bodenschatten hinter jedem Modultisch (erzeugt echten 3D-Relief-Effekt)
+                            const rowShadow = new THREE.Mesh(shadowGeom, solarShadowMat);
+                            rowShadow.rotation.x = -Math.PI / 2;
+                            rowShadow.position.set(0, 0.001, pvTableL * 0.40);
+                            tableGroup.add(rowShadow);
 
-                            // Silberne Unterkonstruktion / Rahmen
-                            const bezelMesh = new THREE.Mesh(bezelGeom, solarBezelMat);
-                            bezelMesh.position.set(0, 0.024, 0);
-                            bezelMesh.rotation.x = -0.42; // Neigung 24° nach Süden
+                            // Ständerbeine (vorn niedriger, hinten höher für 25° Neigung nach Süden)
+                            const fLegL = new THREE.Mesh(frontLegGeom, solarBezelMat);
+                            fLegL.position.set(-pvTableW * 0.38, 0, -pvTableL * 0.32);
+                            tableGroup.add(fLegL);
+                            const fLegR = new THREE.Mesh(frontLegGeom, solarBezelMat);
+                            fLegR.position.set(pvTableW * 0.38, 0, -pvTableL * 0.32);
+                            tableGroup.add(fLegR);
+
+                            const bLegL = new THREE.Mesh(backLegGeom, solarBezelMat);
+                            bLegL.position.set(-pvTableW * 0.38, 0, pvTableL * 0.32);
+                            tableGroup.add(bLegL);
+                            const bLegR = new THREE.Mesh(backLegGeom, solarBezelMat);
+                            bLegR.position.set(pvTableW * 0.38, 0, pvTableL * 0.32);
+                            tableGroup.add(bLegR);
+
+                            // Silberne Modul-Unterkonstruktion
+                            const bezelMesh = new THREE.Mesh(pvBezelGeom, solarBezelMat);
+                            bezelMesh.position.set(0, 0.021, 0);
+                            bezelMesh.rotation.x = -0.44; // 25° Neigung nach Süden
                             tableGroup.add(bezelMesh);
 
-                            // Glänzende dunkelblaue Photovoltaik-Zellen
-                            const panelMesh = new THREE.Mesh(panelGeom, solarCellMat);
-                            panelMesh.position.set(0, 0.026, 0);
-                            panelMesh.rotation.x = -0.42;
+                            // Monokristalliner PV-String mit Wafer- & Busbar-Textur
+                            const panelMesh = new THREE.Mesh(pvTableGeom, solarCellMat);
+                            panelMesh.position.set(0, 0.023, 0);
+                            panelMesh.rotation.x = -0.44;
                             tableGroup.add(panelMesh);
 
                             solarSiteGroup.add(tableGroup);
                         }
                     }
 
-                    // Kleine Transformator- / Inverter-Station am Rand
-                    const inverterGeom = new THREE.BoxGeometry(0.045, 0.035, 0.065);
-                    const inverterMesh = new THREE.Mesh(inverterGeom, nacelleMat);
-                    inverterMesh.position.set(siteW * 0.44, 0.018, siteH * 0.42);
-                    solarSiteGroup.add(inverterMesh);
+                    // 3. Transformator-Station (Trafohaus) & BESS-Batteriespeicher am Rand
+                    const trafoGroup = new THREE.Group();
+                    trafoGroup.position.set(siteW * 0.44, 0.003, siteH * 0.40);
+
+                    // Trafohaus (Weiß mit Kühllamellen)
+                    const trafoGeom = new THREE.BoxGeometry(0.040, 0.026, 0.050);
+                    const trafoMesh = new THREE.Mesh(trafoGeom, trafoBoxMat);
+                    trafoMesh.position.set(0, 0.013, 0);
+                    trafoGroup.add(trafoMesh);
+
+                    // BESS-Batteriespeicher-Container (Blau-Weiß)
+                    const bessGeom = new THREE.BoxGeometry(0.028, 0.024, 0.065);
+                    const bessMesh = new THREE.Mesh(bessGeom, bessContainerMat);
+                    bessMesh.position.set(0.045, 0.012, 0);
+                    trafoGroup.add(bessMesh);
+
+                    solarSiteGroup.add(trafoGroup);
 
                     parkGroup.add(solarSiteGroup);
                 }
