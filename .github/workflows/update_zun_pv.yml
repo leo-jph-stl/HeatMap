@@ -1,13 +1,9 @@
 name: Update zun PV Data
 
+# Hinweis: Die automatische 15-Minuten-Abfrage für die PV-Anlage in Weilbach ist gestoppt,
+# da die Anlage aktuell keine Daten liefert und keine Fehler-Mails generiert werden sollen.
+# Eine manuelle Ausführung bleibt bei Bedarf über workflow_dispatch erhalten.
 on:
-  schedule:
-    # Runs every 15 minutes
-    - cron: '*/15 * * * *'
-  push:
-    paths:
-      - 'fetch_zun_pv.py'
-      - '.github/workflows/update_zun_pv.yml'
   workflow_dispatch:
     inputs:
       full_backfill:
