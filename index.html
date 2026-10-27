@@ -3787,7 +3787,27 @@
         topoBaseTexture.minFilter = THREE.LinearFilter;
         topoBaseTexture.magFilter = THREE.LinearFilter;
 
-        const satelliteBaseTexture = textureLoader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg');
+        const satelliteBaseTexture = textureLoader.load(
+            'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg',
+            (tex) => {
+                if (typeof topoBaseMesh !== 'undefined' && topoBaseMesh && currentMode === 'satellite') {
+                    topoBaseMesh.material.map = tex;
+                    topoBaseMesh.material.needsUpdate = true;
+                }
+            },
+            undefined,
+            () => {
+                console.warn('Satellite Blue Marble unpkg fallback -> topoBaseTexture / ArcGIS');
+                textureLoader.load('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/0/0/0', (tex) => {
+                    tex.wrapS = THREE.ClampToEdgeWrapping;
+                    tex.wrapT = THREE.ClampToEdgeWrapping;
+                    if (typeof topoBaseMesh !== 'undefined' && topoBaseMesh && currentMode === 'satellite') {
+                        topoBaseMesh.material.map = tex;
+                        topoBaseMesh.material.needsUpdate = true;
+                    }
+                });
+            }
+        );
         satelliteBaseTexture.wrapS = THREE.ClampToEdgeWrapping;
         satelliteBaseTexture.wrapT = THREE.ClampToEdgeWrapping;
         satelliteBaseTexture.minFilter = THREE.LinearFilter;
@@ -5545,7 +5565,7 @@
 
             if (provider === 'satellite') {
                 if (typeof topoBaseMesh !== 'undefined' && topoBaseMesh) {
-                    topoBaseMesh.material.map = satelliteBaseTexture;
+                    topoBaseMesh.material.map = (satelliteBaseTexture && satelliteBaseTexture.image) ? satelliteBaseTexture : topoBaseTexture;
                     topoBaseMesh.material.needsUpdate = true;
                 }
             } else {
@@ -6817,7 +6837,11 @@
                             const localElev = getElevationFromLoadedTiles(anim.targetLat, anim.targetLng);
                             clickedPopupTileElevation = (localElev !== null) ? localElev : null;
                         }
-                        updatePopupContent();
+                        try {
+                            updatePopupContent();
+                        } catch(e) {
+                            console.warn('Animation popup safe error:', e);
+                        }
                         
                         const localP = latLngToSphereVertex(anim.targetLat, anim.targetLng, surfaceRadius);
                         const worldP = localP.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
@@ -15378,6 +15402,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
         const mouse = new THREE.Vector2();
 
         let lastClickedElevation = null;
+        let lastElevationPointKey = null;
         function showMoonLandmarkDetails(landmark) {
             if (!landmark || !popupEl) return;
             const typeIcon = landmark.type === 'apollo' ? '🚀' : (landmark.type === 'crater' ? '⊚' : (landmark.type === 'mountain' ? '⛰️' : '🌊'));
@@ -15438,7 +15463,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
 
         function updatePopupContent() {
             if (!clickedPopupPoint) return;
-
+            try {
             // SONDERFALL: MOND-POPUP
             if (currentCelestialBody === 'moon') {
                 let nearest = null;
@@ -15595,6 +15620,9 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 html = `${speedKmh.toFixed(1)} km/h${pSuffix}`;
             }
             popupEl.innerHTML = html;
+            } catch(e) {
+                console.warn('Popup render safe error:', e);
+            }
         }
 
         // Wisch- / Drag-Erkennung (Unterscheidung zwischen echtem Tippen und Globus-Verschieben)
