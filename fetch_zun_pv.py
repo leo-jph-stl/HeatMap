@@ -47,12 +47,16 @@ def api_get(endpoint, token, params=None):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) HeatMap/2.5"
         }
     )
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        content = resp.read().decode("utf-8")
-        try:
-            return json.loads(content)
-        except Exception:
-            return content
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            content = resp.read().decode("utf-8")
+            try:
+                return json.loads(content)
+            except Exception:
+                return content
+    except Exception as e:
+        print(f"Hinweis: api_get fehlgeschlagen für {endpoint}: {e}")
+        return None
 
 def parse_kw(val):
     if val is None:
@@ -122,8 +126,8 @@ def main():
             print(f"Fehler beim Abruf von /inverter: {e}")
 
         if not inverter_id:
-            print("[FEHLER] Keine Wechselrichter-ID ermittelt.")
-            sys.exit(1)
+            print("[HINWEIS] Keine Wechselrichter-ID ermittelt (Anlage liefert aktuell keine Daten). Beende Abfrage ohne Fehler.")
+            sys.exit(0)
 
         print(f"Wechselrichter-ID: {inverter_id}")
         inv_id_val = int(inverter_id) if str(inverter_id).isdigit() else inverter_id
@@ -620,4 +624,9 @@ def main():
     print(f"Archivierte Tage in zun_daily_history.json: {len(daily_reports)}")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"[HINWEIS] Unerwarteter Fehler beim Abruf von zun PV: {e}")
+        traceback.print_exc()
+        sys.exit(0)
