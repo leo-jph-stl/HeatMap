@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-10-28T10:27:20.232Z",
-  "timestamp": 1793183240232,
+  "generatedAt": "2026-10-28T20:52:30.137Z",
+  "timestamp": 1793220750137,
   "stepsCount": 36,
   "model": "NOAA GFS 0.25deg",
-  "latestRun": "2026-10-28T09:00:00.000Z"
+  "latestRun": "2026-10-28T21:00:00.000Z"
 }
