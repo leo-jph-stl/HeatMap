@@ -79,7 +79,7 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             box-shadow: 0 12px 35px rgba(0, 0, 0, 0.75);
             z-index: 40;
-            width: 440px;
+            width: 480px;
             max-width: calc(100vw - 32px);
             color: #ffffff;
             user-select: none;
@@ -90,7 +90,31 @@
             justify-content: space-between;
             align-items: center;
             gap: 10px;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
+        }
+        .timeline-playback-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+        .timeline-actions-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex-shrink: 0;
+        }
+        .timeline-time-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.38);
+            border: 1px solid rgba(0, 204, 255, 0.25);
+            border-radius: 9px;
+            padding: 5px 12px;
+            margin: 5px 0 6px 0;
+            box-sizing: border-box;
+            box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.45);
         }
         #playBtn {
             background: rgba(0, 204, 255, 0.16);
@@ -126,13 +150,16 @@
             color: #ffffff;
         }
         #timeDisplayTitle {
-            font-weight: 600;
-            font-size: 12.5px;
-            color: #ffffff;
-            text-align: right;
+            font-weight: 700;
+            font-size: 13px;
+            color: #00e5ff;
+            letter-spacing: 0.25px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            text-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+            text-align: center;
+            width: 100%;
         }
         #timeSlider {
             width: 100%;
@@ -1775,6 +1802,10 @@
                 padding: 9px 12px;
                 border-radius: 14px;
             }
+            .timeline-time-row {
+                padding: 3px 8px;
+                margin: 4px 0 4px 0;
+            }
             #timeDisplayTitle {
                 font-size: 11.5px;
             }
@@ -3048,25 +3079,29 @@
     <!-- Schlankes, vereintes Bottom-Dock (Zeitleiste + Farblegende) -->
     <div id="timeline-container">
         <div class="timeline-top-row">
-            <button id="playBtn">▶ Play</button>
-            <button id="playSpeedBtn" title="Wiedergabegeschwindigkeit">1x</button>
-            <div id="timeDisplayTitle">Live (Jetzt)</div>
-            <div style="display: flex; gap: 4px; align-items: center;">
+            <div class="timeline-playback-group">
+                <button id="playBtn">▶ Play</button>
+                <button id="playSpeedBtn" title="Wiedergabegeschwindigkeit">1x</button>
+            </div>
+            <div class="timeline-actions-group">
                 <div id="celestial-body-toggle" title="Himmelskörper wählen (Erde / Mond)">
                     <button type="button" id="celestial-btn-earth" class="celestial-btn active" onclick="switchCelestialBody('earth')">🌍 Erde</button>
                     <button type="button" id="celestial-btn-moon" class="celestial-btn" onclick="switchCelestialBody('moon')">🌙 Mond</button>
                 </div>
-                <button id="gridQuickBtn" class="pv-badge-btn" onclick="toggleGridForecast()" title="Offizielle Stromnetz-Prognose (Solar &amp; Windenergie)" style="border-color: rgba(255, 219, 0, 0.4); background: rgba(255, 219, 0, 0.12); color: #ffdb00;">⚡ Netz</button>
-                <button id="parksQuickBtn" class="pv-badge-btn" onclick="toggleRenewableParksOverlay()" title="Erneuerbare Parks &amp; Großanlagen (Solar, Wind &amp; Offshore)" style="border-color: rgba(0, 255, 136, 0.4); background: rgba(0, 255, 136, 0.12); color: #00ff88;">🏭 Parks</button>
+                <button id="gridQuickBtn" class="pv-badge-btn" onclick="toggleGridForecast()" title="Offizielle Stromnetz-Prognose (Solar &amp; Windenergie)" style="display:none; border-color: rgba(255, 219, 0, 0.4); background: rgba(255, 219, 0, 0.12); color: #ffdb00;">⚡ Netz</button>
+                <button id="parksQuickBtn" class="pv-badge-btn" onclick="toggleRenewableParksOverlay()" title="Erneuerbare Parks &amp; Großanlagen (Solar, Wind &amp; Offshore)" style="display:none; border-color: rgba(0, 255, 136, 0.4); background: rgba(0, 255, 136, 0.12); color: #00ff88;">🏭 Parks</button>
                 <button id="pvQuickBtn" class="pv-badge-btn" title="Login für PV-Anlagendetails">🔒 PV-Login</button>
                 <button id="pvZunQuickBtn" class="pv-badge-btn" style="display:none; border-color: rgba(0, 229, 255, 0.4); background: rgba(0, 229, 255, 0.12); color: #00e5ff;">☀️</button>
             </div>
         </div>
+        <div class="timeline-time-row">
+            <div id="timeDisplayTitle">Live (Jetzt)</div>
+        </div>
         <input type="range" id="timeSlider" min="-24" max="72" step="1" value="0">
         <div class="time-labels">
-            <span>-24h</span>
+            <span>-24h (Historie)</span>
             <span>Live</span>
-            <span id="timeLabelMax">+72h</span>
+            <span id="timeLabelMax">+72h (Prognose)</span>
         </div>
         <div id="layer-toggles-visible">
             <!-- 🌍 ERD-KONTROLLEN (Wetter, Geographie, Overlays & Tools) -->
@@ -16070,15 +16105,15 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                 const timeStr = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr';
 
                 if (roundedOffset === 0) {
-                    return `Live (${nowStr} Uhr | Modell: ${timeStr})`;
+                    return `🟢 Live (${nowStr} Uhr · Modell: ${timeStr})`;
                 } else if (roundedOffset < 0) {
-                    return `${dayStr}, ${timeStr} (vor ${Math.abs(roundedOffset)}h)`;
+                    return `⏪ ${dayStr}, ${timeStr} (vor ${Math.abs(roundedOffset)}h)`;
                 } else {
-                    return `${dayStr}, ${timeStr} (+${roundedOffset}h)`;
+                    return `📅 ${dayStr}, ${timeStr} (+${roundedOffset}h Prognose)`;
                 }
             } else {
-                if (roundedOffset === 0) return `Live (${nowStr} Uhr)`;
-                return roundedOffset < 0 ? `Vor ${Math.abs(roundedOffset)} Stunden` : `In ${roundedOffset} Stunden`;
+                if (roundedOffset === 0) return `🟢 Live (${nowStr} Uhr)`;
+                return roundedOffset < 0 ? `⏪ Vor ${Math.abs(roundedOffset)} Stunden` : `📅 In +${roundedOffset} Stunden (Prognose)`;
             }
         }
 
