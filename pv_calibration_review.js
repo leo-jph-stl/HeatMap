@@ -17,6 +17,16 @@ const PV_DATA_FILE = 'pv_data.json';
 const TZ_OFFSET_MS = 2 * 3600 * 1000; // Europe/Berlin, September = CEST (UTC+2)
 const MIN_HOURLY_COVERAGE = 20; // von 24 - weniger heißt Tag unvollständig geloggt, siehe loadDailyReports()
 
+// Kalibrierung: nur jüngere Daten, Plausibilitätsband und Nennwert-Fallback. Gefunden am 2026-11-09:
+// 203h festgefrorenes ghi=569.1 im Log (siehe findDataQualityFlags) + Median über das GESAMTE Log ohne
+// Plausibilitätsprüfung ergaben 0.00198 statt realistischer ~0.0095 kW je W/m² (~4-5x zu klein) - und
+// damit systematisch viel zu niedrige Day-Ahead-Werte in pv_own_forecast_log.json.
+const CALIB_WINDOW_DAYS = 30;
+const MIN_CALIB_SAMPLES = 5;
+const RATIO_MIN = 0.003, RATIO_MAX = 0.045; // wie pickCalibPairs() in index.html (kW je W/m²)
+const NOMINAL_KWP = 9.68; // wie pvScenarioConfig-Default in index.html
+const NOMINAL_RATIO = (NOMINAL_KWP / 1000) * 0.86; // Zero-Shot wie in index.html (BOS 86 %)
+
 // Echte, vom Wechselrichter gemessene Tagessumme (FoxESS "generation") statt sie aus den
 // stündlichen Log-Einträgen zu rekonstruieren. Gefunden am 2026-09-21: für den 2026-09-11 lagen im
 // Log nur 4 Einträge (20-23 Uhr, alle nachts nahe 0) vor, weil das Log an diesem Tag erst abends zu
@@ -40,29 +50,51 @@ function median(arr) {
     return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-function computeCalibration(rows) {
-    let calib = rows.filter(r => r.ghi >= 50 && r.ghi <= 700);
-    if (calib.length < 5) calib = rows.filter(r => r.ghi >= 30);
-    if (calib.length < 5) return null;
-    const ratios = calib.map(r => r.pv / r.ghi);
-    return { medianRatio: median(ratios), sampleCount: calib.length };
+// Serien von >=3 aufeinanderfolgenden, bit-identischen NICHT-Null ghi-Werten: das exakte Fehlerbild
+// des Clamp-Bugs vom 2026-09-10. Ein wiederholtes exaktes 0 über viele Nachtstunden ist dagegen
+// völlig normal und wird bewusst NICHT markiert. Erwartet nach t sortierte Zeilen.
+function findStuckRuns(sorted) {
+    const runs = [];
+    let start = 0;
+    for (let i = 1; i <= sorted.length; i++) {
+        if (i < sorted.length && sorted[i].ghi === sorted[start].ghi) continue;
+        const len = i - start;
+        if (len >= 3 && sorted[start].ghi > 1) runs.push({ from: start, to: i - 1, len, ghi: sorted[start].ghi });
+        start = i;
+    }
+    return runs;
+}
+
+function removeStuckRows(rows) {
+    const sorted = [...rows].sort((a, b) => a.t - b.t);
+    const drop = new Set();
+    for (const run of findStuckRuns(sorted)) {
+        for (let i = run.from; i <= run.to; i++) drop.add(i);
+    }
+    return { clean: sorted.filter((_, i) => !drop.has(i)), removed: drop.size };
+}
+
+// Median von pv/ghi über saubere Zeilen der letzten CALIB_WINDOW_DAYS Tage, nur im Plausibilitätsband.
+// Zu wenige brauchbare Samples -> Nennwert aus kWp statt "nicht berechenbar", damit die Day-Ahead-
+// Prognose nie mit einem unsinnigen Faktor weiterläuft.
+function computeCalibration(cleanRows) {
+    const windowStart = Date.now() - CALIB_WINDOW_DAYS * 24 * 3600 * 1000;
+    const recent = cleanRows.filter(r => r.t >= windowStart);
+    const inBand = r => { const q = r.pv / r.ghi; return q >= RATIO_MIN && q <= RATIO_MAX; };
+    let calib = recent.filter(r => r.ghi >= 50 && r.ghi <= 700 && inBand(r));
+    if (calib.length < MIN_CALIB_SAMPLES) calib = recent.filter(r => r.ghi >= 30 && inBand(r));
+    if (calib.length < MIN_CALIB_SAMPLES) {
+        return { medianRatio: NOMINAL_RATIO, sampleCount: calib.length, source: 'nominal-fallback' };
+    }
+    return { medianRatio: median(calib.map(r => r.pv / r.ghi)), sampleCount: calib.length, source: 'measured' };
 }
 
 function findDataQualityFlags(rows) {
     const flags = [];
     const sorted = [...rows].sort((a, b) => a.t - b.t);
 
-    // Serien von >=3 aufeinanderfolgenden, bit-identischen NICHT-Null ghi-Werten: das exakte
-    // Fehlerbild des Clamp-Bugs vom 2026-09-10. Ein wiederholtes exaktes 0 über viele Nachtstunden
-    // ist dagegen völlig normal und wird bewusst NICHT markiert.
-    let streakStart = 0;
-    for (let i = 1; i <= sorted.length; i++) {
-        if (i < sorted.length && sorted[i].ghi === sorted[streakStart].ghi) continue;
-        const streakLen = i - streakStart;
-        if (streakLen >= 3 && sorted[streakStart].ghi > 1) {
-            flags.push(`${streakLen}h konstant identisches ghi=${sorted[streakStart].ghi} von ${new Date(sorted[streakStart].t).toISOString()} bis ${new Date(sorted[i - 1].t).toISOString()} - vermutlich derselbe Clamp-Fallback-Bug wie am 2026-09-10, oder ein neues Analogon davon.`);
-        }
-        streakStart = i;
+    for (const run of findStuckRuns(sorted)) {
+        flags.push(`${run.len}h konstant identisches ghi=${run.ghi} von ${new Date(sorted[run.from].t).toISOString()} bis ${new Date(sorted[run.to].t).toISOString()} - vermutlich derselbe Clamp-Fallback-Bug wie am 2026-09-10, oder ein neues Analogon davon.`);
     }
 
     const negPv = sorted.filter(r => r.pv < 0);
@@ -199,11 +231,12 @@ function run() {
         return;
     }
 
-    const calib = computeCalibration(rows);
+    const { clean, removed: stuckRowsExcluded } = removeStuckRows(rows);
+    const calib = computeCalibration(clean);
     const flags = findDataQualityFlags(rows);
     const capKw = Math.max(...rows.map(r => r.pv)) * 1.05;
     const dailyReports = loadDailyReports();
-    const fit = calib ? weeklyFitCheck(rows, calib.medianRatio, capKw, dailyReports) : null;
+    const fit = weeklyFitCheck(clean, calib.medianRatio, capKw, dailyReports);
     if (fit) fit.days = attachForecastSolarComparison(fit.days);
     if (fit) fit.days = attachOwnForecastComparison(fit.days);
 
@@ -216,8 +249,11 @@ function run() {
     const sorted = [...rows].sort((a, b) => a.t - b.t);
     const entry = {
         date: new Date().toISOString().slice(0, 10),
-        sampleCount: calib ? calib.sampleCount : 0,
-        medianRatio: calib ? round2(calib.medianRatio * 10000) / 10000 : null,
+        sampleCount: calib.sampleCount,
+        medianRatio: Math.round(calib.medianRatio * 100000) / 100000,
+        calibSource: calib.source,
+        calibWindowDays: CALIB_WINDOW_DAYS,
+        stuckRowsExcluded,
         logEntryCount: rows.length,
         logDateRange: { from: new Date(sorted[0].t).toISOString(), to: new Date(sorted[sorted.length - 1].t).toISOString() },
         dataQualityFlags: flags,
@@ -232,17 +268,20 @@ function run() {
     lines.push('');
     lines.push(`**Log:** ${entry.logEntryCount} Einträge, ${entry.logDateRange.from.slice(0, 10)} bis ${entry.logDateRange.to.slice(0, 10)}`);
     lines.push('');
-    if (calib) {
-        lines.push(`**Kalibrierfaktor:** ${calib.medianRatio.toFixed(5)} kW je W/m² (${calib.sampleCount} Samples)`);
-        if (previous && previous.medianRatio !== null) {
-            const diffPct = ((calib.medianRatio - previous.medianRatio) / previous.medianRatio) * 100;
-            const trend = Math.abs(diffPct) < 2 ? 'stabil' : (diffPct > 0 ? 'gestiegen' : 'gesunken');
-            lines.push(`Vorwoche (${previous.date}): ${previous.medianRatio.toFixed(5)} kW/W/m² → ${trend} (${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1)}%).`);
-        } else {
-            lines.push('Erster Lauf – noch kein Vorwochenvergleich möglich.');
-        }
+    const sourceLabel = calib.source === 'measured'
+        ? `Median der letzten ${CALIB_WINDOW_DAYS} Tage, ${calib.sampleCount} Samples`
+        : `NENNWERT-FALLBACK (${NOMINAL_KWP} kWp × 0.86): nur ${calib.sampleCount} verwertbare Samples im Plausibilitätsband`;
+    lines.push(`**Kalibrierfaktor:** ${calib.medianRatio.toFixed(5)} kW je W/m² (${sourceLabel})`);
+    if (stuckRowsExcluded > 0) {
+        lines.push(`${stuckRowsExcluded} Log-Einträge mit festgefrorenem ghi wurden von der Kalibrierung ausgeschlossen.`);
+    }
+    if (previous && typeof previous.medianRatio === 'number') {
+        const diffPct = ((calib.medianRatio - previous.medianRatio) / previous.medianRatio) * 100;
+        const trend = Math.abs(diffPct) < 2 ? 'stabil' : (diffPct > 0 ? 'gestiegen' : 'gesunken');
+        const oldMethod = previous.calibSource === undefined ? ' (Vorwoche mit altem Verfahren berechnet - nicht direkt vergleichbar)' : '';
+        lines.push(`Vorwoche (${previous.date}): ${previous.medianRatio.toFixed(5)} kW/W/m² → ${trend} (${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1)}%)${oldMethod}.`);
     } else {
-        lines.push('**Kalibrierfaktor:** nicht berechenbar (zu wenige verwertbare Samples im Log).');
+        lines.push('Erster Lauf – noch kein Vorwochenvergleich möglich.');
     }
     lines.push('');
     lines.push('**Datenqualität:**');
