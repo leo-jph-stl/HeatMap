@@ -3279,6 +3279,7 @@
         // GLOBALS
         let currentMode = 'temp'; 
         let currentHourOffset = 0;
+        var solarOmCache = null; // Open-Meteo-Stundenwerte (W/m²) des zuletzt abgefragten Standorts
         let activeTemp = null;
         let activeWind = null;
         let activeSolar = null;
@@ -15048,6 +15049,23 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             }
         }
 
+        // Open-Meteo-Einstrahlung am Standort für die vom Zeit-Regler gewählte Zeit (nicht die Uhrzeit
+        // "jetzt"), damit Popup-/Panel-Zahl zur Zeit der Globus-Farbe passen. null = kein passender Wert.
+        function getOmSolarAtSliderTime(lat, lng) {
+            const c = solarOmCache;
+            if (!c || Math.abs(c.lat - lat) > 0.1 || Math.abs(c.lng - lng) > 0.1) return null;
+            const tSec = Date.now() / 1000 + currentHourOffset * 3600;
+            for (let i = 0; i < c.times.length - 1; i++) {
+                if (tSec >= c.times[i] && tSec < c.times[i + 1]) {
+                    const f = (tSec - c.times[i]) / (c.times[i + 1] - c.times[i]);
+                    const r0 = Math.max(0, c.rads[i] || 0);
+                    const r1 = Math.max(0, c.rads[i + 1] || 0);
+                    return Math.round(r0 + f * (r1 - r0));
+                }
+            }
+            return null;
+        }
+
         function renderSolarForecastBody(lat, lng, tz) {
             const windRowEl = document.getElementById('forecastWindRow');
             const label2El = document.getElementById('forecastStatLabel2');
@@ -15139,6 +15157,7 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                         const times = data.hourly.time;
                         const rads = data.hourly.shortwave_radiation;
                         const nowSec = Date.now() / 1000;
+                        solarOmCache = { lat: fetchLat, lng: fetchLng, times, rads };
 
                         // 1. Minutengenaue lineare Interpolation für den Momentanwert ("Jetzt")
                         let liveVal = null;
@@ -15163,16 +15182,18 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
                             }
                         }
 
-                        // UI-Werte auf minutengenauen Wert aktualisieren
-                        if (iconEl) iconEl.innerText = getSolarIcon(liveVal);
-                        if (valEl) valEl.innerText = liveVal;
-                        if (miniIconEl) miniIconEl.innerText = getSolarIcon(liveVal);
-                        if (miniTempEl) miniTempEl.innerText = liveVal + ' W/m²';
+                        // UI-Werte auf minutengenauen Wert zur Reglerzeit aktualisieren (bei "Live" = jetzt)
+                        const sliderVal = getOmSolarAtSliderTime(fetchLat, fetchLng);
+                        const shownVal = sliderVal !== null ? sliderVal : liveVal;
+                        if (iconEl) iconEl.innerText = getSolarIcon(shownVal);
+                        if (valEl) valEl.innerText = shownVal;
+                        if (miniIconEl) miniIconEl.innerText = getSolarIcon(shownVal);
+                        if (miniTempEl) miniTempEl.innerText = shownVal + ' W/m²';
                         if (timelineTitleEl) timelineTitleEl.innerText = '24h / 48h Einstrahlungstrend (Open-Meteo 1h)';
 
                         // Floating-Popup bubble aktualisieren
                         if (popupEl && clickedPopupPoint && Math.abs(clickedPopupPoint.lat - fetchLat) < 0.1 && Math.abs(clickedPopupPoint.lng - fetchLng) < 0.1) {
-                            popupEl.innerText = `${liveVal} W/m²`;
+                            updatePopupContent();
                         }
 
                         // 2. Zeitleiste mit 1h-Auflösung rendern (nächste 48 Stunden)
@@ -15642,10 +15663,21 @@ Stufe 4 · Universelle Kalibrierung & Skalierung:
             if (currentMode === 'temp') {
                 html = `${real.t.toFixed(1)} °C${pSuffix}`;
             } else if (currentMode === 'solar') {
+                const omVal = (solarClimSelection === 'live') ? getOmSolarAtSliderTime(clickedPopupPoint.lat, clickedPopupPoint.lng) : null;
                 const sVal = (solarClimSelection === 'live')
-                    ? `${real.solar.toFixed(0)} W/m²`
+                    ? `${(omVal !== null ? omVal : real.solar).toFixed(0)} W/m²`
                     : `${real.solar.toFixed(2)} kWh/m²/Tag`;
                 html = `${sVal}${pSuffix}`;
+                if (omVal !== null) {
+                    const hIcon = document.getElementById('forecastCurrentIcon');
+                    const hVal = document.getElementById('forecastCurrentTemp');
+                    const mIcon = document.getElementById('forecastMiniIcon');
+                    const mVal = document.getElementById('forecastMiniTemp');
+                    if (hIcon) hIcon.innerText = getSolarIcon(omVal);
+                    if (hVal) hVal.innerText = omVal;
+                    if (mIcon) mIcon.innerText = getSolarIcon(omVal);
+                    if (mVal) mVal.innerText = omVal + ' W/m²';
+                }
             } else if (currentMode === 'clouds') {
                 const cVal = (real.cloud !== undefined) ? real.cloud : 0;
                 const pct = Math.round(Math.min(100, Math.max(0, (cVal / 0.8) * 100)));
