@@ -120,13 +120,22 @@ jobs:
         # landen, weil der Artifact-Upload nicht zwischen Git-getrackt und nur-lokal unterscheidet.
         run: rm -f pv_calibration_history.json pv_forecast_log.json pv_own_forecast_log.json forecast_solar_log.json
 
+      - name: Compress grid data (gzip) - only the .gz is committed and published
+        run: |
+          for f in solar_data cloud_data; do
+            test -s $f.js
+            gzip -9 -n -c $f.js > $f.js.gz
+            rm -f $f.js
+            ls -l $f.js.gz
+          done
+
       - name: Commit and push if changed
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git config --global http.postBuffer 524288000
           rm -f forecast_solar_log.json pv_calibration_history.json pv_forecast_log.json pv_own_forecast_log.json
-          git add solar_data.js solar_climatology_data.js cloud_data.js
+          git add -A -- solar_data.js solar_data.js.gz cloud_data.js cloud_data.js.gz solar_climatology_data.js
           if git diff --staged --quiet; then
             echo 'No changes in solar data.'
           else

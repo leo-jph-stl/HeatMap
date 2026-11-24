@@ -52,8 +52,11 @@ async function fetchOpenMeteoGhi() {
 // herausgelesen. Robust unabhängig davon, ob fetch_solar_timeline.js das Format mal ändert, solange
 // diese beiden Konstanten so heißen.
 function loadSolarData(path) {
-    if (!fs.existsSync(path)) return null;
-    const text = fs.readFileSync(path, 'utf8');
+    const gzPath = path + '.gz';
+    if (!fs.existsSync(path) && !fs.existsSync(gzPath)) return null;
+    const text = fs.existsSync(path)
+        ? fs.readFileSync(path, 'utf8')
+        : require('zlib').gunzipSync(fs.readFileSync(gzPath)).toString('utf8');
     // "var" statt "const": fetch_solar_timeline.js deklariert seit dem 2026-09-16-Fix
     // ("SyntaxError during live weather reload") beide als var, weil solarB64 danach auf null
     // gesetzt wird - eine const-only Regex hier lief seitdem 5 Tage lang lautlos ins Leere
@@ -135,7 +138,7 @@ async function run() {
     }
     const solarData = loadSolarData(SOLAR_DATA_FILE);
     if (!solarData) {
-        if (!fs.existsSync(SOLAR_DATA_FILE)) {
+        if (!fs.existsSync(SOLAR_DATA_FILE) && !fs.existsSync(SOLAR_DATA_FILE + '.gz')) {
             // Legitimer Bootstrap-Fall: update_solar.yml lief noch nie erfolgreich durch.
             console.log('solar_data.js noch nicht vorhanden, überspringe Forecast-Log (noch keine Einstrahlungsprognose zum Vergleichen).');
             return;

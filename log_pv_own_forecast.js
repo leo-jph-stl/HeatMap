@@ -17,8 +17,11 @@ const TZ_OFFSET_MS = 2 * 3600 * 1000; // Europe/Berlin, September = CEST (UTC+2)
 // Identisch zu loadSolarData()/getValueAtStep() in log_pv_forecast.js - siehe dort für die
 // Begründung, warum solar_data.js direkt geparst statt per require()/vm ausgeführt wird.
 function loadSolarData(path) {
-    if (!fs.existsSync(path)) return null;
-    const text = fs.readFileSync(path, 'utf8');
+    const gzPath = path + '.gz';
+    if (!fs.existsSync(path) && !fs.existsSync(gzPath)) return null;
+    const text = fs.existsSync(path)
+        ? fs.readFileSync(path, 'utf8')
+        : require('zlib').gunzipSync(fs.readFileSync(gzPath)).toString('utf8');
     // "var" statt "const": siehe log_pv_forecast.js für den Hintergrund (2026-09-16-Fix in
     // fetch_solar_timeline.js hat beide Deklarationen auf var umgestellt).
     const metaMatch = text.match(/(?:const|var) solarMetadata = (\{[\s\S]*?\});/);
@@ -105,7 +108,7 @@ async function fetchOpenMeteoHourlyByDay() {
 async function run() {
     const solarData = loadSolarData(SOLAR_DATA_FILE);
     if (!solarData) {
-        if (!fs.existsSync(SOLAR_DATA_FILE)) {
+        if (!fs.existsSync(SOLAR_DATA_FILE) && !fs.existsSync(SOLAR_DATA_FILE + '.gz')) {
             console.log('solar_data.js noch nicht vorhanden - überspringe Day-Ahead-Prognose.');
             return;
         }
