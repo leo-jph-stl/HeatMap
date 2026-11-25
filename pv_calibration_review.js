@@ -89,28 +89,39 @@ function computeCalibration(cleanRows) {
     return { medianRatio: median(calib.map(r => r.pv / r.ghi)), sampleCount: calib.length, source: 'measured' };
 }
 
+const FLAG_WINDOW_DAYS = 30;
+
+// Nur Auffälligkeiten der letzten FLAG_WINDOW_DAYS Tage werden gemeldet; ältere (längst behobene
+// oder aus der Kalibrierung ausgeschlossene) Fälle würden sonst jede Woche den Bericht überdecken.
+// Rückgabe: { flags, hiddenOlder } - hiddenOlder zählt die ausgeblendeten älteren Funde.
 function findDataQualityFlags(rows) {
     const flags = [];
+    let hiddenOlder = 0;
+    const sinceMs = Date.now() - FLAG_WINDOW_DAYS * 24 * 3600 * 1000;
     const sorted = [...rows].sort((a, b) => a.t - b.t);
 
     for (const run of findStuckRuns(sorted)) {
+        if (sorted[run.to].t < sinceMs) { hiddenOlder++; continue; }
         flags.push(`${run.len}h konstant identisches ghi=${run.ghi} von ${new Date(sorted[run.from].t).toISOString()} bis ${new Date(sorted[run.to].t).toISOString()} - vermutlich derselbe Clamp-Fallback-Bug wie am 2026-09-10, oder ein neues Analogon davon.`);
     }
 
-    const negPv = sorted.filter(r => r.pv < 0);
+    const negPv = sorted.filter(r => r.pv < 0 && r.t >= sinceMs);
+    hiddenOlder += sorted.filter(r => r.pv < 0 && r.t < sinceMs).length ? 1 : 0;
     if (negPv.length) flags.push(`${negPv.length} Einträge mit negativer PV-Leistung (unmöglich).`);
 
-    const badGhi = sorted.filter(r => r.ghi < 0 || r.ghi > 1200);
+    const badGhi = sorted.filter(r => (r.ghi < 0 || r.ghi > 1200) && r.t >= sinceMs);
+    hiddenOlder += sorted.filter(r => (r.ghi < 0 || r.ghi > 1200) && r.t < sinceMs).length ? 1 : 0;
     if (badGhi.length) flags.push(`${badGhi.length} Einträge mit unplausibler Einstrahlung (<0 oder >1200 W/m²).`);
 
     for (let i = 1; i < sorted.length; i++) {
         const gapH = (sorted[i].t - sorted[i - 1].t) / 3600000;
         if (gapH > 48) {
+            if (sorted[i].t < sinceMs) { hiddenOlder++; continue; }
             flags.push(`Lücke von ${gapH.toFixed(0)}h zwischen ${new Date(sorted[i - 1].t).toISOString()} und ${new Date(sorted[i].t).toISOString()} - update_pv.yml/log_pv_forecast.js könnte ausgesetzt haben.`);
         }
     }
 
-    return flags;
+    return { flags, hiddenOlder };
 }
 
 function localDateStr(tMs) {
@@ -118,8 +129,13 @@ function localDateStr(tMs) {
 }
 
 function weeklyFitCheck(rows, medianRatio, capKw, dailyReports) {
-    const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
-    const recent = rows.filter(r => r.t >= cutoff);
+    // Nur die letzten 7 VOLLSTÄNDIG abgeschlossenen lokalen Tage, nie den laufenden Tag: sonst
+    // vergleicht der Bericht eine halbfertige Ist-Tagessumme (z.B. 0.4 kWh um 17 UTC) mit einer
+    // vollen Tagesprognose (-> "4115 %" am 2026-11-23). Tage werden über den Datums-String gewählt,
+    // nicht über einen Zeitstempel-Cutoff, damit der älteste Tag nicht mitten am Tag abgeschnitten wird.
+    const todayStr = localDateStr(Date.now());
+    const firstDayStr = localDateStr(Date.now() - 7 * 24 * 3600 * 1000);
+    const recent = rows.filter(r => { const d = localDateStr(r.t); return d >= firstDayStr && d < todayStr; });
     const byDay = new Map();
     for (const r of recent) {
         const day = localDateStr(r.t);
@@ -165,6 +181,36 @@ function weeklyFitCheck(rows, medianRatio, capKw, dailyReports) {
 }
 
 function round2(v) { return Math.round(v * 100) / 100; }
+
+// Fehlermaße je Quelle. Der mittlere absolute Prozentfehler (MAPE) wird von Tagen mit wenig Ertrag
+// dominiert (2 kWh Abweichung bei 4.5 kWh Ist = 44 %). WAPE (Summe |Fehler| / Summe Ist) gewichtet
+// nach Energie, Bias ist die Gesamt-Über-/Unterschätzung. Nur Tage, an denen die Quelle einen Wert hat.
+function errorStats(days, kwhKey) {
+    const used = days.filter(d => typeof d[kwhKey] === 'number' && d.actualKwh > 0.01
+        && !(kwhKey === 'modeledKwh' && d.incompleteLog));
+    if (!used.length) return null;
+    const sumActual = used.reduce((s, d) => s + d.actualKwh, 0);
+    const sumPred = used.reduce((s, d) => s + d[kwhKey], 0);
+    const sumAbsErr = used.reduce((s, d) => s + Math.abs(d[kwhKey] - d.actualKwh), 0);
+    const mape = used.reduce((s, d) => s + Math.abs((d[kwhKey] - d.actualKwh) / d.actualKwh) * 100, 0) / used.length;
+    return {
+        n: used.length,
+        mape: round2(mape),
+        wape: round2((sumAbsErr / sumActual) * 100),
+        biasPct: round2(((sumPred - sumActual) / sumActual) * 100),
+        sumActualKwh: round2(sumActual),
+        sumPredKwh: round2(sumPred)
+    };
+}
+
+function buildSummary(days) {
+    return {
+        inSample: errorStats(days, 'modeledKwh'),
+        gfsDayAhead: errorStats(days, 'ownDayAheadKwh'),
+        openMeteoDayAhead: errorStats(days, 'ownDayAheadOpenMeteoKwh'),
+        forecastSolar: errorStats(days, 'forecastSolarKwh')
+    };
+}
 
 // Reichert die Wochen-Fit-Tage um forecast.solar als zweite, UNABHÄNGIGE Prognosequelle an
 // (10 kWp/35°/Süd-Referenzsystem - siehe fetch_forecast_solar.js). Anders als "modeledKwh" (unser
@@ -233,12 +279,13 @@ function run() {
 
     const { clean, removed: stuckRowsExcluded } = removeStuckRows(rows);
     const calib = computeCalibration(clean);
-    const flags = findDataQualityFlags(rows);
+    const { flags, hiddenOlder: hiddenOlderFlags } = findDataQualityFlags(rows);
     const capKw = Math.max(...rows.map(r => r.pv)) * 1.05;
     const dailyReports = loadDailyReports();
     const fit = weeklyFitCheck(clean, calib.medianRatio, capKw, dailyReports);
     if (fit) fit.days = attachForecastSolarComparison(fit.days);
     if (fit) fit.days = attachOwnForecastComparison(fit.days);
+    if (fit) fit.summary = buildSummary(fit.days);
 
     let history = [];
     if (fs.existsSync(HISTORY_FILE)) {
@@ -257,6 +304,7 @@ function run() {
         logEntryCount: rows.length,
         logDateRange: { from: new Date(sorted[0].t).toISOString(), to: new Date(sorted[sorted.length - 1].t).toISOString() },
         dataQualityFlags: flags,
+        dataQualityFlagsHiddenOlder: hiddenOlderFlags,
         weeklyFitCheck: fit
     };
     history.push(entry);
@@ -288,13 +336,17 @@ function run() {
     if (flags.length) {
         flags.forEach(f => lines.push(`- ⚠️ ${f}`));
     } else {
-        lines.push('- Keine Auffälligkeiten gefunden.');
+        lines.push('- Keine Auffälligkeiten in den letzten ' + FLAG_WINDOW_DAYS + ' Tagen.');
+    }
+    if (hiddenOlderFlags > 0) {
+        lines.push('- _' + hiddenOlderFlags + ' ältere Auffälligkeit(en) (> ' + FLAG_WINDOW_DAYS + ' Tage, bereits behoben bzw. von der Kalibrierung ausgeschlossen) ausgeblendet._');
     }
     lines.push('');
     if (fit && fit.days.length) {
         lines.push('**Wochen-Fit-Check:**');
         lines.push('- "Modell (unser)" ist ein **In-Sample-Fit**: misst, wie gut unsere Kalibrierung zu den Daten passt, aus denen sie selbst berechnet wurde - KEIN Test echter Vorhersagegüte, da wir keine im Voraus gespeicherten eigenen Prognosen archivieren.');
         lines.push('- "forecast.solar" ist dagegen eine ECHTE, vor dem jeweiligen Tag abgerufene Vergleichsprognose (10 kWp/35°/Süd-Referenzsystem, siehe fetch_forecast_solar.js) - nicht zwingend identisch mit der echten Anlage, aber ein unabhängiger externer Anhaltspunkt.');
+        lines.push('- Es werden nur die letzten 7 **vollständig abgeschlossenen** Tage verglichen, nie der laufende Tag.');
         lines.push('- "Ist" ist die echte, vom Wechselrichter gemessene Tagessumme (daily_reports); nur falls die für einen Tag fehlt, wird ersatzweise aus den stündlichen Log-Einträgen rekonstruiert - das ist dann explizit als "(Log, lückenhaft)" markiert.');
         lines.push('- "Modell" wird immer aus den stündlichen Log-Einträgen berechnet - deckt das Log einen Tag nicht ausreichend ab (< ' + MIN_HOURLY_COVERAGE + '/24h), ist der Vergleich für diesen Tag nicht aussagekräftig und wird als "nicht vergleichbar" markiert, egal wie plausibel der Ist-Wert selbst ist.');
         lines.push('- "GFS Day-Ahead" und "Open-Meteo Day-Ahead" sind beides ECHTE, vor dem jeweiligen Tag mit log_pv_own_forecast.js archivierte eigene Vorhersagen (letzte Kalibrierung × jeweilige Einstrahlungsprognose für den Zieltag) - unabhängig voneinander abgerufen (GFS/THREDDS bzw. Open-Meteo/ICON), damit wir über mehrere Wochen sehen, welche Quelle für unsere Anlage näher an der Realität liegt, statt das zu raten oder beide unreflektiert zu mitteln.');
@@ -317,28 +369,25 @@ function run() {
             lines.push(`| ${d.date} | ${istLabel} | ${modeledLabel} | ${d.pctError !== null ? d.pctError.toFixed(1) + '%' : '– (nicht vergleichbar)'} | ${ownKwh} | ${ownErr} | ${omKwh} | ${omErr} | ${fsKwh} | ${fsErr} |`);
         });
         lines.push('');
-        lines.push(`Mittlerer absoluter Fehler diese Woche (unser Modell, In-Sample): ${fit.meanAbsPctError !== null ? fit.meanAbsPctError.toFixed(1) + '%' : 'n/a'}`);
-        const ownErrors = fit.days.filter(d => d.ownDayAheadPctError !== null && d.ownDayAheadPctError !== undefined);
-        if (ownErrors.length) {
-            const ownMeanAbs = round2(ownErrors.reduce((s, d) => s + Math.abs(d.ownDayAheadPctError), 0) / ownErrors.length);
-            lines.push(`Mittlerer absoluter Fehler diese Woche (GFS Day-Ahead): ${ownMeanAbs.toFixed(1)}%`);
-        } else {
-            lines.push('GFS Day-Ahead: noch keine Vergleichswerte für diese Woche vorhanden (Ledger wächst erst seit Einführung von log_pv_own_forecast.js).');
-        }
-        const omErrors = fit.days.filter(d => d.ownDayAheadOpenMeteoPctError !== null && d.ownDayAheadOpenMeteoPctError !== undefined);
-        if (omErrors.length) {
-            const omMeanAbs = round2(omErrors.reduce((s, d) => s + Math.abs(d.ownDayAheadOpenMeteoPctError), 0) / omErrors.length);
-            lines.push(`Mittlerer absoluter Fehler diese Woche (Open-Meteo Day-Ahead): ${omMeanAbs.toFixed(1)}%`);
-        } else {
-            lines.push('Open-Meteo Day-Ahead: noch keine Vergleichswerte für diese Woche vorhanden (Ledger wächst erst seit Einführung dieser Quelle).');
-        }
-        const fsErrors = fit.days.filter(d => d.forecastSolarPctError !== null && d.forecastSolarPctError !== undefined);
-        if (fsErrors.length) {
-            const fsMeanAbs = round2(fsErrors.reduce((s, d) => s + Math.abs(d.forecastSolarPctError), 0) / fsErrors.length);
-            lines.push(`Mittlerer absoluter Fehler diese Woche (forecast.solar, echtes Day-Ahead): ${fsMeanAbs.toFixed(1)}%`);
-        } else {
-            lines.push('forecast.solar: noch keine Vergleichswerte für diese Woche vorhanden (Log wächst erst seit heute).');
-        }
+        const fmt = (s, k, suffix) => (s ? (k === 'biasPct' && s[k] > 0 ? '+' : '') + s[k].toFixed(1) + suffix : '–');
+        const rowsDef = [
+            ['Unser Modell (In-Sample, nur zum Vergleich)', fit.summary.inSample],
+            ['GFS Day-Ahead', fit.summary.gfsDayAhead],
+            ['Open-Meteo Day-Ahead', fit.summary.openMeteoDayAhead],
+            ['forecast.solar', fit.summary.forecastSolar]
+        ];
+        lines.push('**Fehler-Zusammenfassung (nur abgeschlossene Tage):**');
+        lines.push('');
+        lines.push('| Quelle | Tage | WAPE (energiegewichtet) | Ø abs. Prozentfehler | Bias (Σ Prognose vs. Σ Ist) |');
+        lines.push('|---|---|---|---|---|');
+        rowsDef.forEach(([name, s]) => {
+            lines.push(`| ${name} | ${s ? s.n : 0} | ${fmt(s, 'wape', '%')} | ${fmt(s, 'mape', '%')} | ${fmt(s, 'biasPct', '%')} |`);
+        });
+        lines.push('');
+        lines.push('_WAPE = Σ|Prognose − Ist| / Σ Ist: gewichtet nach Energie, damit ertragsarme Tage das Bild nicht verzerren. Bias < 0 bedeutet: im Mittel zu niedrig prognostiziert._');
+        if (fit.summary.gfsDayAhead === null) lines.push('GFS Day-Ahead: noch keine Vergleichswerte vorhanden.');
+        if (fit.summary.openMeteoDayAhead === null) lines.push('Open-Meteo Day-Ahead: noch keine Vergleichswerte vorhanden.');
+        if (fit.summary.forecastSolar === null) lines.push('forecast.solar: noch keine Vergleichswerte vorhanden.');
     } else {
         lines.push('**Wochen-Fit-Check:** keine vollständigen Tage in den letzten 7 Tagen im Log.');
     }
