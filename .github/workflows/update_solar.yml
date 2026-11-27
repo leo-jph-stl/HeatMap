@@ -135,7 +135,7 @@ jobs:
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git config --global http.postBuffer 524288000
           rm -f forecast_solar_log.json pv_calibration_history.json pv_forecast_log.json pv_own_forecast_log.json
-          git add -A -- solar_data.js solar_data.js.gz cloud_data.js cloud_data.js.gz solar_climatology_data.js
+          git add solar_data.js.gz cloud_data.js.gz solar_climatology_data.js
           if git diff --staged --quiet; then
             echo 'No changes in solar data.'
           else
